@@ -1,3 +1,5 @@
 --UKPLAN-3 jira ticket test commit 
 
 Jira integration test
+
+Jira ticket number should be the commit title
