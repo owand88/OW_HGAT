@@ -1,0 +1,48 @@
+-- ${date} is a static variable
+
+/* @ScheduleGroup(name="muso_0", description="") */
+select cast('${date}' as date) as date_var
+
+-- ${val} is a static variable
+
+select ${val} + 1 as val_var
+
+
+--Create a table to read the value for a dynamic value
+create table p_workbench_t.dynamic_variable_test (counter integer)
+
+-- Insert the initial value to your table
+insert into p_workbench_t.dynamic_variable_test(counter) values (9)
+
+
+-- ${counter} = select max(counter) from p_workbench_t.dynamic_variable_test
+
+-- Set the dynamic variable value by running the code and refresing its value
+%refresh_var(${counter})
+
+
+-- Check the current dynamic variable value 
+select ${counter}
+
+-- Update the counter value in the test table
+
+-- The following method DOES NOT WORK in SparkSQL
+update p_workbench_t.dynamic_variable_test
+set counter = ${counter} + 1
+
+-- Use this method instead to update the table 
+insert OVERWRITE p_workbench_t.dynamic_variable_test (counter) values (${counter} + 1)
+
+
+
+-- Check the results
+select * from p_workbench_t.dynamic_variable_test
+
+
+-- Truncate the results
+truncate table p_workbench_t.dynamic_variable_test
+
+-- Drop the table
+drop table p_workbench_t.dynamic_variable_test
+
+
