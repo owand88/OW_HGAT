@@ -46,3 +46,4 @@ truncate table p_workbench_t.dynamic_variable_test
 drop table p_workbench_t.dynamic_variable_test
 
 
+--final note
