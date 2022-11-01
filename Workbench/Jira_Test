@@ -1,9 +1,0 @@
---UKPLAN-3 jira ticket test commit 
-
-Jira integration test
-
-Jira ticket number should be the commit title
-
-Another commit test
-
-Commit test to place the ticket number in the commit description instead of the title

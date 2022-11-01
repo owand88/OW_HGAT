@@ -1,9 +1,0 @@
----METRIC_GROUP_NAME = tugrul_test
----OWNER = tates
----TEAM = DL-eBay-UK-Inventory-Planning
----PARTITION_DATE = part_date
----MATURITY_GAP = 1
----FREQUENCY = daily
----PII = No
-
-select 1 
