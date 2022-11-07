@@ -1,0 +1,1173 @@
+drop table if exists p_robevans_t.sneakers_yoy ;
+create table p_robevans_t.sneakers_yoy as (select * from (select
+retail_year,
+
+CASE WHEN (brand like any ('%YEEZY%', '%JORDAN','%AIR MAX%') OR model like any ('%YEEZY%', '%JORDAN','%AIR MAX%') OR upper(auct_titl) like any ('%YEEZY%', '%JORDANS','%AIR MAX%')) 
+			AND CNDTN_ROLLUP_ID in (1)  
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 200 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 200) OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 200))  THEN 'Phase 1'
+		WHEN (brand like any ('%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') or model like any ('%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') or upper(auct_titl) like any ('%YEEZY%', '%JORDANS','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1) 
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 2'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%') or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')  or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1) 
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 3'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%') or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')  or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1,3) 
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 4'
+
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%REEBOK%','%PUMA%','%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%REEBOK%','%PUMA%','%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%REEBOK%','%PUMA%','%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 5a'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') ) 
+			AND CNDTN_ROLLUP_ID in (1,3) 
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 5b'
+
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%')
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 125 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 125)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 125)) THEN 'Phase 6a'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') ) 
+			AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 100)) THEN 'Phase 6b'
+
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%', '%JORDAN','%AIR MAX%','%DUNK%') ) 
+			AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 100)) THEN 'Phase 7a'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%','%PRADA%', '%MAISON MARGIELA%','%LOUIS VUITTON%','%GIUSEPPE ZANOTTI%', '%ERMENEGILDO ZEGNA%','%MAISON KITSUNE%','%SALVATORE FERRAGAMO%','%FENDI%','%VALENTINO%','%JUNYA WATANABE%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%','%PRADA%', '%MAISON MARGIELA%','%LOUIS VUITTON%','%GIUSEPPE ZANOTTI%', '%ERMENEGILDO ZEGNA%','%MAISON KITSUNE%','%SALVATORE FERRAGAMO%','%FENDI%','%VALENTINO%','%JUNYA WATANABE%', '%JORDAN','%AIR MAX%','%DUNK%')
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%','%PRADA%', '%MAISON MARGIELA%','%LOUIS VUITTON%','%GIUSEPPE ZANOTTI%', '%ERMENEGILDO ZEGNA%','%MAISON KITSUNE%','%SALVATORE FERRAGAMO%','%FENDI%','%VALENTINO%','%JUNYA WATANABE%', '%JORDAN','%AIR MAX%','%DUNK%')	
+			) AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 100)) THEN 'Phase 7b'
+
+		WHEN CNDTN_ROLLUP_ID in (1,3)  AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 100)) THEN 'Phase 8'
+		ELSE 'OTHER'
+	END AS phase_flag,	
+		CASE
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 100 THEN 'A. <100'
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 125 THEN 'A. 100-125'
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 150 THEN 'A. 125-150'
+		ELSE 'B.150+' END AS
+	PRICE_BUCKET,
+	CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Not Specified' END AS Item_Cond,
+		case when U.USER_DSGNTN_ID=2  then 'B2C' else 'C2C' end as bus_flag,
+	CASE WHEN UPPER(BRND.ASPCT_VLU_NM_BRAND) IN ('MODIFIED', 'CUSTOMIZED','YES') THEN 'MODIFIED' ELSE 'NO' end AS MODIFIED_ITEM,
+	
+	count(distinct slr_id) as Seller_Count,
+	count(distinct ck.item_id) as LL
+
+FROM DW_LSTG_ITEM AS CK
+
+        LEFT JOIN 
+                    (
+                    SELECT ITEM_ID,
+                           AUCT_END_DT,
+                           COALESCE(MAX(ASPCT.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                            FROM
+                            ITEM_ASPCT_CLSSFCTN ASPCT
+                            WHERE
+                            UPPER(ASPCT.NS_TYPE_CD) IN ('NF','DF') 
+                            AND ASPCT.AUCT_END_DT>='2018-12-26'
+                            AND UPPER(ASPCT.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                            GROUP BY 1,2
+                            
+                        UNION 
+                        
+                        SELECT  ITEM_ID,
+                           AUCT_END_DT,
+                          COALESCE(MAX(ASPCT_COLD.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                        FROM
+                        ITEM_ASPCT_CLSSFCTN_COLD ASPCT_COLD
+                        WHERE UPPER(ASPCT_COLD.NS_TYPE_CD) IN ('NF','DF') 
+                        AND ASPCT_COLD.AUCT_END_DT>='2018-12-26'
+                        AND UPPER(ASPCT_COLD.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                        GROUP BY 1,2
+                    ) BRND ON CK.ITEM_ID = BRND.ITEM_ID AND CK.AUCT_END_DT = BRND.AUCT_END_DT
+
+
+
+ LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID
+INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
+INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR in (2019,2020,2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+left outer join dw_users u
+on ck.slr_id = u.user_id
+
+left join (select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as BRAND,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('brand') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase
+					ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+	
+	
+left join (select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as MODEL,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('model') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase1
+					ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+
+
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+
+WHERE 1=1
+	AND  CK.AUCT_end_dt >= '2018-01-01'
+and ck.WACKO_YN = 'N'                      
+AND CK.AUCT_TYPE_CODE NOT IN (10,15)
+AND CK.ITEM_SITE_ID in (3)
+and ck.auct_end_dt >= date '2018-01-01'	
+	and cat.CATEG_LVL4_ID in (15709,95672) -- change
+	and ck.slr_CNTRY_ID in (3)
+		GROUP BY 1,2,3,4,5,6) 
+-- 		where phase_flag not in ('Other')
+		);
+		
+		---------------------------------------------------------------------------------------------------------------------------------------------------------
+		drop table if exists p_robevans_t.sneakers_wow ;
+create table p_robevans_t.sneakers_wow as (select * from (select
+retail_year,
+retail_week,
+CASE WHEN (brand like any ('%YEEZY%', '%JORDAN','%AIR MAX%') OR model like any ('%YEEZY%', '%JORDAN','%AIR MAX%') OR upper(auct_titl) like any ('%YEEZY%', '%JORDANS','%AIR MAX%')) 
+			AND CNDTN_ROLLUP_ID in (1)  
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 200 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 200) OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 200))  THEN 'Phase 1'
+		WHEN (brand like any ('%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') or model like any ('%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') or upper(auct_titl) like any ('%YEEZY%', '%JORDANS','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1) 
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 2'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%') or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')  or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1) 
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 3'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%') or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')  or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1,3) 
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 4'
+
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%REEBOK%','%PUMA%','%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%REEBOK%','%PUMA%','%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%REEBOK%','%PUMA%','%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 5a'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') ) 
+			AND CNDTN_ROLLUP_ID in (1,3) 
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 5b'
+
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%')
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 125 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 125)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 6a'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') ) 
+			AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 6b'
+
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%', '%JORDAN','%AIR MAX%','%DUNK%') ) 
+			AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 7a'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%','%PRADA%', '%MAISON MARGIELA%','%LOUIS VUITTON%','%GIUSEPPE ZANOTTI%', '%ERMENEGILDO ZEGNA%','%MAISON KITSUNE%','%SALVATORE FERRAGAMO%','%FENDI%','%VALENTINO%','%JUNYA WATANABE%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%','%PRADA%', '%MAISON MARGIELA%','%LOUIS VUITTON%','%GIUSEPPE ZANOTTI%', '%ERMENEGILDO ZEGNA%','%MAISON KITSUNE%','%SALVATORE FERRAGAMO%','%FENDI%','%VALENTINO%','%JUNYA WATANABE%', '%JORDAN','%AIR MAX%','%DUNK%')
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%','%PRADA%', '%MAISON MARGIELA%','%LOUIS VUITTON%','%GIUSEPPE ZANOTTI%', '%ERMENEGILDO ZEGNA%','%MAISON KITSUNE%','%SALVATORE FERRAGAMO%','%FENDI%','%VALENTINO%','%JUNYA WATANABE%', '%JORDAN','%AIR MAX%','%DUNK%')	
+			) AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 7b'
+
+		WHEN CNDTN_ROLLUP_ID in (1,3)  AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 8'
+		ELSE 'OTHER'
+	END AS phase_flag,	
+	CASE
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 100 THEN 'A. <100'
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 125 THEN 'A. 100-125'
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 150 THEN 'A. 125-150'
+		ELSE 'B.150+' END AS
+	PRICE_BUCKET,
+	CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Not Specified' END AS Item_Cond,
+		case when U.USER_DSGNTN_ID=2  then 'B2C' else 'C2C' end as bus_flag,
+	CASE WHEN UPPER(BRND.ASPCT_VLU_NM_BRAND) IN ('MODIFIED', 'CUSTOMIZED','YES') THEN 'MODIFIED' ELSE 'NO' end AS MODIFIED_ITEM,
+	case when v.item_id = ck.item_id then  c else 1 end as count,
+	count(distinct slr_id) as Seller_Count,
+	count(distinct ck.item_id) as LL
+
+
+
+
+FROM DW_LSTG_ITEM AS CK
+
+        LEFT JOIN 
+                    (
+                    SELECT ITEM_ID,
+                           AUCT_END_DT,
+                           COALESCE(MAX(ASPCT.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                            FROM
+                            ITEM_ASPCT_CLSSFCTN ASPCT
+                            WHERE
+                            UPPER(ASPCT.NS_TYPE_CD) IN ('NF','DF') 
+                            AND ASPCT.AUCT_END_DT>='2018-12-26'
+                            AND UPPER(ASPCT.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                            GROUP BY 1,2
+                            
+                        UNION 
+                        
+                        SELECT  ITEM_ID,
+                           AUCT_END_DT,
+                          COALESCE(MAX(ASPCT_COLD.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                        FROM
+                        ITEM_ASPCT_CLSSFCTN_COLD ASPCT_COLD
+                        WHERE UPPER(ASPCT_COLD.NS_TYPE_CD) IN ('NF','DF') 
+                        AND ASPCT_COLD.AUCT_END_DT>='2018-12-26'
+                        AND UPPER(ASPCT_COLD.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                        GROUP BY 1,2
+                    ) BRND ON CK.ITEM_ID = BRND.ITEM_ID AND CK.AUCT_END_DT = BRND.AUCT_END_DT
+
+LEFT JOIN (select item_id, ITEM_VRTN_ID  from LSTG_ITEM_VRTN group by 1,2) v on v.item_id = ck.item_id
+LEFT JOIN (select item_id, count(ITEM_VRTN_ID) c  from LSTG_ITEM_VRTN group by 1) v1 on v1.item_id = ck.item_id
+
+
+ LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID
+INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
+INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR in (2019,2020,2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+left outer join dw_users u
+on ck.slr_id = u.user_id
+
+left join (select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as BRAND,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('brand') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase
+					ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+	
+	
+left join (select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as MODEL,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('model') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase1
+					ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+
+
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+
+WHERE 1=1
+	AND  CK.AUCT_end_dt >= '2018-01-01'
+and ck.WACKO_YN = 'N'                      
+AND CK.AUCT_TYPE_CODE NOT IN (10,15)
+AND CK.ITEM_SITE_ID in (3)
+and ck.auct_end_dt >= date '2018-01-01'	
+	and cat.CATEG_LVL4_ID in (15709,95672)
+	and ck.slr_CNTRY_ID in (3)
+	and (case when START_PRICE_LSTG_CURNCY > BIN_PRICE_LSTG_CURNCY then START_PRICE_LSTG_CURNCY else BIN_PRICE_LSTG_CURNCY End) >= 100
+		GROUP BY 1,2,3,4,5,6,7,8) 
+-- 		where phase_flag not in ('Other')
+		);
+		
+		---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+		drop table if exists p_robevans_t.sneakers_wow_gmv ;
+create table p_robevans_t.sneakers_wow_gmv as (select * from (select
+retail_year,
+retail_week,
+
+CASE WHEN (brand like any ('%YEEZY%', '%JORDAN','%AIR MAX%') OR model like any ('%YEEZY%', '%JORDAN','%AIR MAX%') OR upper(auct_titl) like any ('%YEEZY%', '%JORDANS','%AIR MAX%')) 
+			AND CNDTN_ROLLUP_ID in (1)  
+			AND (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 200)  THEN 'Phase 1'
+		WHEN (brand like any ('%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') or model like any ('%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') or upper(auct_titl) like any ('%YEEZY%', '%JORDANS','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1) 
+			AND (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 150) THEN 'Phase 2'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%') or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')  or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1) 
+			AND (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 150) THEN 'Phase 3'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%') or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')  or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1,3) 
+			AND (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 150 ) THEN 'Phase 4'
+
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%REEBOK%','%PUMA%','%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%REEBOK%','%PUMA%','%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%REEBOK%','%PUMA%','%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 150 ) THEN 'Phase 5a'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') ) 
+			AND CNDTN_ROLLUP_ID in (1,3) 
+			AND (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 150) THEN 'Phase 5b'
+
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%')
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%')) 
+			AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 125 ) THEN 'Phase 6a'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') ) 
+			AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 100) THEN 'Phase 6b'
+
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%', '%JORDAN','%AIR MAX%','%DUNK%') ) 
+			AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 100) THEN 'Phase 7a'
+		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%','%PRADA%', '%MAISON MARGIELA%','%LOUIS VUITTON%','%GIUSEPPE ZANOTTI%', '%ERMENEGILDO ZEGNA%','%MAISON KITSUNE%','%SALVATORE FERRAGAMO%','%FENDI%','%VALENTINO%','%JUNYA WATANABE%', '%JORDAN','%AIR MAX%','%DUNK%') 
+			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%','%PRADA%', '%MAISON MARGIELA%','%LOUIS VUITTON%','%GIUSEPPE ZANOTTI%', '%ERMENEGILDO ZEGNA%','%MAISON KITSUNE%','%SALVATORE FERRAGAMO%','%FENDI%','%VALENTINO%','%JUNYA WATANABE%', '%JORDAN','%AIR MAX%','%DUNK%')
+			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%','%PRADA%', '%MAISON MARGIELA%','%LOUIS VUITTON%','%GIUSEPPE ZANOTTI%', '%ERMENEGILDO ZEGNA%','%MAISON KITSUNE%','%SALVATORE FERRAGAMO%','%FENDI%','%VALENTINO%','%JUNYA WATANABE%', '%JORDAN','%AIR MAX%','%DUNK%')	
+			) AND CNDTN_ROLLUP_ID in (1,3)  
+			AND (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 100) THEN 'Phase 7b'
+
+		WHEN CNDTN_ROLLUP_ID in (1,3)  AND (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 100) THEN 'Phase 8'
+		ELSE 'OTHER'
+	END AS phase_flag,	
+		CASE
+		WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2))  < 100 THEN 'A. <100'
+		WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2))  < 125 THEN 'A. 100-125'
+		WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2))  < 150 THEN 'A. 125-150'
+		ELSE 'B.150+' END AS
+	PRICE_BUCKET,
+	categ_lvl4_name,
+	CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Not Specified' END AS Item_Cond,
+		case when U.USER_DSGNTN_ID=2  then 'B2C' else 'C2C' end as bus_flag,
+	CASE WHEN UPPER(BRND.ASPCT_VLU_NM_BRAND) IN ('MODIFIED', 'CUSTOMIZED','YES') THEN 'MODIFIED' ELSE 'NO' end AS MODIFIED_ITEM,
+	SUM(CK.gmv_plan_usd) AS GMV, 
+	SUM(QUANTITY) AS BI,
+	count(distinct (buyer_id)) as byr_cnt,
+	count(distinct(ck.item_id)) as converted_lll,
+	GMV/BI as ASP
+
+FROM DW_CHECKOUT_TRANS AS CK
+
+ LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+LEFT JOIN (select item_id, auct_titl, AUCT_END_DT from DW_LSTG_ITEM where item_site_id = 3 group by 1,2,3) as i on i.item_id = ck.item_id and i.auct_end_dt = ck.AUCT_END_DT
+
+        LEFT JOIN 
+                    (
+                    SELECT ITEM_ID,
+                           AUCT_END_DT,
+                           COALESCE(MAX(ASPCT.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                            FROM
+                            ITEM_ASPCT_CLSSFCTN ASPCT
+                            WHERE
+                            UPPER(ASPCT.NS_TYPE_CD) IN ('NF','DF') 
+                            AND ASPCT.AUCT_END_DT>='2018-12-26'
+                            AND UPPER(ASPCT.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                            GROUP BY 1,2
+                            
+                        UNION 
+                        
+                        SELECT  ITEM_ID,
+                           AUCT_END_DT,
+                          COALESCE(MAX(ASPCT_COLD.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                        FROM
+                        ITEM_ASPCT_CLSSFCTN_COLD ASPCT_COLD
+                        WHERE UPPER(ASPCT_COLD.NS_TYPE_CD) IN ('NF','DF') 
+                        AND ASPCT_COLD.AUCT_END_DT>='2018-12-26'
+                        AND UPPER(ASPCT_COLD.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                        GROUP BY 1,2
+                    ) BRND ON CK.ITEM_ID = BRND.ITEM_ID AND CK.AUCT_END_DT = BRND.AUCT_END_DT
+
+		
+-- inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+-- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
+	ON CAL.CAL_DT = CK.gmv_dt 
+	and retail_year in (2019,2020,2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+
+left join 
+(select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as BRAND,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('brand') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase
+					ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+					
+left join 
+(select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as MODEL,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('model') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase1
+					ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+
+left outer join dw_users u
+	on ck.seller_id = u.user_id
+	
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+
+WHERE 1=1
+	AND  CK.AUCT_end_dt >= '2018-01-01'                    
+AND CK.SITE_ID in (3)
+	and cat.CATEG_LVL4_ID in (15709,95672)
+	and ck.slr_CNTRY_ID in (3)
+		GROUP BY 1,2,3,4,5,6,7,8)
+-- 		where phase_flag not in ('Other')
+		);
+
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+-- 		drop table if exists p_robevans_t.sneakers_wow1 ;
+-- create table p_robevans_t.sneakers_wow1 as (select * from (select
+-- retail_year,
+-- retail_week,
+-- CASE WHEN (brand like any ('%YEEZY%', '%JORDAN','%AIR MAX%') OR model like any ('%YEEZY%', '%JORDAN','%AIR MAX%') OR upper(auct_titl) like any ('%YEEZY%', '%JORDANS','%AIR MAX%')) 
+-- 			AND CNDTN_ROLLUP_ID in (1)  
+-- 			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 200 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 200) OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 200))  THEN 'Phase 1'
+-- 		WHEN (brand like any ('%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') or model like any ('%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') or upper(auct_titl) like any ('%YEEZY%', '%JORDANS','%AIR MAX%','%DUNK%')) 
+-- 			AND CNDTN_ROLLUP_ID in (1) 
+-- 			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 2'
+-- 		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%') or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')  or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')) 
+-- 			AND CNDTN_ROLLUP_ID in (1) 
+-- 			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 3'
+-- 		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%') or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')  or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%AIR MAX%','%DUNK%')) 
+-- 			AND CNDTN_ROLLUP_ID in (1,3) 
+-- 			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 4'
+
+-- 		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%REEBOK%','%PUMA%','%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') 
+-- 			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%REEBOK%','%PUMA%','%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%') 
+-- 			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%REEBOK%','%PUMA%','%YEEZY%', '%JORDAN','%AIR MAX%','%DUNK%')) 
+-- 			AND CNDTN_ROLLUP_ID in (1,3)  
+-- 			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 5a'
+-- 		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+-- 			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+-- 			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') ) 
+-- 			AND CNDTN_ROLLUP_ID in (1,3) 
+-- 			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 150)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 5b'
+
+-- 		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+-- 			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%')
+-- 			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%')) 
+-- 			AND CNDTN_ROLLUP_ID in (1,3)  
+-- 			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 125 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 125)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 6a'
+-- 		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+-- 			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') 
+-- 			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%', '%JORDAN','%AIR MAX%','%DUNK%') ) 
+-- 			AND CNDTN_ROLLUP_ID in (1,3)  
+-- 			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 6b'
+
+-- 		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%', '%JORDAN','%AIR MAX%','%DUNK%') 
+-- 			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%', '%JORDAN','%AIR MAX%','%DUNK%') 
+-- 			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%', '%JORDAN','%AIR MAX%','%DUNK%') ) 
+-- 			AND CNDTN_ROLLUP_ID in (1,3)  
+-- 			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 7a'
+-- 		WHEN (brand like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%','%PRADA%', '%MAISON MARGIELA%','%LOUIS VUITTON%','%GIUSEPPE ZANOTTI%', '%ERMENEGILDO ZEGNA%','%MAISON KITSUNE%','%SALVATORE FERRAGAMO%','%FENDI%','%VALENTINO%','%JUNYA WATANABE%', '%JORDAN','%AIR MAX%','%DUNK%') 
+-- 			or model like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%','%PRADA%', '%MAISON MARGIELA%','%LOUIS VUITTON%','%GIUSEPPE ZANOTTI%', '%ERMENEGILDO ZEGNA%','%MAISON KITSUNE%','%SALVATORE FERRAGAMO%','%FENDI%','%VALENTINO%','%JUNYA WATANABE%', '%JORDAN','%AIR MAX%','%DUNK%')
+-- 			or upper(auct_titl) like any ('%NIKE%', '%ADIDAS%','%NEW BALANCE%','%ASICS%','%VAN%','%REEBOK%','%CONVERSE%','%PUMA%','%BALENCIAGA%', '%GUCCI%','%CHANEL%','%Y-3%', '%LOUBOTIN%','%VIVIENNE WESTWOOD%','%LANVIN%','%VERSACE%','%DIOR%','%PRADA%', '%MAISON MARGIELA%','%LOUIS VUITTON%','%GIUSEPPE ZANOTTI%', '%ERMENEGILDO ZEGNA%','%MAISON KITSUNE%','%SALVATORE FERRAGAMO%','%FENDI%','%VALENTINO%','%JUNYA WATANABE%', '%JORDAN','%AIR MAX%','%DUNK%')	
+-- 			) AND CNDTN_ROLLUP_ID in (1,3)  
+-- 			AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 7b'
+
+-- 		WHEN CNDTN_ROLLUP_ID in (1,3)  AND (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100)OR (Cast(CK.rsrv_price_list_crncy AS DECIMAL(18,2)) >= 150)) THEN 'Phase 8'
+-- 	END AS phase_flag,	CATEG_LVL4_NAME,
+-- 	CASE
+-- 		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 100 THEN 'A. <100'
+-- 		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 125 THEN 'A. 100-125'
+-- 		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 150 THEN 'A. 125-150'
+-- 		ELSE 'B.150+' END AS
+-- 	PRICE_BUCKET,
+-- 	CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Not Specified' END AS Item_Cond,
+-- 		case when U.USER_DSGNTN_ID=2  then 'B2C' else 'C2C' end as bus_flag,
+-- 	CASE WHEN UPPER(BRND.ASPCT_VLU_NM_BRAND) IN ('MODIFIED', 'CUSTOMIZED','YES') THEN 'MODIFIED' ELSE 'NO' end AS MODIFIED_ITEM,
+-- 	case when v.item_id = ck.item_id then  c else 1 end as count,
+-- 	count(distinct slr_id) as Seller_Count,
+-- 	count(distinct ck.item_id) as LL
+
+
+
+
+-- FROM DW_LSTG_ITEM AS CK
+
+--         LEFT JOIN 
+--                     (
+--                     SELECT ITEM_ID,
+--                            AUCT_END_DT,
+--                            COALESCE(MAX(ASPCT.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+--                             FROM
+--                             ITEM_ASPCT_CLSSFCTN ASPCT
+--                             WHERE
+--                             UPPER(ASPCT.NS_TYPE_CD) IN ('NF','DF') 
+--                             AND ASPCT.AUCT_END_DT>='2018-12-26'
+--                             AND UPPER(ASPCT.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+--                             GROUP BY 1,2
+                            
+--                         UNION 
+                        
+--                         SELECT  ITEM_ID,
+--                            AUCT_END_DT,
+--                           COALESCE(MAX(ASPCT_COLD.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+--                         FROM
+--                         ITEM_ASPCT_CLSSFCTN_COLD ASPCT_COLD
+--                         WHERE UPPER(ASPCT_COLD.NS_TYPE_CD) IN ('NF','DF') 
+--                         AND ASPCT_COLD.AUCT_END_DT>='2018-12-26'
+--                         AND UPPER(ASPCT_COLD.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+--                         GROUP BY 1,2
+--                     ) BRND ON CK.ITEM_ID = BRND.ITEM_ID AND CK.AUCT_END_DT = BRND.AUCT_END_DT
+
+-- LEFT JOIN (select item_id, ITEM_VRTN_ID  from LSTG_ITEM_VRTN group by 1,2) v on v.item_id = ck.item_id
+-- LEFT JOIN (select item_id, count(ITEM_VRTN_ID) c  from LSTG_ITEM_VRTN group by 1) v1 on v1.item_id = ck.item_id
+
+
+--  LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+--         ON CK.ITEM_ID = CNDTN.ITEM_ID
+-- INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
+-- INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT AND CK.AUCT_START_DT < CURRENT_DATE AND CK.AUCT_END_DT >= CURRENT_DATE
+-- left outer join dw_users u
+-- on ck.slr_id = u.user_id
+
+-- left join (select a.* from (
+-- select
+-- item_id,
+-- auct_end_dt,
+-- lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+-- upper(ASPCT_VLU_NM) as BRAND,
+-- ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+-- FROM ITEM_ASPCT_CLSSFCTN ASPCT
+-- where 
+-- lower(PRDCT_ASPCT_NM) in ('brand') and NS_TYPE_CD='df' )a
+-- where RNum = 1
+-- ) bbase
+-- 					ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+	
+	
+-- left join (select a.* from (
+-- select
+-- item_id,
+-- auct_end_dt,
+-- lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+-- upper(ASPCT_VLU_NM) as MODEL,
+-- ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+-- FROM ITEM_ASPCT_CLSSFCTN ASPCT
+-- where 
+-- lower(PRDCT_ASPCT_NM) in ('model') and NS_TYPE_CD='df' )a
+-- where RNum = 1
+-- ) bbase1
+-- 					ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+
+
+-- INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+-- 	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+-- 	AND CAT.SITE_ID = 3
+-- 	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+
+-- WHERE 1=1
+-- 	AND  CK.AUCT_end_dt >= '2018-01-01'
+-- and ck.WACKO_YN = 'N'                      
+-- AND CK.AUCT_TYPE_CODE NOT IN (10,15)
+-- AND CK.ITEM_SITE_ID in (3)
+-- and ck.auct_end_dt >= date '2018-01-01'	
+-- 	and cat.CATEG_LVL4_ID in (15709,95672)
+-- 	and ck.slr_CNTRY_ID in (3)
+-- 		GROUP BY 1,2,3,4,5,6,7,8,9) 
+-- -- 		where phase_flag not in ('Other')
+-- 		);
+		
+		
+		
+		
+------------------------------------------------------------------------------------------------------------------------------------
+---------------------------------------- Rolling 13 weeks/90 days LL ---------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------	
+
+		
+		
+		drop table if exists p_robevans_t.sneakers_rolling13wks_ll ;
+create table p_robevans_t.sneakers_rolling13wks_ll as (select * from (select
+retail_year,
+retail_week,
+AGE_FOR_RTL_WEEK_ID,
+	CASE
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 100 THEN 'A. <100'
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 125 THEN 'A. 100-125'
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 150 THEN 'A. 125-150'
+		ELSE 'B.150+' END AS
+	PRICE_BUCKET,
+	CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Not Specified' END AS Item_Cond,
+		case when U.USER_DSGNTN_ID=2  then 'B2C' else 'C2C' end as bus_flag,
+	CASE WHEN UPPER(BRND.ASPCT_VLU_NM_BRAND) IN ('MODIFIED', 'CUSTOMIZED','YES') THEN 'MODIFIED' ELSE 'NO' end AS MODIFIED_ITEM,
+	case when v.item_id = ck.item_id then  c else 1 end as count,
+	count(distinct slr_id) as Seller_Count,
+	count(distinct ck.item_id) as LL
+
+FROM DW_LSTG_ITEM AS CK
+
+        LEFT JOIN 
+                    (
+                    SELECT ITEM_ID,
+                           AUCT_END_DT,
+                           COALESCE(MAX(ASPCT.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                            FROM
+                            ITEM_ASPCT_CLSSFCTN ASPCT
+                            WHERE
+                            UPPER(ASPCT.NS_TYPE_CD) IN ('NF','DF') 
+                            AND ASPCT.AUCT_END_DT>='2018-12-26'
+                            AND UPPER(ASPCT.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                            GROUP BY 1,2
+                            
+                        UNION 
+                        
+                        SELECT  ITEM_ID,
+                           AUCT_END_DT,
+                          COALESCE(MAX(ASPCT_COLD.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                        FROM
+                        ITEM_ASPCT_CLSSFCTN_COLD ASPCT_COLD
+                        WHERE UPPER(ASPCT_COLD.NS_TYPE_CD) IN ('NF','DF') 
+                        AND ASPCT_COLD.AUCT_END_DT>='2018-12-26'
+                        AND UPPER(ASPCT_COLD.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                        GROUP BY 1,2
+                    ) BRND ON CK.ITEM_ID = BRND.ITEM_ID AND CK.AUCT_END_DT = BRND.AUCT_END_DT
+
+LEFT JOIN (select item_id, ITEM_VRTN_ID  from LSTG_ITEM_VRTN group by 1,2) v on v.item_id = ck.item_id
+LEFT JOIN (select item_id, count(ITEM_VRTN_ID) c  from LSTG_ITEM_VRTN group by 1) v1 on v1.item_id = ck.item_id
+
+
+ LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID
+INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
+INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT - 90 and AGE_FOR_RTL_WEEK_ID in (-1,-53)
+left outer join dw_users u
+on ck.slr_id = u.user_id
+
+left join (select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as BRAND,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('brand') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase
+					ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+	
+	
+left join (select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as MODEL,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('model') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase1
+					ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+
+
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+
+WHERE 1=1
+	AND  CK.AUCT_end_dt >= '2018-01-01'
+and ck.WACKO_YN = 'N'                      
+AND CK.AUCT_TYPE_CODE NOT IN (10,15)
+AND CK.ITEM_SITE_ID in (3)
+and ck.auct_end_dt >= date '2018-01-01'	
+	and cat.CATEG_LVL4_ID in (15709,95672)
+	and ck.slr_CNTRY_ID in (3)
+		GROUP BY 1,2,3,4,5,6,7,8) 
+-- 		where phase_flag not in ('Other')
+		);
+				
+		
+		
+		
+		
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+---------------------------------------------------- Brand View --------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------
+
+drop table if exists p_robevans_t.sneakers_wow_brands;
+
+create table p_robevans_t.sneakers_wow_brands as
+
+
+With brands as
+(Select distinct brand
+
+From
+	(Select PRICE_BUCKET
+	,brand
+	,gmv
+	,dense_rank() over (partition by price_bucket order by gmv desc) as price_ranking
+
+	FROM
+		(
+		select brand
+		,CASE
+		WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2))  < 100 THEN 'A. <100'
+		WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2))  < 125 THEN 'A. 100-125'
+		WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2))  < 150 THEN 'A. 125-150'
+		ELSE 'B.150+' END AS
+	PRICE_BUCKET
+		,sum(ck.gmv_plan_usd) as gmv
+
+
+		FROM DW_CHECKOUT_TRANS AS ck
+		left join (Select
+						item_id,
+						Auct_end_dt,
+						coalesce(max(case  when lower(aspect)=lower('BRAND') then aspct_vlu_nm else NULL end ),'Unknown') as BRAND
+					FROM
+						(select
+							item_id,
+							auct_end_dt,
+							ns_type_cd,
+							1 as priority,
+							'BRAND' as aspect,
+							cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+						from
+							item_aspct_clssfctn
+						where
+							AUCT_END_DT>='2016-06-01'
+							AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+						UNION ALL
+						select
+							item_id,
+							auct_end_dt,
+							ns_type_cd,
+							2 as priority,
+							'BRAND' as aspect,
+							cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+						from
+							item_aspct_clssfctn_cold
+						WHERE
+							AUCT_END_DT>='2016-06-01'
+							AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+						)SB
+					GROUP BY 1,2) bbase ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+
+		INNER JOIN DW_CAL_DT CAL ON ck.GMV_DT = cal.CAL_DT AND AGE_FOR_RTL_WEEK_ID >= -52 and AGE_FOR_RTL_WEEK_ID <= -1
+		LEFT JOIN dw_users u
+			on ck.SELLER_ID = u.user_id
+		INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+			ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
+			AND CAT.SITE_ID = 3
+			AND CAT.SAP_CATEGORY_ID NOT in (5,7,41,23,-999)   
+
+		WHERE 1=1
+		AND ck.SITE_ID = 3
+		and cat.CATEG_LVL4_ID in (15709,95672)
+		and ck.slr_CNTRY_ID = 3
+
+		GROUP BY 1,2
+		)
+	Group by 1,2,3
+	)
+Where price_ranking <= 10
+)
+
+
+
+select
+'LL' as target,
+retail_year,
+retail_week,
+cal.AGE_FOR_RTL_WEEK_ID,
+case when bbase.brand is not null then bbase.brand else 'Other' End as top_brands,
+CASE
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 100 THEN 'A. <100'
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 125 THEN 'A. 100-125'
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 150 THEN 'A. 125-150'
+		ELSE 'B.150+' END AS
+	PRICE_BUCKET,
+	case when U.USER_DSGNTN_ID=2  then 'B2C' else 'C2C' end as bus_flag,
+	CASE WHEN UPPER(BRND.ASPCT_VLU_NM_BRAND) in ('MODIFIED', 'CUSTOMIZED','YES') THEN 'MODIFIED' ELSE 'NO' end AS MODIFIED_ITEM,
+	count(distinct ck.item_id) as LL,
+	count(distinct slr_id) as Listers,
+	0 as gmv,
+	0 as si
+
+FROM DW_LSTG_ITEM AS ck
+LEFT JOIN 
+                    (
+                    SELECT ITEM_ID,
+                           AUCT_END_DT,
+                           COALESCE(MAX(ASPCT.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                            FROM
+                            ITEM_ASPCT_CLSSFCTN ASPCT
+                            WHERE
+                            UPPER(ASPCT.NS_TYPE_CD) IN ('NF','DF') 
+                            AND ASPCT.AUCT_END_DT>='2018-12-26'
+                            AND UPPER(ASPCT.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                            GROUP BY 1,2
+                            
+                        UNION 
+                        
+                        SELECT  ITEM_ID,
+                           AUCT_END_DT,
+                          COALESCE(MAX(ASPCT_COLD.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                        FROM
+                        ITEM_ASPCT_CLSSFCTN_COLD ASPCT_COLD
+                        WHERE UPPER(ASPCT_COLD.NS_TYPE_CD) IN ('NF','DF') 
+                        AND ASPCT_COLD.AUCT_END_DT>='2018-12-26'
+                        AND UPPER(ASPCT_COLD.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                        GROUP BY 1,2
+                    ) BRND ON CK.ITEM_ID = BRND.ITEM_ID AND CK.AUCT_END_DT = BRND.AUCT_END_DT
+
+left join (select sb.*
+			From
+			(Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('BRAND') then aspct_vlu_nm else NULL end ),'Unknown') as BRAND
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2016-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2016-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+				)
+			GROUP BY 1,2) sb
+			INNER JOIN brands on brands.brand = sb.brand
+			) bbase ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('MODEL') then aspct_vlu_nm else NULL end ),'Unknown') as MODEL
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'MODEL' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2016-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('MODEL')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'MODEL' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2016-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('MODEL')
+				)SB1
+			GROUP BY 1,2) bbase1 ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+
+LEFT JOIN (select item_id, item_VRTN_ID  from LSTG_ITEM_VRTN group by 1,2) v on v.item_id = ck.item_id
+LEFT JOIN (select item_id, count(ITEM_VRTN_ID) c  from LSTG_ITEM_VRTN group by 1) v1 on v1.item_id = ck.item_id
+LEFT JOIN ( select item_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON ck.ITEM_ID = CNDTN.ITEM_ID
+INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = ck.SLR_CNTRY_ID
+INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
+INNER JOIN DW_CAL_DT CAL ON ck.AUCT_START_DT < CAL.CAL_DT AND ck.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2021  and AGE_FOR_RTL_WEEK_ID <= -1 
+left outer join dw_users u
+on ck.slr_id = u.user_id
+
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT in (5,7,41,23,-999)   
+
+WHERE 1=1
+	AND  ck.AUCT_end_dt >= '2018-01-01'
+and ck.wacko_YN = 'N'                      
+AND ck.AUCT_TYPE_CODE NOT in (10,15)
+AND ck.ITEM_SITE_ID in (3)
+and cat.CATEG_LVL4_ID in (15709,95672)
+and ck.slr_CNTRY_ID in (3)
+GROUP BY 1,2,3,4,5,6,7,8
+
+
+UNION ALL
+		
+		--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+select
+'GMV' as target,
+retail_year,
+retail_week,
+cal.AGE_FOR_RTL_WEEK_ID,
+case when bbase.brand is not null then bbase.brand else 'Other' End as top_brands,
+CASE
+		WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2))  < 100 THEN 'A. <100'
+		WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2))  < 125 THEN 'A. 100-125'
+		WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2))  < 150 THEN 'A. 125-150'
+		ELSE 'B.150+' END AS
+	PRICE_BUCKET,
+		case when U.USER_DSGNTN_ID=2  then 'B2C' else 'C2C' end as bus_flag,
+	CASE WHEN UPPER(BRND.ASPCT_VLU_NM_BRAND) in ('MODIFIED', 'CUSTOMIZED','YES') THEN 'MODIFIED' ELSE 'NO' end AS MODIFIED_ITEM,
+	0 as LL,
+	0 as Listers,	
+	SUM(ck.gmv_plan_usd) AS GMV, 
+	SUM(QUANTITY) AS SI
+
+FROM DW_CHECKOUT_TRANS AS ck
+
+ LEFT JOIN ( select item_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON ck.ITEM_ID = CNDTN.ITEM_ID
+LEFT JOIN 
+                    (
+                    SELECT ITEM_ID,
+                           AUCT_END_DT,
+                           COALESCE(MAX(ASPCT.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                            FROM
+                            ITEM_ASPCT_CLSSFCTN ASPCT
+                            WHERE
+                            UPPER(ASPCT.NS_TYPE_CD) IN ('NF','DF') 
+                            AND ASPCT.AUCT_END_DT>='2018-12-26'
+                            AND UPPER(ASPCT.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                            GROUP BY 1,2
+                            
+                        UNION 
+                        
+                        SELECT  ITEM_ID,
+                           AUCT_END_DT,
+                          COALESCE(MAX(ASPCT_COLD.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                        FROM
+                        ITEM_ASPCT_CLSSFCTN_COLD ASPCT_COLD
+                        WHERE UPPER(ASPCT_COLD.NS_TYPE_CD) IN ('NF','DF') 
+                        AND ASPCT_COLD.AUCT_END_DT>='2018-12-26'
+                        AND UPPER(ASPCT_COLD.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                        GROUP BY 1,2
+                    ) BRND ON CK.ITEM_ID = BRND.ITEM_ID AND CK.AUCT_END_DT = BRND.AUCT_END_DT
+
+left join (select sb.*
+			From
+			(Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('BRAND') then aspct_vlu_nm else NULL end ),'Unknown') as BRAND
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2016-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2016-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+				)
+			GROUP BY 1,2) sb
+			INNER JOIN brands on brands.brand = sb.brand
+			) bbase ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('MODEL') then aspct_vlu_nm else NULL end ),'Unknown') as MODEL
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'MODEL' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2016-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('MODEL')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'MODEL' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2016-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('MODEL')
+				)SB1
+			GROUP BY 1,2) bbase1 ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+
+		
+-- inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+-- 	ON ck.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
+	ON CAL.CAL_DT = ck.gmv_dt 
+	and retail_year >= 2021 and AGE_FOR_RTL_WEEK_ID <= -1 
+
+left outer join dw_users u
+	on ck.seller_id = u.user_id
+	
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT in (5,7,41,23,-999)   
+
+WHERE 1=1
+	AND  ck.AUCT_end_dt >= '2018-01-01'                    
+AND ck.SITE_ID in (3)
+and cat.CATEG_LVL4_ID in (15709,95672)
+	and ck.slr_CNTRY_ID in (3)
+		GROUP BY 1,2,3,4,5,6,7,8
+
+;
+
+
+
+
+
+
+
+drop table if exists p_robevans_t.sneakers_ll ;
+create table p_robevans_t.sneakers_ll as
+
+(SELECT
+categ_lvl3_name,
+categ_lvl4_name,
+categ_lvl4_id,
+	CASE WHEN U.USER_DSGNTN_ID=2 THEN 'B2C' ELSE 'C2C' END AS bus_flag,  
+	CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Not Specified' END AS Item_Condition_Type1,
+	CASE
+		WHEN ck.START_PRICE_LSTG_CURNCY < 75 THEN 'A. <75'
+		WHEN ck.START_PRICE_LSTG_CURNCY  < 100 THEN 'B.75-100'
+		WHEN ck.START_PRICE_LSTG_CURNCY  < 125 THEN 'C.100-125'
+		WHEN ck.START_PRICE_LSTG_CURNCY  < 150 THEN 'D.125-150'
+		WHEN ck.START_PRICE_LSTG_CURNCY < 175 THEN 'E.150-175'
+		WHEN ck.START_PRICE_LSTG_CURNCY  < 200 THEN 'F.175-200'
+		WHEN ck.START_PRICE_LSTG_CURNCY   < 500 THEN 'G.200-500'
+		WHEN ck.START_PRICE_LSTG_CURNCY < 1000 THEN 'H.500-1000'
+		WHEN ck.START_PRICE_LSTG_CURNCY < 2000 THEN 'I.1000-2000'
+		ELSE 'D.2000+' END AS
+	PRICE_BUCKET,
+count(distinct(ck.item_id)) as LL
+
+FROM DW_LSTG_ITEM CK 
+
+ LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+INNER JOIN DW_LSTG_ITEM D ON ck.ITEM_ID = D.ITEM_ID AND ck.AUCT_END_DT = D.AUCT_END_DT
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = Ck.LEAF_CATEG_ID AND CAT.SITE_ID = CK.ITEM_SITE_ID and cat.site_id = 3 
+INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID
+INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
+INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT AND ck.auct_end_dt >= current_date and CK.AUCT_START_DT < current_date
+left outer join dw_users u
+on ck.slr_id = u.user_id
+WHERE CK.AUCT_end_dt >= '2017-01-01'
+and ck.WACKO_YN = 'N'                      
+AND CK.AUCT_TYPE_CODE NOT IN (10,15)
+AND CK.ITEM_SITE_ID = 3
+AND cat.CATEG_LVL4_ID in (15709,95672)
+-- and new_vertical = 'fashion'
+and ck.auct_end_dt >= date '2018-01-01'
+group by 1,2,3,4,5,6);
+
+
+
+
+
