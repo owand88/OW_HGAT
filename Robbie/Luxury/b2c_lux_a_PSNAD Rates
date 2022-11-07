@@ -1,0 +1,63 @@
+
+select p.retail_week as sale_week
+,lstg.auct_start_week
+,lstg.LISTING_TOOL
+,ATHNTCTN_STATUS_NAME
+,count(distinct case when PSNAD is not null then p.order_id End) as PSNAD_ORDERS
+,count(distinct p.order_id) as TOTAL_ORDERS
+FROM 
+	(select *
+	From P_PSA_ANALYTICS_T.psa_hub_data
+	Where 1=1
+	and HUB_CATEGORY = 'HANDBAGS'
+	and HUB_REV_ROLLUP = 'UK'
+	and SITE_CNTRY_REV_ROLLUP = 'UK'
+	and IS_RETURN_FLAG_YN_IND = 'N'
+	) p
+INNER JOIN
+	(select ITEM_ID
+	,AUCT_START_DT
+	,cal.retail_week as auct_start_week
+	,AUCT_END_DT
+	,BOLT_LISTING_TOOL_DETAIL AS listing_tool
+	From PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+	INNER JOIN DW_CATEGORY_GROUPINGS cat
+		ON CAT.LEAF_CATEG_ID = lstg.LEAF_CATEG_ID 
+		AND CAT.SITE_ID = 3
+		AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+	INNER JOIN DW_CAL_DT cal
+		on lstg.AUCT_START_DT = cal.CAL_DT
+	Where 1=1
+	and lstg.ITEM_SITE_ID = 3
+	and (cat.categ_lvl3_id = 169291 OR cat.categ_lvl4_id =52357)
+	and lstg.AUCT_START_DT >= '2022-05-01'
+	Group by 1,2,3,4,5
+	) lstg on p.item_id = lstg.ITEM_ID and p.auct_end_dt = lstg.AUCT_END_DT
+
+
+Group by 1,2,3,4
+;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
