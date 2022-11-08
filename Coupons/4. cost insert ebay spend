@@ -1,0 +1,31 @@
+--step 2
+drop table if exists P_PLAN_PPATEL_T.SLR_COUPON_CONTRA;
+CREATE TABLE P_PLAN_PPATEL_T.SLR_COUPON_CONTRA AS
+SELECT * FROM P_SLR_TRACKER_T.SLR_COUPON_CONTRA
+WHERE COUPON_NAME not in (select cpn_id as COUPON_NAME from P_MDALL_V.SFDC_HIVE_Coupon_Co_Invest 
+where cpn_site_mlt in ('ebay.co.uk')
+AND CPN_STAGE not IN ('Seller Declined')
+and COFUND_START_DATE between CURRENT_DATE() -10 and CURRENT_DATE() -5
+group by 1);
+--step 3
+INSERT INTO P_PLAN_PPATEL_T.SLR_COUPON_CONTRA 
+select INCNTV_CD as COUPON_NAME, sum(COST_TO_EBAY_USD_PLAN) as EBAY_CONTRA_USD
+from  P_Plan_PPatel_T.IC_CouponAll
+where INCNTV_CD in (select cpn_id as COUPON_NAME from P_MDALL_V.SFDC_HIVE_Coupon_Co_Invest 
+where cpn_site_mlt in ('ebay.co.uk')
+AND CPN_STAGE not IN ('Seller Declined')
+and COFUND_START_DATE between CURRENT_DATE() -10 and CURRENT_DATE() -5
+group by 1)
+group by 1
+      ;
+--step 4
+drop table if exists P_SLR_TRACKER_T.SLR_COUPON_CONTRA;
+CREATE TABLE P_SLR_TRACKER_T.SLR_COUPON_CONTRA AS(
+SELECT * FROM P_PLAN_PPATEL_T.SLR_COUPON_CONTRA);
+
+
+--CONFIRM
+sELECT * FROM P_SLR_TRACKER_T.SLR_COUPON_CONTRA;
+sELECT * FROM P_PLAN_PPATEL_T.SLR_COUPON_CONTRA;
+
+
