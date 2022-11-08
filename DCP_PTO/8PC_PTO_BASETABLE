@@ -1,0 +1,443 @@
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- PRICE TAKE OVER ADDITONAL LISTINGS --------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- These tables show the Top 500 listings per L2, ranked by the number of impressions generated in the last 7 days. 
+
+--- Listings are filtered to only include those who: 
+----         1. Have more the 5 QTY available 
+----         2. Sellers with good standards 
+----         3. Listed on UK site
+----         4. Listing price between £50-100
+----         5. Currently live 
+
+--- Tables are split by vertical 
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- H&G  --------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table P_Plan_PPatel_T.PP_PRICE8_2_hg;
+
+CREATE TABLE P_Plan_PPatel_T.PP_PRICE8_2_hg 
+SELECT * from (
+select
+ck.ITEM_ID,
+--d.AUCT_TITL,
+lstg.AUCT_END_DT,
+lstg.CURNT_PRICE_LSTG_CURNCY,
+--e.user_ID,
+--e.USER_SLCTD_ID,
+cat.META_CATEG_ID,
+cat.META_CATEG_NAME,
+cat.categ_lvl2_id,
+cat.categ_lvl2_name,
+cat.bsns_vrtcl_name,
+sum(SRP_IMPRSN_CNT + STORE_IMPRSN_CNT) as TTL_IMP,
+SUM(TTL_VI_CNT) as TTL_VI,
+sum(TTL_PRCHS_CNT) as ttl_bi
+FROM PRS_restricted_V.SLNG_TRFC_SUPER_FACT ck
+
+inner join dw_cal_dt cal 
+on ck.cal_dt = cal.cal_dt  
+and ck.cal_dt between  current_date() - 8 and  current_date() - 1
+
+INNER JOIN 
+(selECT  
+LEAF_CATEG_ID,
+meta_categ_id,
+meta_categ_name,
+cat.categ_lvl2_id,
+cat.categ_lvl2_name,
+cat.bsns_vrtcl_name,
+site_id
+from
+DW_CATEGORY_GROUPINGS CAT 
+where
+CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+and CAT.LEAF_CATEG_ID not in (67025, 11905, 67027, 67026, 53151, 257807, 257818, 116724, 75034, 75035, 184573, 82592, 11779, 180932, 177663, 260234, 260236, 259621, 259347, 29509, 161648, 260133, 129609, 179199, 259019, 179203, 179204, 20624, 300, 36432, 180918, 180924, 26268, 45456, 181405, 75036, 104233, 177663, 179204, 75075, 11905, 75075, 257994, 257818, 155667, 117026, 32876, 104233, 180918, 62118, 166126, 11837, 20403, 180918, 180924, 11838, 36432, 180918)
+and cat.site_id = 3
+--and cat.categ_lvl3_id not in (184490, 180960, 1278, 19260, 11776, 31817, 71258, 177, 111422, 171485, 49230, 117042, 117044, 139971, 171814, 171821, 171831, 171858)
+and 1=1 
+and bsns_vrtcl_name = 'Home & Garden'
+group by 1, 2, 3, 4, 5, 6, 7) CAT 
+ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
+
+--INNER JOIN 
+--DW_LSTG_ITEM_COLD D 
+--ON ck.ITEM_ID = D.ITEM_ID 
+
+inner join
+ DW_LSTG_ITEM lstg
+ON ck.ITEM_ID = lstg.ITEM_ID 
+and lstg.item_site_id = 3
+and lstg.QTY_AVAIL - lstg.QTY_SOLD    > 5
+--inner join
+--dw_users e
+--on e.user_id = ck.seller_id
+
+ join ACCESS_VIEWS.LSTG_ITEM_CNDTN cond ON ck.ITEM_ID = cond.ITEM_ID 
+--and CNDTN_ROLLUP_ID in (2) -- refurbished
+
+inner join
+(select a.user_id
+		from PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM a
+		where 
+    SPS_PRGRM_ID = 3 --UK flag
+		 and SPS_SLR_LEVEL_CD in (1, 2)
+		 and LAST_EVAL_DT > current_date -35
+		group by 1)a 
+		on ck.seller_id = a.user_id 
+
+
+where CURNT_PRICE_LSTG_CURNCY between 50 and 100
+and lstg.AUCT_END_DT > current_date() + 1
+and ck.SITE_ID = 3 
+group by 1, 2, 3, 4, 5, 6, 7, 8
+)a
+/*and ck.seller_id not in (1033984451, 59275107, 962541385, 214170732, 1077629298, 181000182, 1191440233, 1000089411, 2049396253, 1015494805, 457206255, 1073338379, 300023934, 160232195, 105889204, 610344306, 1140366161, 1478734396, 1021477576, 223665470, 1193121968, 1069736894, 128618094, 259068058, 148276787, 160939248, 35198216, 1607470326, 1117997410, 127797176, 1205005895, 144783008, 2015049389, 12658998, 1951274572, 42272829, 1802930750, 1207710801, 2024203590, 170329121, 820611668, 1219390991, 1189928441, 727626995, 1348523623, 1161124858, 2053643116, 1027154987, 967443711, 805182197, 1071837565, 1857212717, 838928542, 700143241, 1168065357, 295921530, 377023386, 1165705901, 355090148, 1363774003, 1012384048, 1017277883, 1585531020, 1314559975, 1137025607, 2046232928, 167935447, 2029720769, 740488142, 339148742, 146848476, 1065962240, 201279579, 1686185498, 1770304695, 1004518967, 775062577, 926694902, 1829089598, 1305944975, 1590854048, 1012659161, 1113356568, 583049134, 112599084, 1379005411, 106197597, 2058765911, 1495481498, 1948938848, 2056320746, 1653886119, 171862098, 1027952647, 192970522, 1116359067, 1046392160, 114962842, 1374314205, 231102800, 67820261, 690763154, 1936817853, 215014255, 301889122, 1178942387, 1276906175, 1154701832, 1179924860, 1045522780, 1212568023, 99745718, 2058750104, 1978723917, 921304420, 1564125058, 1393108794, 386559631, 177649286, 1970767757, 923080567, 664684062, 856816037, 1492554113, 999327493, 99210984, 1739642794, 185476693, 875755826, 977488365, 1009683250, 182055505, 401545409, 1276965296, 67012606, 145000800, 688643289, 887593516, 1456657334, 1141259104, 1110681816, 1036827810, 241801568, 1306673682, 642230451, 401484081, 57550512, 1672401931, 826897734, 142183905, 1080939455, 342506678, 220843604, 1131383450, 544455628, 787253386, 103159216, 1009457545, 1355579777
+)*/
+QUALIFY ROW_NUMBER() OVER(PARTITION BY categ_lvl2_id ORDER BY TTL_IMP desc ) < 501;
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- LIfestyle  -------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+ drop table P_Plan_PPatel_T.PP_PRICE8_2_lifestyle;
+
+create table P_Plan_PPatel_T.PP_PRICE8_2_lifestyle 
+SELECT * from (
+select
+ck.ITEM_ID,
+--d.AUCT_TITL,
+lstg.AUCT_END_DT,
+lstg.CURNT_PRICE_LSTG_CURNCY,
+--e.user_ID,
+--e.USER_SLCTD_ID,
+cat.META_CATEG_ID,
+cat.META_CATEG_NAME,
+cat.categ_lvl2_id,
+cat.categ_lvl2_name,
+cat.bsns_vrtcl_name,
+sum(SRP_IMPRSN_CNT + STORE_IMPRSN_CNT) as TTL_IMP,
+SUM(TTL_VI_CNT) as TTL_VI,
+sum(TTL_PRCHS_CNT) as ttl_bi
+FROM PRS_restricted_V.SLNG_TRFC_SUPER_FACT ck
+
+inner join dw_cal_dt cal 
+on ck.cal_dt = cal.cal_dt  
+and ck.cal_dt between  current_date() - 8 and  current_date() - 1
+
+INNER JOIN 
+(selECT  
+LEAF_CATEG_ID,
+meta_categ_id,
+meta_categ_name,
+cat.categ_lvl2_id,
+cat.categ_lvl2_name,
+cat.bsns_vrtcl_name,
+site_id
+from
+DW_CATEGORY_GROUPINGS CAT 
+where
+CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+and CAT.LEAF_CATEG_ID not in (67025, 11905, 67027, 67026, 53151, 257807, 257818, 116724, 75034, 75035, 184573, 82592, 11779, 180932, 177663, 260234, 260236, 259621, 259347, 29509, 161648, 260133, 129609, 179199, 259019, 179203, 179204, 20624, 300, 36432, 180918, 180924, 26268, 45456, 181405, 75036, 104233, 177663, 179204, 75075, 11905, 75075, 257994, 257818, 155667, 117026, 32876, 104233, 180918, 62118, 166126, 11837, 20403, 180918, 180924, 11838, 36432, 180918)
+and cat.site_id = 3
+--and cat.categ_lvl3_id not in (184490, 180960, 1278, 19260, 11776, 31817, 71258, 177, 111422, 171485, 49230, 117042, 117044, 139971, 171814, 171821, 171831, 171858)
+and 1=1 
+and bsns_vrtcl_name = 'Lifestyle'
+group by 1, 2, 3, 4, 5, 6, 7) CAT 
+ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
+
+--INNER JOIN 
+--DW_LSTG_ITEM_COLD D 
+--ON ck.ITEM_ID = D.ITEM_ID 
+
+inner join
+ DW_LSTG_ITEM lstg
+ON ck.ITEM_ID = lstg.ITEM_ID 
+and lstg.item_site_id = 3
+and lstg.QTY_AVAIL - lstg.QTY_SOLD    > 5
+--inner join
+--dw_users e
+--on e.user_id = ck.seller_id
+
+ join ACCESS_VIEWS.LSTG_ITEM_CNDTN cond ON ck.ITEM_ID = cond.ITEM_ID 
+--and CNDTN_ROLLUP_ID in (2) -- refurbished
+
+inner join
+(select a.user_id
+		from PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM a
+		where 
+    SPS_PRGRM_ID = 3 --UK flag
+		 and SPS_SLR_LEVEL_CD in (1, 2)
+		 and LAST_EVAL_DT > current_date -35
+		group by 1)a 
+		on ck.seller_id = a.user_id 
+
+
+where CURNT_PRICE_LSTG_CURNCY between 50 and 100
+and lstg.AUCT_END_DT > current_date() + 1
+and ck.SITE_ID = 3 
+group by 1, 2, 3, 4, 5, 6, 7, 8
+)a
+
+QUALIFY ROW_NUMBER() OVER(PARTITION BY categ_lvl2_id ORDER BY TTL_IMP desc ) < 501;
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- Media  -------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+drop table P_Plan_PPatel_T.PP_PRICE8_2_media;
+
+create table P_Plan_PPatel_T.PP_PRICE8_2_media 
+SELECT * from (
+select
+ck.ITEM_ID,
+--d.AUCT_TITL,
+lstg.AUCT_END_DT,
+lstg.CURNT_PRICE_LSTG_CURNCY,
+--e.user_ID,
+--e.USER_SLCTD_ID,
+cat.META_CATEG_ID,
+cat.META_CATEG_NAME,
+cat.categ_lvl2_id,
+cat.categ_lvl2_name,
+cat.bsns_vrtcl_name,
+sum(SRP_IMPRSN_CNT + STORE_IMPRSN_CNT) as TTL_IMP,
+SUM(TTL_VI_CNT) as TTL_VI,
+sum(TTL_PRCHS_CNT) as ttl_bi
+FROM PRS_restricted_V.SLNG_TRFC_SUPER_FACT ck
+
+inner join dw_cal_dt cal 
+on ck.cal_dt = cal.cal_dt  
+and ck.cal_dt between  current_date() - 8 and  current_date() - 1
+
+INNER JOIN 
+(selECT  
+LEAF_CATEG_ID,
+meta_categ_id,
+meta_categ_name,
+cat.categ_lvl2_id,
+cat.categ_lvl2_name,
+cat.bsns_vrtcl_name,
+site_id
+from
+DW_CATEGORY_GROUPINGS CAT 
+where
+CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+and CAT.LEAF_CATEG_ID not in (67025, 11905, 67027, 67026, 53151, 257807, 257818, 116724, 75034, 75035, 184573, 82592, 11779, 180932, 177663, 260234, 260236, 259621, 259347, 29509, 161648, 260133, 129609, 179199, 259019, 179203, 179204, 20624, 300, 36432, 180918, 180924, 26268, 45456, 181405, 75036, 104233, 177663, 179204, 75075, 11905, 75075, 257994, 257818, 155667, 117026, 32876, 104233, 180918, 62118, 166126, 11837, 20403, 180918, 180924, 11838, 36432, 180918)
+and cat.site_id = 3
+--and cat.categ_lvl3_id not in (184490, 180960, 1278, 19260, 11776, 31817, 71258, 177, 111422, 171485, 49230, 117042, 117044, 139971, 171814, 171821, 171831, 171858)
+and 1=1 
+and bsns_vrtcl_name = 'Media'
+group by 1, 2, 3, 4, 5, 6, 7) CAT 
+ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
+
+--INNER JOIN 
+--DW_LSTG_ITEM_COLD D 
+--ON ck.ITEM_ID = D.ITEM_ID 
+
+inner join
+ DW_LSTG_ITEM lstg
+ON ck.ITEM_ID = lstg.ITEM_ID 
+and lstg.item_site_id = 3
+and lstg.QTY_AVAIL - lstg.QTY_SOLD    > 5
+--inner join
+--dw_users e
+--on e.user_id = ck.seller_id
+
+ join ACCESS_VIEWS.LSTG_ITEM_CNDTN cond ON ck.ITEM_ID = cond.ITEM_ID 
+--and CNDTN_ROLLUP_ID in (2) -- refurbished
+
+inner join
+(select a.user_id
+		from PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM a
+		where 
+    SPS_PRGRM_ID = 3 --UK flag
+		 and SPS_SLR_LEVEL_CD in (1, 2)
+		 and LAST_EVAL_DT > current_date -35
+		group by 1)a 
+		on ck.seller_id = a.user_id 
+
+
+where CURNT_PRICE_LSTG_CURNCY between 50 and 100
+and lstg.AUCT_END_DT > current_date() + 1
+and ck.SITE_ID = 3 
+group by 1, 2, 3, 4, 5, 6, 7, 8
+)a
+/*and ck.seller_id not in (1033984451, 59275107, 962541385, 214170732, 1077629298, 181000182, 1191440233, 1000089411, 2049396253, 1015494805, 457206255, 1073338379, 300023934, 160232195, 105889204, 610344306, 1140366161, 1478734396, 1021477576, 223665470, 1193121968, 1069736894, 128618094, 259068058, 148276787, 160939248, 35198216, 1607470326, 1117997410, 127797176, 1205005895, 144783008, 2015049389, 12658998, 1951274572, 42272829, 1802930750, 1207710801, 2024203590, 170329121, 820611668, 1219390991, 1189928441, 727626995, 1348523623, 1161124858, 2053643116, 1027154987, 967443711, 805182197, 1071837565, 1857212717, 838928542, 700143241, 1168065357, 295921530, 377023386, 1165705901, 355090148, 1363774003, 1012384048, 1017277883, 1585531020, 1314559975, 1137025607, 2046232928, 167935447, 2029720769, 740488142, 339148742, 146848476, 1065962240, 201279579, 1686185498, 1770304695, 1004518967, 775062577, 926694902, 1829089598, 1305944975, 1590854048, 1012659161, 1113356568, 583049134, 112599084, 1379005411, 106197597, 2058765911, 1495481498, 1948938848, 2056320746, 1653886119, 171862098, 1027952647, 192970522, 1116359067, 1046392160, 114962842, 1374314205, 231102800, 67820261, 690763154, 1936817853, 215014255, 301889122, 1178942387, 1276906175, 1154701832, 1179924860, 1045522780, 1212568023, 99745718, 2058750104, 1978723917, 921304420, 1564125058, 1393108794, 386559631, 177649286, 1970767757, 923080567, 664684062, 856816037, 1492554113, 999327493, 99210984, 1739642794, 185476693, 875755826, 977488365, 1009683250, 182055505, 401545409, 1276965296, 67012606, 145000800, 688643289, 887593516, 1456657334, 1141259104, 1110681816, 1036827810, 241801568, 1306673682, 642230451, 401484081, 57550512, 1672401931, 826897734, 142183905, 1080939455, 342506678, 220843604, 1131383450, 544455628, 787253386, 103159216, 1009457545, 1355579777
+)*/
+QUALIFY ROW_NUMBER() OVER(PARTITION BY categ_lvl2_id ORDER BY TTL_IMP desc ) < 501;
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- Fashion  -------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+ drop table P_Plan_PPatel_T.PP_PRICE8_2_fash;
+
+create table P_Plan_PPatel_T.PP_PRICE8_2_fash 
+SELECT * from (
+select
+ck.ITEM_ID,
+--d.AUCT_TITL,
+lstg.AUCT_END_DT,
+lstg.CURNT_PRICE_LSTG_CURNCY,
+--e.user_ID,
+--e.USER_SLCTD_ID,
+cat.META_CATEG_ID,
+cat.META_CATEG_NAME,
+cat.categ_lvl2_id,
+cat.categ_lvl2_name,
+cat.bsns_vrtcl_name,
+sum(SRP_IMPRSN_CNT + STORE_IMPRSN_CNT) as TTL_IMP,
+SUM(TTL_VI_CNT) as TTL_VI,
+sum(TTL_PRCHS_CNT) as ttl_bi
+FROM PRS_restricted_V.SLNG_TRFC_SUPER_FACT ck
+
+inner join dw_cal_dt cal 
+on ck.cal_dt = cal.cal_dt  
+and ck.cal_dt between  current_date() - 8 and  current_date() - 1
+
+INNER JOIN 
+(selECT  
+LEAF_CATEG_ID,
+meta_categ_id,
+meta_categ_name,
+cat.categ_lvl2_id,
+cat.categ_lvl2_name,
+cat.bsns_vrtcl_name,
+site_id
+from
+DW_CATEGORY_GROUPINGS CAT 
+where
+CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+and CAT.LEAF_CATEG_ID not in (67025, 11905, 67027, 67026, 53151, 257807, 257818, 116724, 75034, 75035, 184573, 82592, 11779, 180932, 177663, 260234, 260236, 259621, 259347, 29509, 161648, 260133, 129609, 179199, 259019, 179203, 179204, 20624, 300, 36432, 180918, 180924, 26268, 45456, 181405, 75036, 104233, 177663, 179204, 75075, 11905, 75075, 257994, 257818, 155667, 117026, 32876, 104233, 180918, 62118, 166126, 11837, 20403, 180918, 180924, 11838, 36432, 180918)
+and cat.site_id = 3
+--and cat.categ_lvl3_id not in (184490, 180960, 1278, 19260, 11776, 31817, 71258, 177, 111422, 171485, 49230, 117042, 117044, 139971, 171814, 171821, 171831, 171858)
+and 1=1 
+and bsns_vrtcl_name = 'Fashion'
+group by 1, 2, 3, 4, 5, 6, 7) CAT 
+ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
+
+--INNER JOIN 
+--DW_LSTG_ITEM_COLD D 
+--ON ck.ITEM_ID = D.ITEM_ID 
+
+inner join
+ DW_LSTG_ITEM lstg
+ON ck.ITEM_ID = lstg.ITEM_ID 
+and lstg.item_site_id = 3
+and lstg.QTY_AVAIL - lstg.QTY_SOLD    > 5
+--inner join
+--dw_users e
+--on e.user_id = ck.seller_id
+
+ join ACCESS_VIEWS.LSTG_ITEM_CNDTN cond ON ck.ITEM_ID = cond.ITEM_ID 
+--and CNDTN_ROLLUP_ID in (2) -- refurbished
+
+inner join
+(select a.user_id
+		from PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM a
+		where 
+    SPS_PRGRM_ID = 3 --UK flag
+		 and SPS_SLR_LEVEL_CD in (1, 2)
+		 and LAST_EVAL_DT > current_date -35
+		group by 1)a 
+		on ck.seller_id = a.user_id 
+
+
+where CURNT_PRICE_LSTG_CURNCY between 50 and 100
+and lstg.AUCT_END_DT > current_date() + 1
+and ck.SITE_ID = 3 
+group by 1, 2, 3, 4, 5, 6, 7, 8
+)a
+/*and ck.seller_id not in (1033984451, 59275107, 962541385, 214170732, 1077629298, 181000182, 1191440233, 1000089411, 2049396253, 1015494805, 457206255, 1073338379, 300023934, 160232195, 105889204, 610344306, 1140366161, 1478734396, 1021477576, 223665470, 1193121968, 1069736894, 128618094, 259068058, 148276787, 160939248, 35198216, 1607470326, 1117997410, 127797176, 1205005895, 144783008, 2015049389, 12658998, 1951274572, 42272829, 1802930750, 1207710801, 2024203590, 170329121, 820611668, 1219390991, 1189928441, 727626995, 1348523623, 1161124858, 2053643116, 1027154987, 967443711, 805182197, 1071837565, 1857212717, 838928542, 700143241, 1168065357, 295921530, 377023386, 1165705901, 355090148, 1363774003, 1012384048, 1017277883, 1585531020, 1314559975, 1137025607, 2046232928, 167935447, 2029720769, 740488142, 339148742, 146848476, 1065962240, 201279579, 1686185498, 1770304695, 1004518967, 775062577, 926694902, 1829089598, 1305944975, 1590854048, 1012659161, 1113356568, 583049134, 112599084, 1379005411, 106197597, 2058765911, 1495481498, 1948938848, 2056320746, 1653886119, 171862098, 1027952647, 192970522, 1116359067, 1046392160, 114962842, 1374314205, 231102800, 67820261, 690763154, 1936817853, 215014255, 301889122, 1178942387, 1276906175, 1154701832, 1179924860, 1045522780, 1212568023, 99745718, 2058750104, 1978723917, 921304420, 1564125058, 1393108794, 386559631, 177649286, 1970767757, 923080567, 664684062, 856816037, 1492554113, 999327493, 99210984, 1739642794, 185476693, 875755826, 977488365, 1009683250, 182055505, 401545409, 1276965296, 67012606, 145000800, 688643289, 887593516, 1456657334, 1141259104, 1110681816, 1036827810, 241801568, 1306673682, 642230451, 401484081, 57550512, 1672401931, 826897734, 142183905, 1080939455, 342506678, 220843604, 1131383450, 544455628, 787253386, 103159216, 1009457545, 1355579777
+)*/
+QUALIFY ROW_NUMBER() OVER(PARTITION BY categ_lvl2_id ORDER BY TTL_IMP desc ) < 501;
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- P&A  -------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+drop table P_Plan_PPatel_T.PP_PRICE8_2_pa;
+
+create table P_Plan_PPatel_T.PP_PRICE8_2_pa 
+SELECT * from (
+select
+ck.ITEM_ID,
+--d.AUCT_TITL,
+lstg.AUCT_END_DT,
+lstg.CURNT_PRICE_LSTG_CURNCY,
+--e.user_ID,
+--e.USER_SLCTD_ID,
+cat.META_CATEG_ID,
+cat.META_CATEG_NAME,
+cat.categ_lvl2_id,
+cat.categ_lvl2_name,
+cat.bsns_vrtcl_name,
+sum(SRP_IMPRSN_CNT + STORE_IMPRSN_CNT) as TTL_IMP,
+SUM(TTL_VI_CNT) as TTL_VI,
+sum(TTL_PRCHS_CNT) as ttl_bi
+FROM PRS_restricted_V.SLNG_TRFC_SUPER_FACT ck
+
+inner join dw_cal_dt cal 
+on ck.cal_dt = cal.cal_dt  
+and ck.cal_dt between  current_date() - 8 and  current_date() - 1
+
+INNER JOIN 
+(selECT  
+LEAF_CATEG_ID,
+meta_categ_id,
+meta_categ_name,
+cat.categ_lvl2_id,
+cat.categ_lvl2_name,
+cat.bsns_vrtcl_name,
+site_id
+from
+DW_CATEGORY_GROUPINGS CAT 
+where
+CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+and CAT.LEAF_CATEG_ID not in (67025, 11905, 67027, 67026, 53151, 257807, 257818, 116724, 75034, 75035, 184573, 82592, 11779, 180932, 177663, 260234, 260236, 259621, 259347, 29509, 161648, 260133, 129609, 179199, 259019, 179203, 179204, 20624, 300, 36432, 180918, 180924, 26268, 45456, 181405, 75036, 104233, 177663, 179204, 75075, 11905, 75075, 257994, 257818, 155667, 117026, 32876, 104233, 180918, 62118, 166126, 11837, 20403, 180918, 180924, 11838, 36432, 180918)
+and cat.site_id = 3
+--and cat.categ_lvl3_id not in (184490, 180960, 1278, 19260, 11776, 31817, 71258, 177, 111422, 171485, 49230, 117042, 117044, 139971, 171814, 171821, 171831, 171858)
+and 1=1 
+and bsns_vrtcl_name = 'Parts & Accessories'
+group by 1, 2, 3, 4, 5, 6, 7) CAT 
+ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
+
+--INNER JOIN 
+--DW_LSTG_ITEM_COLD D 
+--ON ck.ITEM_ID = D.ITEM_ID 
+
+inner join
+ DW_LSTG_ITEM lstg
+ON ck.ITEM_ID = lstg.ITEM_ID 
+and lstg.item_site_id = 3
+and lstg.QTY_AVAIL - lstg.QTY_SOLD    > 5
+--inner join
+--dw_users e
+--on e.user_id = ck.seller_id
+
+ join ACCESS_VIEWS.LSTG_ITEM_CNDTN cond ON ck.ITEM_ID = cond.ITEM_ID 
+--and CNDTN_ROLLUP_ID in (2) -- refurbished
+
+inner join
+(select a.user_id
+		from PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM a
+		where 
+    SPS_PRGRM_ID = 3 --UK flag
+		 and SPS_SLR_LEVEL_CD in (1, 2)
+		 and LAST_EVAL_DT > current_date -35
+		group by 1)a 
+		on ck.seller_id = a.user_id 
+
+
+where CURNT_PRICE_LSTG_CURNCY between 50 and 100
+and lstg.AUCT_END_DT > current_date() + 1
+and ck.SITE_ID = 3 
+group by 1, 2, 3, 4, 5, 6, 7, 8
+)a
+/*and ck.seller_id not in (1033984451, 59275107, 962541385, 214170732, 1077629298, 181000182, 1191440233, 1000089411, 2049396253, 1015494805, 457206255, 1073338379, 300023934, 160232195, 105889204, 610344306, 1140366161, 1478734396, 1021477576, 223665470, 1193121968, 1069736894, 128618094, 259068058, 148276787, 160939248, 35198216, 1607470326, 1117997410, 127797176, 1205005895, 144783008, 2015049389, 12658998, 1951274572, 42272829, 1802930750, 1207710801, 2024203590, 170329121, 820611668, 1219390991, 1189928441, 727626995, 1348523623, 1161124858, 2053643116, 1027154987, 967443711, 805182197, 1071837565, 1857212717, 838928542, 700143241, 1168065357, 295921530, 377023386, 1165705901, 355090148, 1363774003, 1012384048, 1017277883, 1585531020, 1314559975, 1137025607, 2046232928, 167935447, 2029720769, 740488142, 339148742, 146848476, 1065962240, 201279579, 1686185498, 1770304695, 1004518967, 775062577, 926694902, 1829089598, 1305944975, 1590854048, 1012659161, 1113356568, 583049134, 112599084, 1379005411, 106197597, 2058765911, 1495481498, 1948938848, 2056320746, 1653886119, 171862098, 1027952647, 192970522, 1116359067, 1046392160, 114962842, 1374314205, 231102800, 67820261, 690763154, 1936817853, 215014255, 301889122, 1178942387, 1276906175, 1154701832, 1179924860, 1045522780, 1212568023, 99745718, 2058750104, 1978723917, 921304420, 1564125058, 1393108794, 386559631, 177649286, 1970767757, 923080567, 664684062, 856816037, 1492554113, 999327493, 99210984, 1739642794, 185476693, 875755826, 977488365, 1009683250, 182055505, 401545409, 1276965296, 67012606, 145000800, 688643289, 887593516, 1456657334, 1141259104, 1110681816, 1036827810, 241801568, 1306673682, 642230451, 401484081, 57550512, 1672401931, 826897734, 142183905, 1080939455, 342506678, 220843604, 1131383450, 544455628, 787253386, 103159216, 1009457545, 1355579777
+)*/
+QUALIFY ROW_NUMBER() OVER(PARTITION BY categ_lvl2_id ORDER BY TTL_IMP desc ) < 501;
