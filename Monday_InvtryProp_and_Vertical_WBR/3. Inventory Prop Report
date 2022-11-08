@@ -1,0 +1,513 @@
+-- select * from P_WAJ_T.Forecast_UK_Verticals1_v1 
+
+-- select * from P_CSI_TBS_T.UKI_TOP_SKU_ITEM; 
+-- select * from ACCESS_VIEWS.SSA_PRODUCT_FACT
+
+-- select count(*) from P_CSI_TBS_T.UKI_FINAL
+/*
+select retail_year, retail_week,vertical,
+case when INVENTORY_PROP like any ('%focus%','%Focus%','%FOCUS%') then 'Focused' else 'Others' end as Inventory_Prop , sum(gmv) GMV , sum(BYR_CNT) BYR_CNT 
+from P_CSI_TBS_T.UKI_FINAL group by 1,2,3,4;
+
+select retail_year, retail_week,
+case when INVENTORY_PROP like any ('%focus%','%Focus%','%FOCUS%') then 'Focused' else 'Others' end as Inventory_Prop ,
+sum(gmv) GMV , count(distinct PRIMARY_USER_ID) BYR_CNT from P_CSI_TBS_T.UKI_FINAL_kpis group by 1,2,3;
+
+select retail_year, retail_week,
+sum(gmv) GMV , count(distinct PRIMARY_USER_ID) BYR_CNT from P_CSI_TBS_T.UKI_FINAL_kpis_DE group by 1,2;
+
+select retail_year, retail_week,
+Vertical,
+sum(gmv) GMV , count(distinct PRIMARY_USER_ID) BYR_CNT from P_CSI_TBS_T.UKI_FINAL_kpis_DE group by 1,2,3;
+
+*/
+-- -------------------------------------------------------------------------------------------------------------------
+drop table if exists P_CSI_TBS_T.UKI_FINAL_kpis_DE ;
+
+CREATE TABLE P_CSI_TBS_T.UKI_FINAL_kpis_DE 
+ AS    
+ SELect
+        CAL.RETAIL_YEAR
+        ,CAL.RETAIL_WEEK
+        ,CK.GMV_DT
+	    ,case when CAL.RETAIL_WEEK between 1 and 13 then 'Q1'
+		 	  when CAL.RETAIL_WEEK between 14 and 26 then 'Q2'
+		 	  when CAL.RETAIL_WEEK between 27 and 39 then 'Q3'
+		 	  else 'Q4' end as QTR
+		,bsns_vrtcl_name as VERTICAL
+    ,RB.PRIMARY_USER_ID 
+    ,SUM(CK.QUANTITY) AS BI
+    ,SUM(CK.GMV_PLAN_USD) AS GMV
+
+    FROM DW_CHECKOUT_TRANS AS CK
+    INNER JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID    
+    INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+        AND CAL.RETAIL_YEAR >= 2016
+		-- AND CAL.RETAIL_WEEK <=26-- 1 and 7--26
+    INNER JOIN DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2015-12-25'       
+    INNER JOIN PRS_RESTRICTED_V.USER_DNA_DIM AS RB 
+        ON RB.USER_ID = CK.BUYER_ID         
+    LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+		
+    WHERE 1=1
+     --    AND CK.SLR_CNTRY_ID = 77 --UK sellers
+        AND CK.BYR_CNTRY_ID = 77 --UK buyers
+      --  AND CK.SLR_CNTRY_ID = CK.BYR_CNTRY_ID --DOM
+        AND CK.RPRTD_WACKO_YN = 'N'
+        AND CK.AUCT_END_DT >= '2015-12-25'
+        AND CK.GMV_DT between  '2015-12-25'  and current_date
+		AND CAL.age_for_rtl_week_id<0
+        AND bsns_vrtcl_name NOT IN ('Vehicles', 'Unknown', 'Real Estate') 
+    GROUP BY 1,2,3,4,5,6
+    
+;    
+
+ drop table if exists P_CSI_TBS_T.UKI_FINAL_kpis ;
+-- insert into P_CSI_TBS_T.UKI_FINAL_kpis
+CREATE TABLE P_CSI_TBS_T.UKI_FINAL_kpis 
+ AS    
+ SELect
+        CAL.RETAIL_YEAR
+        ,CAL.RETAIL_WEEK
+        ,CK.GMV_DT
+	    ,case when CAL.RETAIL_WEEK between 1 and 13 then 'Q1'
+		 	  when CAL.RETAIL_WEEK between 14 and 26 then 'Q2'
+		 	  when CAL.RETAIL_WEEK between 27 and 39 then 'Q3'
+		 	  else 'Q4' end as QTR
+		,inv.new_vertical as vertical, 
+       inv.INVENTORY_PROP AS INVENTORY_PROP
+    ,RB.PRIMARY_USER_ID 
+    ,SUM(CK.QUANTITY) AS BI
+    ,SUM(CK.GMV_PLAN_USD) AS GMV
+
+    FROM DW_CHECKOUT_TRANS AS CK
+    INNER JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID    
+    INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+        AND CAL.RETAIL_YEAR >= 2016
+		-- AND CAL.RETAIL_WEEK <=26-- 1 and 7--26
+    INNER JOIN DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2015-12-25'       
+    INNER JOIN PRS_RESTRICTED_V.USER_DNA_DIM AS RB 
+        ON RB.USER_ID = CK.BUYER_ID         
+    LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+	LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+    ON ck.ITEM_ID = INV.ITEM_ID	
+		
+    WHERE 1=1
+        AND CK.SLR_CNTRY_ID = 3 --UK sellers
+        AND CK.BYR_CNTRY_ID = 3 --UK buyers
+       AND CK.SLR_CNTRY_ID = CK.BYR_CNTRY_ID --DOM
+        AND CK.RPRTD_WACKO_YN = 'N'
+        AND CK.AUCT_END_DT >= '2015-12-25'
+        AND CK.GMV_DT between  '2015-12-25'  and current_date
+		AND CAL.age_for_rtl_week_id<0
+        AND inv.new_vertical NOT IN ('Vehicles', 'Unknown', 'Real Estate') 
+    GROUP BY 1,2,3,4,5,6,7
+    
+;    
+
+
+
+-- --------------------------------------------------------------------- ACTUAL CODE STARTS FROM HERE ---------------------------------------------
+
+DROP TABLE P_CSI_TBS_T.UKI_TOP_SKU_ITEM;
+CREATE TABLE P_CSI_TBS_T.UKI_TOP_SKU_ITEM
+SELECT
+        P.LSTG_ID AS ITEM_ID
+        ,P.LSTG_END_DT AS AUCT_END_DT
+        ,EPID.COHURT_START
+        ,EPID.COHURT_END
+    FROM
+        (SELECT
+            EPID.EPID
+            ,EPID.BK_SITE
+            ,EPID.DSC_BSNS_VRTCL_NM
+            ,CAL.COHURT_START
+            ,CAL.COHURT_END
+        FROM P_WAJ_T.UK_TTP_LIST AS EPID
+        INNER JOIN
+            (SELECT
+                RETAIL_YEAR
+                ,RTL_MONTH_OF_RTL_YEAR_ID
+                ,MIN(RTL_WEEK_BEG_DT) AS COHURT_START
+                ,MAX(RETAIL_WK_END_DATE) AS COHURT_END
+            FROM DW_CAL_DT
+            WHERE RETAIL_YEAR >= 2019
+            GROUP BY 1,2
+            ) AS CAL
+            ON CAL.RTL_MONTH_OF_RTL_YEAR_ID = EPID.RETAIL_MONTH
+            AND CAL.RETAIL_YEAR = EPID.RETAIL_YEAR
+        WHERE 1=1
+            AND EPID.PRODUCT_HEALTHY_IND = 1
+            AND EPID.RETAIL_YEAR >= 2019
+        GROUP BY 1,2,3,4,5
+        ) AS EPID
+    INNER JOIN ACCESS_VIEWS.SSA_PRODUCT_FACT AS P
+        ON P.PROD_REF_ID = EPID.EPID
+        AND P.LSTG_SITE_ID = EPID.BK_SITE
+    WHERE 1=1
+        AND P.LSTG_END_DT >= '2018-01-01'
+        AND P.LSTG_SITE_ID = 3
+;
+
+-- update with latest invnetory changes (data from 2019 onwards)
+DROP TABLE if exists P_CSI_TBS_T.UKI_FINAL;
+CREATE TABLE P_CSI_TBS_T.UKI_FINAL 
+AS    
+ Select
+        CAL.RETAIL_YEAR
+        ,CAL.RETAIL_WEEK,
+
+inv.new_vertical as vertical, 
+inv.INVENTORY_PROP AS INVENTORY_PROP
+
+    ,COUNT(DISTINCT RB.USER_ID) AS BYR_CNT
+    ,SUM(CK.QUANTITY) AS BI
+    ,SUM(CK.GMV_PLAN_USD) AS GMV
+
+    FROM DW_CHECKOUT_TRANS AS CK
+    INNER JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID    
+    INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+        AND CAL.RETAIL_YEAR >= 2019
+    INNER JOIN DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2018-12-25'       
+    INNER JOIN PRS_RESTRICTED_V.USER_DNA_DIM AS RB 
+        ON RB.USER_ID = CK.BUYER_ID         
+    LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+	LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+    ON ck.ITEM_ID = INV.ITEM_ID		
+		
+    WHERE 1=1
+        AND CK.SLR_CNTRY_ID = 3 --UK sellers
+        AND CK.BYR_CNTRY_ID = 3 --UK buyers
+        AND CK.SLR_CNTRY_ID = CK.BYR_CNTRY_ID --DOM
+        AND CK.RPRTD_WACKO_YN = 'N'
+        AND CK.AUCT_END_DT >= '2018-12-25'
+        AND CK.GMV_DT between  '2018-12-25'  and current_date
+		AND CAL.age_for_rtl_week_id<0
+        AND inv.new_vertical NOT IN ('Vehicles', 'Unknown', 'Real Estate') 
+    GROUP BY 1,2,3,4   
+;    
+
+-- Top SKU
+INSERT INTO P_CSI_TBS_T.UKI_FINAL
+    SELECT
+        CAL.RETAIL_YEAR
+        ,CAL.RETAIL_WEEK,
+inv.new_vertical as vertical	
+    ,CASE WHEN SKU.ITEM_ID IS NOT NULL THEN 'BEST_SELLING' END AS INVENTORY_PROP
+    ,COUNT(DISTINCT RB.USER_ID) AS BYR_CNT
+    ,SUM(CK.QUANTITY) AS BI
+    ,SUM(CK.GMV_PLAN_USD) AS GMV
+
+    FROM DW_CHECKOUT_TRANS AS CK
+    INNER JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID    
+    INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+        AND CAL.RETAIL_YEAR >= 2019
+        AND CAL.AGE_FOR_RTL_WEEK_ID <= -1
+    INNER JOIN DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 -- B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2018-12-25'       
+    INNER JOIN PRS_RESTRICTED_V.USER_DNA_DIM AS RB 
+        ON RB.USER_ID = CK.BUYER_ID                 
+    INNER JOIN (SELECT ITEM_ID, AUCT_END_DT, COHURT_START, COHURT_END FROM P_CSI_TBS_T.UKI_TOP_SKU_ITEM GROUP BY 1,2,3,4) AS SKU
+        ON CK.ITEM_ID = SKU.ITEM_ID
+        AND CK.AUCT_END_DT = SKU.AUCT_END_DT
+        AND CK.GMV_DT BETWEEN SKU.COHURT_START AND SKU.COHURT_END 
+		LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+    ON ck.ITEM_ID = INV.ITEM_ID		
+    WHERE 1=1
+        AND CK.SLR_CNTRY_ID = 3 --UK sellers
+        AND CK.BYR_CNTRY_ID = 3 --UK buyers
+        AND CK.SLR_CNTRY_ID = CK.BYR_CNTRY_ID --DOM
+        AND CK.RPRTD_WACKO_YN = 'N'
+        AND CK.AUCT_END_DT >= '2018-12-25'
+        AND CK.GMV_DT between '2018-12-25' and current_date      
+        AND CAL.age_for_rtl_week_id<0
+		AND inv.new_vertical NOT IN ('Vehicles', 'Unknown', 'Real Estate', 'Collectibles')
+    GROUP BY 1,2,3,4; 
+
+
+DROP TABLE P_CSI_TBS_T.UK_IP_FORECAST;
+CREATE TABLE P_CSI_TBS_T.UK_IP_FORECAST
+AS    
+SELECT 
+trim(A.VERTICAL) as VERTICAL
+,trim(A.INITIATIVE) as INITIATIVE
+,trim(A.FOCUSED) as FOCUSED
+,A.RETAIL_WEEK
+,AGE_FOR_RTL_WEEK_ID
+,AGE_FOR_RTL_QTR_ID
+,A.PHASING_RATIO
+,B.GMV_forecast
+,CAST(B.GMV_forecast AS FLOAT)*CAST(A.Phasing_Ratio AS FLOAT) AS RW_FORECAST
+FROM P_Waj_T.Q32021_inv_phasing A 
+LEFT JOIN P_WAJ_T.Forecast_UK_Verticals1_v1 B 
+ON trim(A.VERTICAL)=trim(b.vertical) AND A.RETAIL_WEEK=B.RETAIL_WEEK
+LEFT JOIN ACCESS_VIEWS.DW_CAL_DT DT
+ON DT.age_for_rtl_year_id=0 AND A.RETAIL_WEEK=DT.RETAIL_WEEK
+GROUP BY 1,2,3,4,5,6,7,8
+;
+
+DROP TABLE P_CSI_TBS_T.UK_IP_M1;
+CREATE TABLE P_CSI_TBS_T.UK_IP_M1
+AS    
+SELECT 
+trim(A.VERTICAL) as VERTICAL
+,trim(A.INITIATIVE) as INITIATIVE
+,trim(A.FOCUSED) as FOCUSED
+,A.RETAIL_WEEK
+,AGE_FOR_RTL_WEEK_ID
+,AGE_FOR_RTL_QTR_ID
+,A.PHASING_RATIO
+,B.GMV_forecast
+,CAST(B.GMV_forecast AS FLOAT)*CAST(A.Phasing_Ratio AS FLOAT) AS RW_FORECAST
+FROM P_Waj_T.Q32021_inv_phasing A 
+LEFT JOIN P_WAJ_T.Forecast_UK_Verticals1_v1 B 
+ON trim(A.VERTICAL)=trim(b.vertical) AND A.RETAIL_WEEK=B.RETAIL_WEEK 
+LEFT JOIN ACCESS_VIEWS.DW_CAL_DT DT
+ON DT.age_for_rtl_year_id=0 AND A.RETAIL_WEEK=DT.RETAIL_WEEK
+GROUP BY 1,2,3,4,5,6,7,8
+;
+
+drop table if exists p_eupricing_t.ly_qtr ;
+create table p_eupricing_t.ly_qtr 
+select  a.retail_week,a.AGE_FOR_RTL_WEEK_ID,a.RETAIL_WK_END_DATE , b.AGE_FOR_RTL_WEEK_ID AGE_FOR_RTL_WEEK_ID_ly , b.RETAIL_WK_END_DATE as RETAIL_WK_END_DATE_ly 
+from access_views.dw_cal_dt as a 
+join access_views.dw_cal_dt as b on a.AGE_FOR_RTL_WEEK_ID-52=b.AGE_FOR_RTL_WEEK_ID
+where a.retail_year=2022 and a.AGE_FOR_RTL_WEEK_ID<=-1 group by 1,2,3,4,5;
+
+--- INVENTORY PROP CODE ENDS ------------------------------------
+
+
+-- REQUEST BY ALEX TEAM
+
+DROP TABLE IF EXISTS P_CSI_TBS_T.UKI_FINAL_v1_trading;
+
+-- updated with latest inventory logic (data from 2019 onwards to latest)
+CREATE TABLE P_CSI_TBS_T.UKI_FINAL_v1_trading 
+SELect
+        CAL.RETAIL_YEAR
+        ,CAL.RETAIL_WEEK,
+        
+inv.new_vertical as vertical,   
+inv.INVENTORY_PROP AS INVENTORY_PROP
+
+, cat.META_CATEG_ID,cat.META_CATEG_NAME,cat.CATEG_LVL2_ID,cat.CATEG_LVL2_NAME,cat.CATEG_LVL3_ID,cat.CATEG_LVL3_NAME
+    ,COUNT(DISTINCT RB.USER_ID) AS BYR_CNT
+    ,SUM(CK.QUANTITY) AS BI
+    ,SUM(CK.GMV_PLAN_USD) AS GMV
+
+    FROM DW_CHECKOUT_TRANS AS CK
+    INNER JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID    
+    INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID and cat.site_id = 3 
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+        AND CAL.RETAIL_YEAR >= 2019
+    INNER JOIN DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2018-12-25'      
+    INNER JOIN PRS_RESTRICTED_V.USER_DNA_DIM AS RB 
+        ON RB.USER_ID = CK.BUYER_ID         
+    LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+	LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+    ON ck.ITEM_ID = INV.ITEM_ID		
+		
+    WHERE 1=1
+        AND CK.SLR_CNTRY_ID = 3 --UK sellers
+        AND CK.BYR_CNTRY_ID = 3 --UK buyers
+        AND CK.SLR_CNTRY_ID = CK.BYR_CNTRY_ID --DOM
+        AND CK.RPRTD_WACKO_YN = 'N'
+        AND CK.AUCT_END_DT >= '2018-12-25'
+        AND CK.GMV_DT between  '2018-12-25'  and current_date
+		AND CAL.age_for_rtl_week_id<0
+        AND inv.new_vertical NOT IN ('Vehicles', 'Unknown', 'Real Estate') 
+    GROUP BY 1,2,3,4,5,6,7,8,9,10;    
+	
+	
+--Added on 2022-01-17 to get latest category hierarchy using item_id along with seller and buyer info
+drop table if exists P_CSI_TBS_T.UKI_Final_V1_trading_item;
+create table P_CSI_TBS_T.UKI_Final_V1_trading_item as (
+select
+cal.age_for_rtl_week_id
+,cal.age_for_rtl_qtr_id
+,cal.age_for_rtl_year_id
+,cal.rtl_qtr_of_rtl_year_id
+,cal.retail_year
+,cal.retail_week
+,ck.seller_id
+,ck.buyer_id
+,ck.item_id        
+,inv.new_vertical as vertical   
+,inv.inventory_prop as inventory_prop
+,sum(ck.quantity) as BI
+,sum(ck.gmv_plan_usd) as gmv
+
+from dw_checkout_trans as ck
+inner join access_views.ssa_curncy_plan_rate_dim as ssa 
+on ssa.curncy_id = ck.lstg_curncy_id    
+
+inner join access_views.dw_category_groupings as cat
+on ck.leaf_categ_id = cat.leaf_categ_id
+and ck.site_id = cat.site_id and cat.site_id = 3 
+
+inner join access_views.dw_cal_dt as cal
+on cal.cal_dt = ck.gmv_dt
+and cal.age_for_rtl_year_id between -3 and 0
+
+inner join dw_usegm_hist as hist 
+on hist.user_id = ck.seller_id
+and hist.usegm_grp_id = 48 
+and hist.usegm_id = 206 --B2C only sellers
+and ck.created_dt between hist.beg_date and hist.end_date
+and hist.end_date >= '2018-12-25'      
+
+inner join prs_restricted_v.user_dna_dim as rb 
+on rb.user_id = ck.buyer_id    
+
+left join access_views.lstg_item_cndtn as cndtn
+on ck.item_id = cndtn.item_id
+
+left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+on ck.item_id = inv.item_id		
+
+where 1=1
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt >= '2018-12-25'
+and ck.gmv_dt between  '2018-12-25' and current_date
+and cal.age_for_rtl_week_id<0
+and inv.new_vertical not in ('Vehicles', 'Unknown', 'Real Estate') 
+group by 1,2,3,4,5,6,7,8,9,10,11);
+
+drop table if exists P_CSI_TBS_T.UKI_FINAL_v2_trading;
+create table P_CSI_TBS_T.UKI_FINAL_v2_trading as (
+select 
+base.age_for_rtl_week_id
+,base.age_for_rtl_qtr_id
+,base.age_for_rtl_year_id
+,base.rtl_qtr_of_rtl_year_id
+,base.retail_year
+,base.retail_week 
+,base.vertical
+,base.inventory_prop
+,cat.meta_categ_id
+,cat.meta_categ_name
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+,sum(GMV) as GMV
+,sum(BI) as BI
+from P_CSI_TBS_T.UKI_Final_V1_trading_item base
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on base.item_id = lstg.item_id       
+inner join (select meta_categ_id,meta_categ_name,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,leaf_categ_id from access_views.dw_category_groupings where sap_category_id not in (5,7,41,23,-999) and site_id=3 group by 1,2,3,4,5,6,7) cat
+on lstg.leaf_categ_id = cat.leaf_categ_id 
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14);
+	
+-- QTR NUMBERS
+
+-- select retail_year, qtr, case when INVENTORY_PROP like any ('%focus%','%Focus%','%FOCUS%') then 'Focused' else 'Others' end as Inventory_Prop , sum(BYR_CNT) BYR_CNT , sum(gmv) gmv from P_EUPRICING_T.QTRS_2021_KPIS group by 1,2,3;
+-- select count(*) from P_EUPRICING_T.QTRS_2021_KPIS;
+-- select retail_year, qtr from P_EUPRICING_T.QTRS_2021_KPIS group by 1,2;
+
+drop table P_EUPRICING_T.QTRS_2021_KPIS;
+CREATE TABLE P_EUPRICING_T.QTRS_2021_KPIS
+	 SELECT
+        CAL.RETAIL_YEAR
+        ,case when CAL.RETAIL_WEEK between 1 and 13 then 'Q1'
+		 	  when CAL.RETAIL_WEEK between 14 and 26 then 'Q2'
+		 	  when CAL.RETAIL_WEEK between 27 and 39 then 'Q3'
+		 	  else 'Q4' end as QTR, 
+			  RB.PRIMARY_USER_ID,
+
+inv.new_vertical as vertical,   
+inv.INVENTORY_PROP AS INVENTORY_PROP
+
+    -- ,COUNT(DISTINCT RB.PRIMARY_USER_ID) AS BYR_CNT
+    ,SUM(CK.QUANTITY) AS BI
+    ,SUM(CK.GMV_PLAN_USD) AS GMV
+
+    FROM DW_CHECKOUT_TRANS AS CK
+    INNER JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID    
+    INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+        AND CAL.RETAIL_YEAR >= 2016
+		-- AND CAL.RETAIL_WEEK between 47 and 52
+    INNER JOIN DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2015-12-25'       
+    INNER JOIN PRS_RESTRICTED_V.USER_DNA_DIM AS RB 
+        ON RB.USER_ID = CK.BUYER_ID         
+    LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+		LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+    ON ck.ITEM_ID = INV.ITEM_ID		
+
+	WHERE 1=1
+        AND CK.SLR_CNTRY_ID = 3 --UK sellers
+        AND CK.BYR_CNTRY_ID = 3 --UK buyers
+        AND CK.SLR_CNTRY_ID = CK.BYR_CNTRY_ID --DOM
+        AND CK.RPRTD_WACKO_YN = 'N'
+        AND CK.AUCT_END_DT >= '2015-12-25'
+        AND CK.GMV_DT between '2015-12-25' and current_date      
+		AND CAL.age_for_rtl_week_id<0
+        AND inv.new_vertical NOT IN ('Vehicles', 'Unknown', 'Real Estate') 
+    GROUP BY 1,2,3,4,5;
+	
