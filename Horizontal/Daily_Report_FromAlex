@@ -1,0 +1,318 @@
+/*Aim: Create daily report showing GMV per vertical
+
+Alex's code: https://zeta.dss.vip.ebay.com/zeta/share/#/notebook?notebookId=bbdc2195-a109-41b3-a4db-aa0a0613446d*/
+
+
+--select max(GMV_dt) from  dw_checkout_trans;
+--select max(GMV_dt) from  P_awang_ops_T.daily_gmv_report_l3;
+
+
+--select max(GMV_dt) from  prs_restricted_v.slng_trans_super_fact;--takes longer for yesterday's data to be included in this dataset 
+
+drop table if exists P_awang_ops_T.daily_gmv_report;
+
+create table P_awang_ops_T.daily_gmv_report as (
+select 
+aaa.gmv_dt
+,case when aaa.new_vertical in ('Business & Industrial') then 'Tony Tong'
+	when aaa.new_vertical in ('Fashion') then 'Jemma T'
+    when aaa.new_vertical in ('Home & Garden') then 'Chris G'
+    when aaa.new_vertical in ('Lifestyle') then 'Keith M'
+    when aaa.new_vertical in ('Electronics', 'Media') then 'Mark C'
+    when aaa.new_vertical in ('Parts & Accessories') then 'Tony Tong'
+	 when aaa.new_vertical in ('Collectibles') then 'David J'
+    else 'none' end as vertical_lead
+,aaa.new_vertical
+,aaa.segment
+,sum(aaa.gmb_plan) as ty_gmv
+,sum(aaa.bi) as ty_bi
+,sum(aaa.asp) as ty_asp
+,sum(aaa.slr_count) as ty_slr_count
+,sum(b.gmb_plan) as ly2_gmv 
+,sum(b.bi) as ly2_bi
+,sum(b.asp) as ly2_asp
+,sum(b.slr_count) as ly2_slr_count
+
+from (
+	select 
+	ck.gmv_dt,
+case when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when cat.meta_categ_id in (26395) then 'Lifestyle'
+when cat.CATEG_LVL3_ID in (260325) then 'Lifestyle'
+when cat.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
+when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
+when cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
+else cat.bsns_vrtcl_name end as new_vertical
+	--,case when sale_type in (7,9) then 'FP' else 'auction' end as auction_type
+	,case when hist.usegm_id = 206 then 'B2C' else 'C2C' end as segment
+	,sum(ck.GMV_PLAN_USD) as gmb_plan
+	,count(distinct seller_id) as slr_count
+	,sum(ck.quantity) as bi
+	,gmb_plan / bi as asp
+	from access_views.dw_checkout_trans ck
+
+	inner join dw_users  u
+	on ck.seller_id = u.user_id
+
+	inner join access_views.dw_cal_dt cal 
+	on cal.cal_dt = ck.gmv_dt 
+	and ck.gmv_dt between current_date()  - 7 and current_date()  - 1
+	and ck.auct_end_dt >=current_date()  - 10
+
+	inner join access_views.dw_category_groupings cat 
+	on cat.leaf_categ_id = ck.leaf_categ_id 
+	and cat.site_id = ck.site_id
+	and cat.sap_category_id not in (5,7,41,23,-999) 
+
+	left  join access_views.dw_usegm_hist hist 
+	on hist.user_id=ck.seller_id 
+	and hist.usegm_grp_id  = 48 
+	and case when ck.gmv_dt < '2009-10-11' then cast('2009-10-11' as date) else ck.gmv_dt end between hist.beg_date and hist.end_date  
+
+	where ck.ck_wacko_yn = 'N'
+	and ck.sale_type not in (10,15)
+	and ck.slr_cntry_id = 3
+	and ck.byr_cntry_id =3
+	and ck.slr_cntry_id = ck.byr_cntry_id
+	group by 1,2,3) aaa
+
+left join (
+	select 
+	ck.gmv_Dt
+	,ck.gmv_Dt +364 as cy_date
+,case when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when cat.meta_categ_id in (26395) then 'Lifestyle'
+when cat.CATEG_LVL3_ID in (260325) then 'Lifestyle'
+when cat.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
+when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
+when cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
+else cat.bsns_vrtcl_name end as new_vertical
+	--,case when SALE_TYPE in (7,9) then 'FP' else 'auction' end as auction_type
+	,case when hist.usegm_id = 206 then 'B2C' else 'C2C' end as segment
+	,count(distinct seller_id) as slr_count
+	,sum(ck.GMV_PLAN_USD) as gmb_plan
+	,sum(ck.quantity) as bi
+	,gmb_plan / bi as asp
+
+	from 
+	access_views.dw_checkout_trans ck
+
+	inner join  access_views.dw_users  u
+	on ck.seller_id = u.user_id
+
+	inner join access_views.dw_cal_dt cal 
+	on cal.cal_dt = ck.gmv_dt 
+	and ck.gmv_Dt between current_date()  - 7 - 364 and current_date()  - 1 - 364
+	and ck.auct_end_dt >=current_date()  - 10 - 364
+
+	inner join access_views.dw_category_groupings cat 
+	on cat.leaf_categ_id = ck.leaf_categ_id 
+	and cat.site_id = ck.site_id
+	and cat.sap_category_id not in (5,7,41,23,-999) 
+
+	left  join access_views.dw_usegm_hist hist 
+	on hist.user_id=ck.seller_id 
+	and hist.usegm_grp_id  = 48 
+	and case when ck.gmv_Dt < '2009-10-11' then cast('2009-10-11' as date) else ck.gmv_Dt end between hist.beg_date and hist.end_date  
+
+	where
+	ck.ck_wacko_yn = 'N'
+	and ck.sale_type not in (10,15)
+	and ck.slr_cntry_id = 3
+	and ck.byr_cntry_id =3
+	and ck.slr_cntry_id = ck.byr_cntry_id
+	group by 1,2,3,4) b
+
+on aaa.gmv_dt = b.cy_date
+and aaa.new_vertical = b.new_vertical 
+and aaa.segment = b.segment
+
+where aaa.segment='B2C'
+group by 1,2,3,4);
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_awang_ops_T.daily_gmv_report_l3;
+
+create table p_awang_ops_t.daily_gmv_report_l3 as (
+select 
+aaa.gmv_Dt
+,case when aaa.new_vertical in ('Business & Industrial') then 'Tony Tong'
+	when aaa.new_vertical in ('Fashion') then 'Jemma T'
+    when aaa.new_vertical in ('Home & Garden') then 'Chris G'
+    when aaa.new_vertical in ('Lifestyle') then 'Keith M'
+    when aaa.new_vertical in ('Electronics', 'Media') then 'Mark C'
+    when aaa.new_vertical in ('Parts & Accessories') then 'Tony Tong'
+	 when aaa.new_vertical in ('Collectibles') then 'David J'
+    else 'none' end as vertical_lead
+,aaa.new_vertical
+,aaa.categ_lvl2_id
+,aaa.categ_lvl2_name
+,aaa.categ_lvl3_id
+,aaa.categ_lvl3_name
+,aaa.segment
+,aaa.inventory_prop
+,aaa.focus_flag
+,sum(aaa.gmb_plan) as ty_gmv
+,sum(aaa.bi) as ty_bi
+,sum(aaa.asp) as ty_asp
+,sum(aaa.slr_count) as ty_slr_count
+,sum(b.gmb_plan) as ly2_gmv 
+,sum(b.bi) as ly2_bi
+,sum(b.asp) as ly2_asp
+,sum(b.slr_count) as ly2_slr_count
+
+from 
+
+	(select 
+	ck.gmv_Dt
+	,cat.categ_lvl2_id
+	,cat.categ_lvl2_name
+	,cat.categ_lvl3_id
+	,cat.categ_lvl3_name
+	,case when hist.usegm_id = 206 then 'B2C' else 'C2C' end as segment
+    ,inv.new_vertical
+    ,inv.inventory_prop
+    ,inv.focus_flag
+	,count(distinct seller_id) as slr_count
+	,sum(ck.GMV_PLAN_USD) as gmb_plan
+	,sum(ck.quantity) as bi
+	,gmb_plan / bi as asp
+	
+	from access_views.dw_checkout_trans as ck
+
+	inner join  access_views.dw_users  u
+	on ck.seller_id = u.user_id
+
+	inner join access_views.dw_cal_dt cal 
+	on cal.cal_dt = ck.gmv_Dt 
+	and ck.gmv_Dt between current_date()  - 7 and current_date()  - 1
+	and ck.auct_end_dt >=current_date()  - 10
+
+	inner join access_views.dw_category_groupings cat 
+	on cat.leaf_categ_id = ck.leaf_categ_id 
+	and cat.site_id = ck.site_id
+	and cat.site_id = 3 
+	and cat.sap_category_id not in (5,7,41,23,-999) 
+
+	left  join access_views.dw_usegm_hist hist 
+	on hist.user_id=ck.seller_id 
+	and hist.usegm_grp_id  = 48 
+	and case when ck.gmv_Dt < '2009-10-11' then cast('2009-10-11' as date) else ck.gmv_Dt end between hist.beg_date and hist.end_date  
+
+	left join access_views.lstg_item_cndtn as cndtn
+	on ck.item_id = cndtn.item_id
+	
+	left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+    on ck.item_id = inv.item_id	
+
+	where
+	ck.ck_wacko_yn = 'N'
+	and ck.sale_type not in (10,15)
+	and ck.slr_cntry_id = 3
+	and ck.byr_cntry_id =3
+	group by 1,2,3,4,5,6,7,8,9) aaa
+
+left join ( 
+	select 
+	ck.gmv_Dt
+	,cat.categ_lvl2_id
+	,cat.categ_lvl2_name
+	,cat.categ_lvl3_id
+	,cat.categ_lvl3_name
+	,case when hist.usegm_id = 206 then 'B2C' else 'C2C' end as segment
+    ,inv.new_vertical
+    ,inv.inventory_prop
+    ,inv.focus_flag
+	,count(distinct seller_id) as slr_count
+	,sum(ck.GMV_PLAN_USD) as gmb_plan
+	,sum(ck.quantity) as bi
+	,gmb_plan / bi as asp
+	from access_views.dw_checkout_trans as ck
+
+	inner join  access_views.dw_users  u
+	on ck.seller_id = u.user_id
+
+	inner join access_views.dw_cal_dt cal 
+	on cal.cal_dt = ck.gmv_Dt 
+	and ck.gmv_Dt between current_date()  - 7 - 364 and current_date()  - 1 - 364
+	and ck.auct_end_dt >=current_date()  - 10 - 364
+
+	inner join access_views.dw_category_groupings cat 
+	on cat.leaf_categ_id = ck.leaf_categ_id 
+	and cat.site_id = ck.site_id
+	and cat.site_id = 3 
+	and cat.sap_category_id not in (5,7,41,23,-999) 
+
+	left join access_views.dw_usegm_hist hist 
+	on hist.user_id=ck.seller_id 
+	and hist.usegm_grp_id = 48 
+	and case when ck.created_dt < '2009-10-11' then cast('2009-10-11' as date) else ck.created_dt end between hist.beg_date and hist.end_date  
+
+	left join access_views.lstg_item_cndtn as cndtn
+	on ck.item_id = cndtn.item_id
+	
+	left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+    on ck.item_id = inv.item_id	
+
+	WHERE
+	ck.ck_wacko_yn = 'N'
+	and ck.sale_type not in (10,15)
+	and ck.slr_cntry_id = 3
+	and ck.byr_cntry_id =3
+
+	group by 1,2,3,4,5,6,7,8,9) b
+
+on aaa.gmv_Dt = b.gmv_Dt + 364
+and aaa.new_vertical = b.new_vertical 
+and aaa.segment = b.segment
+and aaa.categ_lvl2_id = b.categ_lvl2_id
+and aaa.categ_lvl2_name = b.categ_lvl2_name
+and aaa.categ_lvl3_id = b.categ_lvl3_id
+and aaa.categ_lvl3_name = b.categ_lvl3_name
+and aaa.inventory_prop = b.inventory_prop
+and aaa.focus_flag = b.focus_flag
+
+where aaa.segment='B2C'
+group by 1,2,3,4,5,6,7,8,9,10);
+
+
+/*Excel data connection:
+
+--Category
+select
+gmv_dt as created_dt,
+new_vertical,
+categ_lvl2_id,
+categ_lvl2_name,
+case when categ_big_check is null then 'other' else categ_lvl3_name end as final_categ_lvl3_name,
+case when categ_big_check is null then 0 else categ_lvl3_id end as final_categ_lvl3_id,
+inventory_prop,
+focus_flag,
+sum(ty_GMV) as TY_gmv,
+sum(LY2_GMV) as LY2_GMV
+
+from 
+
+(select a.*,
+b.categ_lvl3_id as categ_big_check
+
+from P_awang_ops_T.daily_gmv_report_l3 a
+left outer join 
+(select new_vertical,
+categ_lvl3_id,
+sum(ty_GMV) as GMV_TY
+from P_awang_ops_T.daily_gmv_report_l3
+group by 1,2) b
+on a.new_vertical = b.new_vertical 
+and a.categ_lvl3_id = b.categ_lvl3_id
+and GMV_TY >= 700
+) c
+
+group by 1,2,3,4,5,6,7,8
+
+*/
