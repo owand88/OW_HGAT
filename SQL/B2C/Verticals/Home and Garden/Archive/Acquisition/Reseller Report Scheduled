@@ -1,0 +1,252 @@
+--======================================================================================================== RESELLER REPORT CODE =====================================================================================================================================
+
+--================================================== reseller iGMV by seller ==================================================
+
+drop table if exists p_macheung_t.reseller_sum_2021;
+create table p_macheung_t.reseller_sum_2021
+as(
+  select distinct
+  --a.tag, 
+  -- a.retail_year, 
+  a.retail_week, 
+  a.seller_id,  
+  u.user_slctd_id,
+  b.partner,
+  sum(a.igmv) as seller_igmv from (
+  
+  select distinct a.tag, a.retail_year,	a.retail_week,  seller_id, sum(a.igmv) as igmv from (
+   select a.tag, a.retail_year,	a.retail_week, a.seller_id,  case when (a.gmv_20-a.gmv_19)<0 then 0 else (a.gmv_20-a.gmv_19) end as igmv
+  from 
+  (select a.retail_year,	a.retail_week, a.seller_id,	a.tag, a.gmv_20, case when b.gmv_19 is null then 0 else b.gmv_19 end as gmv_19
+    from 
+  (select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id,	a.seller_id,	a.tag,	sum(GMV_PLAN_USD) as gmv_20  from p_eupricing_t.uk_existing_final_v1 as a
+  join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  group by 1,2,3,4,5)a 
+  left join (select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id,	a.seller_id,	a.tag,	sum(GMV_PLAN_USD) as gmv_19  from p_eupricing_t.uk_existing_final_v1 as a
+  join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  where age_for_rtl_week_id<=-1
+  group by 1,2,3,4,5)b 
+  on a.age_for_rtl_week_id-104=b.age_for_rtl_week_id
+  and a.seller_id=b.seller_id
+  and a.tag=b.tag
+  and b.retail_year is not null
+  group by 1,2,3,4,5,6
+  )a 
+  join (select retail_year, retail_week, RETAIL_WK_END_DATE,RTL_WEEK_BEG_DT from ACCESS_VIEWS.dw_cal_dt group by 1,2,3,4) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  join (select seller_id,min(RTL_WEEK_BEG_DT) RTL_WEEK_BEG_DT from p_eupricing_t.uk_reseller_v1 group by 1) as x 
+  on a.seller_id=x.seller_id and cal.RTL_WEEK_BEG_DT>=x.RTL_WEEK_BEG_DT 
+  --and cal.RETAIL_WK_END_DATE<=(x.RTL_WEEK_BEG_DT+371)
+  where a.tag in ('RESELLER') 
+  and a.seller_id not in (select seller_id from p_eupricing_t.uk_reseller_other_v1 group by 1)
+  group by 1,2,3,4,5
+
+  
+  union all 
+  
+ select a.tag, a.retail_year,	a.retail_week, a.seller_id,  sum(a.igmv) as igmv from 
+  (select a.retail_year,	a.retail_week, a.seller_id,	a.tag,case when a.gmv_20 is null then 0 else a.gmv_20 end as igmv
+    from 
+  (select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id,	a.seller_id,	a.tag,	sum(GMV_PLAN_USD) as gmv_20  from p_eupricing_t.uk_existing_final_v1 as a
+  join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  group by 1,2,3,4,5)a 
+  group by 1,2,3,4,5)a 
+  join (select retail_year, retail_week, RETAIL_WK_END_DATE,RTL_WEEK_BEG_DT from ACCESS_VIEWS.dw_cal_dt group by 1,2,3,4) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  join (select seller_id,min(RTL_WEEK_BEG_DT) RTL_WEEK_BEG_DT from p_eupricing_t.uk_reseller_other_v1 group by 1) as x on a.seller_id=x.seller_id and cal.RTL_WEEK_BEG_DT>=x.RTL_WEEK_BEG_DT 
+  --and cal.RETAIL_WK_END_DATE<=(x.RTL_WEEK_BEG_DT+371)
+  
+  where a.tag in ('RESELLER') 
+  and a.seller_id in (select seller_id from p_eupricing_t.uk_reseller_other_v1 group by 1)
+  group by 1,2,3,4
+
+) a
+group by 1,2,3,4) a
+  
+left join dw_users u on a.seller_id = u.user_id
+left join (select distinct seller_id, partner from p_eupricing_t.uk_reseller union select distinct seller_id, partner from p_eupricing_t.uk_reseller_other) b on a.seller_id = b.seller_id
+where retail_year = 2022
+group by 1,2,3,4);
+
+--================================================== GMV table output (by seller)==================================================
+drop table if exists p_macheung_t.reseller_GMV_output;
+create table p_macheung_t.reseller_GMV_output as(
+select distinct vertical, retail_year, retail_week, account_manager, user_slctd_id, a.seller_id, partner, parent_brand, brand, sum(GMV_PLAN_USD) as GMV, sum(SI) as BI, sum(TXNS) as TXNS
+from p_eupricing_t.uk_existing_reseller_fnl a
+left join (select seller_id, partner from p_eupricing_t.uk_reseller group by 1,2) b on a.seller_id = b.seller_id
+where retail_year >= 2020
+group by 1,2,3,4,5,6,7,8,9
+
+union 
+
+select distinct vertical, retail_year, retail_week, account_manager, user_slctd_id, a.seller_id, partner, parent_brand, brand, sum(GMV_PLAN_USD) as GMV, sum(SI) as BI, sum(TXNS) as TXNS
+from p_eupricing_t.uk_existing_reseller_fnl_other a
+left join (select seller_id, partner from p_eupricing_t.uk_reseller_other group by 1,2) b on a.seller_id = b.seller_id
+where retail_year >= 2020
+group by 1,2,3,4,5,6,7,8,9);
+
+
+-- ==================================================adding Luxury vertical (breaking out from Lifestyle)==================================================
+
+drop table if exists p_macheung_t.reseller_sum_2021_vertical_luxury;
+create table p_macheung_t.reseller_sum_2021_vertical_luxury
+as(
+  select distinct
+  --a.tag, 
+  -- a.retail_year, 
+  a.retail_week, 
+  a.seller_id,  
+  u.user_slctd_id,
+  a.vertical,
+  b.partner,
+  sum(a.igmv) as seller_igmv from (
+  
+  select distinct a.tag, a.retail_year,	a.retail_week,  seller_id, a.vertical,sum(a.igmv) as igmv from (
+   select a.tag, a.retail_year,	a.retail_week, a.seller_id, a.vertical, case when (a.gmv_20-a.gmv_19)<0 then 0 else (a.gmv_20-a.gmv_19) end as igmv
+  from 
+  (select a.retail_year,	a.retail_week, a.seller_id,	a.vertical,a.tag, a.gmv_20, case when b.gmv_19 is null then 0 else b.gmv_19 end as gmv_19
+    from 
+  (select a.retail_year,	a.retail_week, CASE when a.categ_lvl2_id in (110633,15127,4196,91427,164352,262025,261986,261997,15123,10968,283,84605,260324,488,491,262022,262024,262023,10290) or a.categ_lvl3_id in (169291) THEN 'Luxury' -- move jewellery and women's handbags to Lifestyle
+	else a.vertical 
+	end as vertical,cal.age_for_rtl_week_id,	a.seller_id,	a.tag,	sum(GMV_PLAN_USD) as gmv_20  from p_eupricing_t.uk_existing_final_v1 as a
+  join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  group by 1,2,3,4,5,6)a 
+  left join (select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id,	a.seller_id, CASE when a.categ_lvl2_id in (110633,15127,4196,91427,164352,262025,261986,261997,15123,10968,283,84605,260324,488,491,262022,262024,262023,10290) or a.categ_lvl3_id in (169291) THEN 'Luxury' -- move jewellery and women's handbags to Lifestyle
+	else a.vertical 
+	end as vertical,a.tag,	sum(GMV_PLAN_USD) as gmv_19  from p_eupricing_t.uk_existing_final_v1 as a
+  join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  where age_for_rtl_week_id<=-1
+  group by 1,2,3,4,5,6)b 
+  on a.age_for_rtl_week_id-104=b.age_for_rtl_week_id
+  and a.seller_id=b.seller_id
+  and a.vertical = b.vertical
+  and a.tag=b.tag
+  and b.retail_year is not null
+  group by 1,2,3,4,5,6,7
+  )a 
+  join (select retail_year, retail_week, RETAIL_WK_END_DATE,RTL_WEEK_BEG_DT from ACCESS_VIEWS.dw_cal_dt group by 1,2,3,4) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  join (select seller_id,min(RTL_WEEK_BEG_DT) RTL_WEEK_BEG_DT from p_eupricing_t.uk_reseller_v1 group by 1) as x 
+  on a.seller_id=x.seller_id and cal.RTL_WEEK_BEG_DT>=x.RTL_WEEK_BEG_DT 
+  --and cal.RETAIL_WK_END_DATE<=(x.RTL_WEEK_BEG_DT+371)
+  where a.tag in ('RESELLER') 
+  and a.seller_id not in (select seller_id from p_eupricing_t.uk_reseller_other_v1 group by 1)
+  group by 1,2,3,4,5,6
+
+  
+  union all 
+  
+ select a.tag, a.retail_year,	a.retail_week, a.seller_id, a.vertical, sum(a.igmv) as igmv from 
+  (select a.retail_year,	a.retail_week, a.seller_id, a.vertical,	a.tag,case when a.gmv_20 is null then 0 else a.gmv_20 end as igmv
+    from 
+  (select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id,	a.seller_id,case when a.categ_lvl2_id in (110633,15127,4196,91427,164352,262025,261986,261997,15123,10968,283,84605,260324,488,491,262022,262024,262023,10290) or a.categ_lvl3_id in (169291) THEN 'Luxury' -- move jewellery and women's handbags to Lifestyle
+	else a.vertical 
+	end as vertical,a.tag,	sum(GMV_PLAN_USD) as gmv_20  from p_eupricing_t.uk_existing_final_v1 as a
+  join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  group by 1,2,3,4,5,6)a 
+  group by 1,2,3,4,5,6)a 
+  join (select retail_year, retail_week, RETAIL_WK_END_DATE,RTL_WEEK_BEG_DT from ACCESS_VIEWS.dw_cal_dt group by 1,2,3,4) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  join (select seller_id,min(RTL_WEEK_BEG_DT) RTL_WEEK_BEG_DT from p_eupricing_t.uk_reseller_other_v1 group by 1) as x on a.seller_id=x.seller_id and cal.RTL_WEEK_BEG_DT>=x.RTL_WEEK_BEG_DT 
+  --and cal.RETAIL_WK_END_DATE<=(x.RTL_WEEK_BEG_DT+371)
+  
+  where a.tag in ('RESELLER') 
+  and a.seller_id in (select seller_id from p_eupricing_t.uk_reseller_other_v1 group by 1)
+  group by 1,2,3,4,5
+
+) a
+group by 1,2,3,4,5) a
+  
+left join dw_users u on a.seller_id = u.user_id
+left join (select distinct seller_id, partner from p_eupricing_t.uk_reseller union select distinct seller_id, partner from p_eupricing_t.uk_reseller_other) b on a.seller_id = b.seller_id
+where retail_year = 2022
+group by 1,2,3,4,5);
+
+
+--======================================================================================================== NEW SELLER REPORT: RESELLER iGMV CODE =====================================================================================================================================
+
+--=================== start of code for new seller report (get reseller iGMV by vertical)======================================
+
+drop table if exists p_macheung_t.reseller_sum_2021_vertical;
+create table p_macheung_t.reseller_sum_2021_vertical
+as(
+  select distinct
+  --a.tag, 
+  -- a.retail_year, 
+  a.retail_week, 
+  a.seller_id,  
+  u.user_slctd_id,
+  a.vertical,
+  b.partner,
+  sum(a.igmv) as seller_igmv from (
+  
+  select distinct a.tag, a.retail_year,	a.retail_week,  seller_id, a.vertical,sum(a.igmv) as igmv from (
+   select a.tag, a.retail_year,	a.retail_week, a.seller_id, a.vertical, case when (a.gmv_20-a.gmv_19)<0 then 0 else (a.gmv_20-a.gmv_19) end as igmv
+  from 
+  (select a.retail_year,	a.retail_week, a.seller_id,	a.vertical,a.tag, a.gmv_20, case when b.gmv_19 is null then 0 else b.gmv_19 end as gmv_19
+    from 
+  (select a.retail_year,	a.retail_week, a.vertical,cal.age_for_rtl_week_id,	a.seller_id,	a.tag,	sum(GMV_PLAN_USD) as gmv_20  from p_eupricing_t.uk_existing_final_v1 as a
+  join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  group by 1,2,3,4,5,6)a 
+  left join (select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id,	a.seller_id, a.vertical,a.tag,	sum(GMV_PLAN_USD) as gmv_19  from p_eupricing_t.uk_existing_final_v1 as a
+  join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  where age_for_rtl_week_id<=-1
+  group by 1,2,3,4,5,6)b 
+  on a.age_for_rtl_week_id-104=b.age_for_rtl_week_id
+  and a.seller_id=b.seller_id
+  and a.vertical = b.vertical
+  and a.tag=b.tag
+  and b.retail_year is not null
+  group by 1,2,3,4,5,6,7
+  )a 
+  join (select retail_year, retail_week, RETAIL_WK_END_DATE,RTL_WEEK_BEG_DT from ACCESS_VIEWS.dw_cal_dt group by 1,2,3,4) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  join (select seller_id,min(RTL_WEEK_BEG_DT) RTL_WEEK_BEG_DT from p_eupricing_t.uk_reseller_v1 group by 1) as x 
+  on a.seller_id=x.seller_id and cal.RTL_WEEK_BEG_DT>=x.RTL_WEEK_BEG_DT 
+  --and cal.RETAIL_WK_END_DATE<=(x.RTL_WEEK_BEG_DT+371)
+  where a.tag in ('RESELLER') 
+  and a.seller_id not in (select seller_id from p_eupricing_t.uk_reseller_other_v1 group by 1)
+  group by 1,2,3,4,5,6
+
+  
+  union all 
+  
+ select a.tag, a.retail_year,	a.retail_week, a.seller_id, a.vertical, sum(a.igmv) as igmv from 
+  (select a.retail_year,	a.retail_week, a.seller_id, a.vertical,	a.tag,case when a.gmv_20 is null then 0 else a.gmv_20 end as igmv
+    from 
+  (select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id,	a.seller_id,a.vertical,a.tag,	sum(GMV_PLAN_USD) as gmv_20  from p_eupricing_t.uk_existing_final_v1 as a
+  join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  group by 1,2,3,4,5,6)a 
+  group by 1,2,3,4,5,6)a 
+  join (select retail_year, retail_week, RETAIL_WK_END_DATE,RTL_WEEK_BEG_DT from ACCESS_VIEWS.dw_cal_dt group by 1,2,3,4) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  join (select seller_id,min(RTL_WEEK_BEG_DT) RTL_WEEK_BEG_DT from p_eupricing_t.uk_reseller_other_v1 group by 1) as x on a.seller_id=x.seller_id and cal.RTL_WEEK_BEG_DT>=x.RTL_WEEK_BEG_DT 
+  --and cal.RETAIL_WK_END_DATE<=(x.RTL_WEEK_BEG_DT+371)
+  
+  where a.tag in ('RESELLER') 
+  and a.seller_id in (select seller_id from p_eupricing_t.uk_reseller_other_v1 group by 1)
+  group by 1,2,3,4,5
+
+) a
+group by 1,2,3,4,5) a
+  
+left join dw_users u on a.seller_id = u.user_id
+left join (select distinct seller_id, partner from p_eupricing_t.uk_reseller union select distinct seller_id, partner from p_eupricing_t.uk_reseller_other) b on a.seller_id = b.seller_id
+where retail_year = 2022
+group by 1,2,3,4,5);
+
+
+-- ===================reseller with adjustment ============================================================================
+drop table if exists p_macheung_t.reseller_iGMV_adj_2021; 
+create table p_macheung_t.reseller_iGMV_adj_2021 as(
+select vertical, retail_week, iGMV/week_iGMV_total*correct_iGMV_total as iGMV from(
+select vertical, retail_week, iGMV, correct_iGMV_total, sum(iGMV) over (partition by retail_week) as week_iGMV_total
+from(
+select a.retail_week, 
+case when vertical in ('Electronics','Media') then 'Electronics'
+	when vertical = 'Business & Industrial' then 'Parts & Accessories' 
+else vertical end as vertical,
+correct_iGMV_total,
+sum(iGMV) as iGMV
+from (select vertical, retail_week, sum(seller_iGMV) as iGMV 
+	from p_macheung_t.reseller_sum_2021_vertical 
+	group by 1,2) a
+left join (select retail_year, retail_week, sum(iGMV) as correct_iGMV_total 
+	from p_eupricing_t.igmv_acquisition 
+	where retail_year = 2022 and tag = 'RESELLER' group by 1,2) b on a.retail_week = b.retail_week 
+group by 1,2,3)
+));

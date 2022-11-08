@@ -1,0 +1,269 @@
+-- CODE MODIFIED TO ONLY USE NEW METHODOLOGY FROM 2022 Q3 ONWARDS, implemented 13/7/2022
+
+--======================================================================================================== D2C REPORT CODE =====================================================================================================================================
+--================================================== D2C iGMV by seller ==================================================
+
+drop table if exists p_macheung_t.D2C_iGMV;
+create table p_macheung_t.D2C_iGMV as 
+
+-- prior to Q3
+(select ACQ_TAG as tag, a.retail_year, a.retail_week, user_slctd_id, seller_id, sum(gmv_plan_usd) igmv 
+	from p_eupricing_t.uk_new_sellers_kpis  a
+	where retail_year < 2022 or (retail_year = 2022 and retail_week <= 26)
+	group by 1,2,3,4,5)
+
+UNION ALL
+-- Q3 forward
+
+(select a.tag
+, a.retail_year
+,	a.retail_week
+,a.user_slctd_id
+,  seller_id
+, sum(a.igmv) as igmv 
+
+from (
+  select a.tag, a.retail_year,	a.retail_week, a.seller_id, a.user_slctd_id, case when (a.gmv_20-a.gmv_19)<0 then 0 else (a.gmv_20-a.gmv_19) end as igmv
+  from 
+  (select a.retail_year,	a.retail_week, a.seller_id,	a.tag,a.user_slctd_id, a.gmv_20, case when b.gmv_19 is null then 0 else b.gmv_19 end as gmv_19
+    from 
+	-- get this year GMV
+  	(select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id,	a.user_slctd_id,a.seller_id,	ACQ_TAG as tag,	sum(GMV_PLAN_USD) as gmv_20  from p_eupricing_t.uk_new_sellers_kpis as a
+  	join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   
+		where age_for_rtl_week_id<=-1 
+		group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  	group by 1,2,3,4,5,6)a 
+	
+	-- get prior year GMV
+	left join (select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id, a.user_slctd_id,	a.seller_id,	'Direct' as tag,	sum(GMV_PLAN_USD) as gmv_19  from p_eupricing_t.uk_gmv as a
+	join p_eupricing_t.uk_new_sellers as b on a.seller_id=b.seller_id
+  	join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+ 	 where age_for_rtl_week_id<=-1
+  		group by 1,2,3,4,5,6)b   on a.age_for_rtl_week_id-52 = b.age_for_rtl_week_id and a.seller_id=b.seller_id and b.retail_year is not null -- 52 week offset (reseller uses 52*2, 104 weeks)
+  	
+	group by 1,2,3,4,5,6,7
+  	)a 
+  where 1=1
+  group by 1,2,3,4,5,6)a
+  where retail_year = 2022 
+  and retail_week >= 27 -- change to 27 in the future
+  group by 1,2,3,4,5)
+  ;
+  
+--select retail_year, retail_week, sum(igmv) as iGMV from p_macheung_t.D2C_iGMV where retail_year = 2022 group by 1,2
+
+--================================================== GMV table output (by seller)==================================================
+
+-- KEEP THIS UNCHANGED
+drop table if exists p_macheung_t.d2c_report_output; 
+create table p_macheung_t.d2c_report_output as(
+select n.retail_year, n.retail_week,
+case when n.retail_week <= 13 then 1
+	when n.retail_week <= 26 then 2
+	when n.retail_week <= 39 then 3
+	else 4
+end as QTR,
+age_for_week_id,
+ case when age_for_week_id between -52 and -1 then 'L52W'
+ 	else 'Other'
+ 	end as L52W_Flag,
+case when meta_categ_id in (281) or categ_lvl3_id in (169291) THEN 'Luxury' -- move jewellery and women's handbags to Lifestyle
+	else vertical 
+	end as new_vertical, 
+cat.categ_lvl2_name,
+n.user_slctd_id, 
+n.account_manager, 
+n.seller_id, 
+b.partner,
+c.seller_vertical,
+sum(n.gmv_plan_usd) as gmv,
+sum(n.quantity) as BI
+from p_eupricing_t.uk_new_sellers_kpis n
+inner join dw_checkout_trans ck on n.item_id = ck.item_id and ck.transaction_id = n.transaction_id
+INNER JOIN ( select meta_categ_id, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl4_id, SAP_CATEGORY_ID, categ_lvl3_name, categ_lvl3_id,LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS group by 1,2,3,4,5,6,7,8,9,10)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID AND CAT.SITE_ID = 3 AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+left join p_eupricing_t.uk_new_sellers_partner b on n.seller_id = b.seller_id
+left join (select cal_dt, age_for_week_id, retail_year, retail_week from dw_cal_dt group by 1,2,3,4) cal ON CAL.CAL_DT = CK.CREATED_DT
+left join p_eupricing_t.uk_new_sellers c on n.seller_id = c.seller_id
+where n.retail_year in (2021,2022)
+group by 1,2,3,4,5,6,7,8,9,10,11,12);
+
+-- ==================================================adding Luxury vertical (breaking out from Lifestyle)==================================================
+
+drop table if exists p_macheung_t.d2c_sum_vertical_luxury;
+create table p_macheung_t.d2c_sum_vertical_luxury
+as(
+
+-- prior to 2022 Q3
+ (select 
+ n.ACQ_Tag as tag,
+ n.retail_year,
+ n.retail_week,
+  case when meta_categ_id in (281) or categ_lvl3_id in (169291) THEN 'Luxury' -- move jewellery and women's handbags to Lifestyle
+	else n.vertical 
+	end as vertical, 
+	n.seller_id, 
+sum(n.gmv_plan_usd) as seller_iGMV
+
+from p_eupricing_t.uk_new_sellers_kpis n
+inner join dw_checkout_trans ck on n.item_id = ck.item_id and ck.transaction_id = n.transaction_id
+INNER JOIN ( select meta_categ_id, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl4_id, SAP_CATEGORY_ID, categ_lvl3_name, categ_lvl3_id,LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS group by 1,2,3,4,5,6,7,8,9,10)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID AND CAT.SITE_ID = 3 AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+left join p_eupricing_t.uk_new_sellers_partner b on n.seller_id = b.seller_id
+left join (select cal_dt, age_for_week_id, retail_year, retail_week from dw_cal_dt group by 1,2,3,4) cal ON CAL.CAL_DT = CK.CREATED_DT
+left join p_eupricing_t.uk_new_sellers c on n.seller_id = c.seller_id
+where cal.cal_dt <= '2022-07-02' -- end of Q2
+group by 1,2,3,4,5)
+	
+	UNION ALL
+
+(select a.tag, a.retail_year,	a.retail_week,  a.vertical, seller_id, sum(a.igmv) as seller_iGMV from (
+  select a.tag, a.retail_year,	a.retail_week, a.seller_id, a.vertical, case when (a.gmv_20-a.gmv_19)<0 then 0 else (a.gmv_20-a.gmv_19) end as igmv
+  from 
+  (select a.retail_year,	a.retail_week, a.vertical, a.seller_id,	a.tag, a.gmv_20, case when b.gmv_19 is null then 0 else b.gmv_19 end as gmv_19
+    from 
+	-- get this year GMV
+  	(select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id, case when meta_categ_id in (281) or categ_lvl3_id in (169291) THEN 'Luxury' -- move jewellery and women's handbags to Lifestyle
+	else a.vertical 
+	end as vertical,a.seller_id,	ACQ_TAG as tag,	sum(a.GMV_PLAN_USD) as gmv_20  
+	from p_eupricing_t.uk_new_sellers_kpis as a
+		-- add back cat 4 ID 
+	inner join dw_checkout_trans ck on a.item_id = ck.item_id and ck.transaction_id = a.transaction_id
+	INNER JOIN ( select meta_categ_id, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl4_id, SAP_CATEGORY_ID, categ_lvl3_name, categ_lvl3_id,LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS group by 1,2,3,4,5,6,7,8,9,10)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID AND CAT.SITE_ID = 3 AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+  	join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  	group by 1,2,3,4,5,6)a 
+	
+	-- get prior year GMV
+	left join (select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id,	case when meta_categ_id in (281) or categ_lvl3_id in (169291) THEN 'Luxury' -- move jewellery and women's handbags to Lifestyle
+	else a.vertical 
+	end as vertical,a.seller_id,	'Direct' as tag,	sum(a.GMV_PLAN_USD) as gmv_19  
+	from p_eupricing_t.uk_gmv as a
+		-- add back cat 4 ID 
+	inner join dw_checkout_trans ck on a.item_id = ck.item_id and ck.transaction_id = a.transaction_id
+	INNER JOIN ( select meta_categ_id, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl4_id, SAP_CATEGORY_ID, categ_lvl3_name, categ_lvl3_id,LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS group by 1,2,3,4,5,6,7,8,9,10)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID AND CAT.SITE_ID = 3 AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+	join p_eupricing_t.uk_new_sellers as b on a.seller_id=b.seller_id
+  	join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+ 	 where age_for_rtl_week_id<=-1
+  		group by 1,2,3,4,5,6)b   
+			on a.age_for_rtl_week_id-52 = b.age_for_rtl_week_id 
+			and a.seller_id=b.seller_id and b.retail_year is not null -- 52 week offset (reseller uses 52*2, 104 weeks) 
+  			and a.vertical = b.vertical
+	group by 1,2,3,4,5,6,7
+  	)a 
+  where 1=1
+  group by 1,2,3,4,5,6)a
+  where retail_year = 2022 
+  and retail_week >= 27 -- change to 27 in the future
+  group by 1,2,3,4,5)
+  );
+
+
+
+--======================================================================================================== NEW SELLER REPORT: D2C iGMV CODE =====================================================================================================================================
+
+--=================== start of code for new seller report (get D2C iGMV by vertical)======================================
+
+drop table if exists p_macheung_t.d2c_sum_vertical;
+create table p_macheung_t.d2c_sum_vertical
+as(
+ 
+-- prior to 2022 Q3
+(select a.ACQ_tag as tag, a.retail_year,	a.retail_week,  a.vertical, seller_id, sum(gmv_plan_usd) as seller_iGMV
+from p_eupricing_t.uk_new_sellers_kpis a
+where retail_year < 2022 or (retail_year = 2022 and retail_week <= 26)
+group by 1,2,3,4,5
+)
+
+UNION ALL
+-- 2022 Q3 Forward
+(select a.tag, a.retail_year,	a.retail_week,  a.vertical, seller_id, sum(a.igmv) as seller_iGMV from (
+  select a.tag, a.retail_year,	a.retail_week, a.seller_id, a.vertical, case when (a.gmv_20-a.gmv_19)<0 then 0 else (a.gmv_20-a.gmv_19) end as igmv
+  from 
+  (select a.retail_year,	a.retail_week, a.vertical, a.seller_id,	a.tag, a.gmv_20, case when b.gmv_19 is null then 0 else b.gmv_19 end as gmv_19
+    from 
+	-- get this year GMV
+  	(select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id,	 a.vertical,a.seller_id,	ACQ_TAG as tag,	sum(GMV_PLAN_USD) as gmv_20  from p_eupricing_t.uk_new_sellers_kpis as a
+  	join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+  	group by 1,2,3,4,5,6)a 
+	
+	-- get prior year GMV
+	left join (select a.retail_year,	a.retail_week, cal.age_for_rtl_week_id,	a.vertical,a.seller_id,	'Direct' as tag,	sum(GMV_PLAN_USD) as gmv_19  from p_eupricing_t.uk_gmv as a
+	join p_eupricing_t.uk_new_sellers as b on a.seller_id=b.seller_id
+  	join (select retail_year, retail_week,age_for_rtl_week_id from DW_CAL_DT   where age_for_rtl_week_id<=-1 group by 1,2,3) as cal on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+ 	 where age_for_rtl_week_id<=-1
+  		group by 1,2,3,4,5,6)b   
+			on a.age_for_rtl_week_id-52 = b.age_for_rtl_week_id 
+			and a.seller_id=b.seller_id and b.retail_year is not null -- 52 week offset (reseller uses 52*2, 104 weeks) 
+  			and a.vertical = b.vertical
+	group by 1,2,3,4,5,6,7
+  	)a 
+  where 1=1
+  group by 1,2,3,4,5,6)a
+  where retail_year = 2022
+  and retail_week >= 27
+  group by 1,2,3,4,5)
+  
+  );
+
+
+-- ===================D2C with adjustment ============================================================================
+
+drop table if exists p_macheung_t.d2c_iGMV_adj; 
+create table p_macheung_t.d2c_iGMV_adj as(
+-- BEFORE 2022 Q3
+(select vertical, retail_week, sum(GMV_PLAN_USD) as iGMV
+	from p_eupricing_t.uk_new_sellers_kpis
+	where retail_year = 2022
+	and retail_week <= 26
+	group by 1,2)
+
+UNION ALL 
+
+-- Q3 forward
+(
+select vertical, retail_week, iGMV/week_iGMV_total*correct_iGMV_total as iGMV from(
+select vertical, retail_week, iGMV, correct_iGMV_total, sum(iGMV) over (partition by retail_week) as week_iGMV_total
+from(
+select a.retail_week, 
+case when vertical in ('Electronics','Media') then 'Electronics'
+	when vertical in ('Parts & Accessories','Business & Industrial') then 'Parts & Accessories'
+	else vertical 
+	end as vertical,
+correct_iGMV_total,
+sum(iGMV) as iGMV
+from (select vertical, retail_week, sum(seller_iGMV) as iGMV 
+	from p_macheung_t.d2c_sum_vertical 
+	where retail_year = 2022
+	group by 1,2) a
+left join (select retail_year, retail_week, sum(iGMV) as correct_iGMV_total 
+	from 
+	p_eupricing_t.igmv_acquisition	where retail_year = 2022 and tag = 'Direct' group by 1,2) b on a.retail_week = b.retail_week 
+group by 1,2,3)
+)
+where retail_week >= 27)
+);
+
+
+-- summary code used for new seller summary report and d2c report 
+
+drop table if exists p_macheung_t.d2c_smb_gmv; 
+create table p_macheung_t.d2c_smb_gmv as(
+select 'TY' as retail_year, retail_week,
+case when retail_week <= 13 then 'Q1'
+	when retail_week <= 26 then 'Q2'
+	when retail_week <= 39 then 'Q3'
+	else 'Q4'
+end as QTR,
+'Direct' as acq_tag, 
+case when vertical = 'Business & Industrial' then 'Parts & Accessories' 
+	when vertical in ('Electronics','Media') then 'Electronics'
+	else vertical 
+end as vertical, 
+sum(iGMV) as D2C_SMB_GMV
+			from p_macheung_t.d2c_iGMV_adj 
+			group by 1,2,3,4,5);
+			
+
+	
