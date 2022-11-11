@@ -1,0 +1,361 @@
+--SELect * FROM P_WAJ_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR  >=2021 and RETAIL_WEEK =35 AND ITEM_COND IN('New','Used') 
+Drop table if exists P_ICHAN_T.FITMENT_LEAD_POOL_GMV;
+ CREATE TABLE P_ICHAN_T.FITMENT_LEAD_POOL_GMV as 
+(
+SELECT 
+cal.retail_year,
+cal.retail_week,
+CK.SELLER_ID,
+A.USER_SLCTD_ID AS Seller_name ,
+CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New'
+	 WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurb'
+	 WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used'
+	 ELSE 'UNKNOWN' END AS ITEM_CONDITION,
+CATEG_LVL2_name, 
+categ_lvl3_name,
+case when categ_lvl2_id in (20710, 69197) then 'Electronics'
+when categ_lvl2_id in (11778, 31414,31769, 67588, 67659, 180959, 183497) then 'lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486) then 'Home & Garden'
+else bsns_vrtcl_name end as new_vertical, 
+CASE WHEN HIST.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END SEGMENT,
+SUM(CK.ITEM_PRICE*QUANTITY*LPR.CURNCY_PLAN_RATE) AS Total_GMV, 
+SUM(QUANTITY) AS BI
+from DW_CHECKOUT_TRANS_V2 AS CK 
+inner  JOIN  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR  ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL  ON CAL.CAL_DT = CK.CREATED_DT  and retail_year >= 2020 and  AGE_FOR_RTL_WEEK_ID  >=(-52) 
+AND CK.CREATED_DT >= '2020-01-01'
+AND CK.AUCT_END_DT >= '2020-01-01'
+INNER JOIN (select LEAF_CATEG_ID, meta_categ_id, meta_categ_name, CATEG_LVL2_ID, CATEG_LVL2_name, categ_lvl3_name, categ_lvl3_id, categ_lvl4_name, categ_lvl4_id, bsns_vrtcl_name
+			from DW_CATEGORY_GROUPINGS CAT where CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) and site_id = 3 
+			-- and  categ_lvl2_id in(6030,14770) 
+			group by LEAF_CATEG_ID, meta_categ_id, meta_categ_name, CATEG_LVL2_ID, CATEG_LVL2_name, categ_lvl3_name, categ_lvl3_id, categ_lvl4_name, categ_lvl4_id, bsns_vrtcl_name) cat
+ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+LEFT  JOIN DW_USEGM_HIST HIST 
+ON HIST.USER_ID=ck.Seller_ID 
+AND HIST.USEGM_GRP_ID  = 48 
+AND CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+left join DW_USERS A ON A.USER_ID=CK.SELLER_ID
+    LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+INNER JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_NEW WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   ON CK.SITE_ID=F.SITE_ID AND CK.LEAF_CATEG_ID=F.LEAF_CATEG_ID 
+WHERE 1=1
+and CNDTN_ROLLUP_ID IN(1,3)
+AND CK.CK_WACKO_YN  =  'N'
+AND CK.SALE_TYPE NOT IN (10,15)
+AND CK.SLR_CNTRY_ID = 3
+and ck.byr_cntry_id =3
+and HIST.USEGM_ID = 206
+and bsns_vrtcl_name = 'Parts & Accessories'
+AND FMT_ENABLED = 'Y'
+
+GROUP BY
+1,2,3,4,5,6,7,8,9
+ );
+	
+	--select * from  P_ICHAN_T.FITMENT_LEAD_POOL_GMV  where retail_year =2021
+--	select count(* ) from  P_ICHAN_T.FITMENT_LEAD_POOL_GMV  where retail_year =2021
+-- SET UP on W37 2020
+-- DROP TABLE if exists P_ICHAN_T.FITMENT_LEAD_POOL_MARCH20;
+-- CREATE TABLE P_ICHAN_T.FITMENT_LEAD_POOL_MARCH20 AS 
+-- (SELect A.* FROM (
+-- SELect A.*, RANK()OVER(PARTITION BY ITEM_COND ORDER BY FA_GAP DESC)AS RK FROM(
+-- select 
+-- Slr_id,
+-- a.USER_SLCTD_ID,
+-- item_cond,
+-- count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end)) FA_LL,
+-- (count(distinct item_id)) LL,
+-- (count(distinct item_id)) -count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end))  FA_gap
+-- from  dw_users ft
+-- INNER JOIN ( select a.* from  P_WAJ_T.FITMENT_CAPTURE_2018 a  
+-- 						inner join  ACCESS_VIEWS.DW_CAL_DT b 
+-- 						on a.Retail_year=b.Retail_Year and a.Retail_Week=b.retail_Week and  AGE_FOR_RTL_WEEK_ID  IN(-1) 
+-- 						and  categ_lvl2_name in(select distinct categ_lvl2_name from P_ICHAN_T.FITMENT_LEAD_POOL_GMV) 
+-- 				) a ON FT.user_id=a.slr_id
+-- where item_cond in ('New')
+-- 				group by 1,2,3
+-- 				)A)A WHERE RK<=100); 
+ --select * from P_ICHAN_T.FITMENT_LEAD_POOL_REPORT where retail_year =2021 and retail_week =31;
+						
+DROP TABLE if exists P_ICHAN_T.FITMENT_LEAD_POOL_REPORT;
+CREATE TABLE P_ICHAN_T.FITMENT_LEAD_POOL_REPORT AS 
+(
+select 
+A.RETAIL_YEAR
+, A.RETAIL_WEEK
+, A.CATEG_LVL2_NAME
+, A.CATEG_LVL3_NAME
+, A.SLR_ID
+, A.USER_SLCTD_ID
+, A.ITEM_COND
+, B.ITEM_COND AS CONDITION_RANK
+, B.RK AS RK
+, count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end)) FA_LL
+, (count(distinct item_id)) LL
+, (count(distinct item_id)) -count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end))  FA_gap
+from  (SELect * FROM P_InventoryPlanning_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR  >=2022 AND ITEM_COND IN('New','Used') AND  categ_lvl2_name in(select distinct categ_lvl2_name from P_ICHAN_T.FITMENT_LEAD_POOL_GMV) )A
+INNER JOIN (SELect DISTINCT SLR_ID, ITEM_COND, RK FROM P_ICHAN_T.FITMENT_LEAD_POOL_FEB21 WHERE RK<=1000)B ON A.SLR_ID = B.SLR_ID
+
+GROUP BY 
+1,2,3,4,5,6,7,8,9
+);
+
+
+
+--CONVERT TO DELTA  P_ICHAN_T.FITMENT_LEAD_POOL_FEB21;
+--DELETE FROM   P_ICHAN_T.FITMENT_LEAD_POOL_FEB21 where slr_id in ( 15407756,31893927,124112573,2207086604,11053000,18648806,74029760,1078896735,32509651,127409467);
+--SELect DISTINCT SLR_ID, ITEM_COND, RK FROM P_ICHAN_T.FITMENT_LEAD_POOL_FEB21 where slr_id in ( 15407756,31893927,124112573,2207086604,11053000,18648806,74029760,1078896735,32509651,127409467);
+--select * from P_ICHAN_T.FITMENT_LEAD_POOL_REPORT   where slr_id in ( 15407756,31893927,124112573,2207086604,11053000,18648806,74029760,1078896735,32509651,127409467);
+
+--SELect * FROM P_WAJ_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR  >=2021 and RETAIL_WEEK =7 AND ITEM_COND IN('New','Used') 
+--select user_slctd_id, count(*) from P_ICHAN_T.FITMENT_LEAD_POOL_REPORT group by 1 order by 2 desc
+--select count(*) FROM P_ICHAN_T.FITMENT_LEAD_POOL_REPORT where retail_year>=28
+-- P_InventoryPlanning_T.FITMENT_CAPTURE_2018 
+
+
+DROP TABLE if exists P_ICHAN_T.FITMENT_motorcycles;
+CREATE TABLE P_ICHAN_T.FITMENT_motorcycles AS 
+(
+select 
+A.RETAIL_YEAR
+, A.RETAIL_WEEK
+, A.CATEG_LVL2_NAME
+, A.CATEG_LVL3_NAME
+, A.SLR_ID
+, A.USER_SLCTD_ID
+, A.ITEM_COND
+, count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end)) FA_LL
+, (count(distinct item_id)) LL
+, (count(distinct item_id)) -count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end))  FA_gap
+from  (SELect * FROM P_InventoryPlanning_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR  >=2022 AND ITEM_COND IN('New','Used') 
+AND  categ_lvl2_name in('Motorcycle Parts','Motorcycle Tuning & Styling','Motorcycle Accessories') )A
+--INNER JOIN (SELect DISTINCT SLR_ID, ITEM_COND, RK FROM P_ICHAN_T.FITMENT_LEAD_POOL_FEB21)B ON A.SLR_ID = B.SLR_ID
+
+GROUP BY 
+1,2,3,4,5,6,7
+);
+
+
+DROP TABLE IF EXISTS  P_ICHAN_T.FITMENT_motorcycles_output;
+CREATE TABLE P_ICHAN_T.FITMENT_motorcycles_output AS 
+(
+select retail_year,
+retail_week,
+categ_lvl2_name,
+slr_id,
+USER_SLCTD_ID,
+item_cond,
+sum(fa_LL) FA_LL ,
+sum(ll) ll,
+sum(fa_gap) FA_gap
+from  P_ICHAN_T.FITMENT_motorcycles 
+where retail_WEEK in (select distinct retail_week from ACCESS_VIEWS.DW_CAL_DT where  AGE_FOR_RTL_WEEK_ID  =-1) 
+group by 1,2,3,4,5,6);
+
+--SELect count(distinct   SLR_ID) FROM P_ICHAN_T.FITMENT_LEAD_POOL_MARCH20
+--select * from P_ICHAN_T.FITMENT_LEAD_POOL_REPORT  where retail_year =2021 and retail_week =4
+--select count(distinct slr_id) from P_ICHAN_T.FITMENT_LEAD_POOL_REPORT
+-- select count(*) from P_ICHAN_T.FITMENT_LEAD_POOL_REPORT 
+--select * from P_ICHAN_T.FITMENT_LEAD_POOL_GMV_OUTPUT  where retail_year =2021
+
+-- SELect max( RK ) FROM P_ICHAN_T.FITMENT_LEAD_POOL_FEB21
+DROP TABLE if exists P_ICHAN_T.FITMENT_LEAD_POOL_GMV_OUTPUT;
+CREATE TABLE P_ICHAN_T.FITMENT_LEAD_POOL_GMV_OUTPUT AS 
+(
+SELect * FROM P_ICHAN_T.FITMENT_LEAD_POOL_GMV A
+INNER JOIN (SELect DISTINCT SLR_ID FROM P_ICHAN_T.FITMENT_LEAD_POOL_REPORT) B ON A.SELLER_ID = B.SLR_ID
+);
+
+
+DROP TABLE if exists P_ICHAN_T.FITMENT_MITIGATION_TW;
+CREATE TABLE P_ICHAN_T.FITMENT_MITIGATION_TW AS 
+(
+select 
+Slr_id,
+a.USER_SLCTD_ID,
+categ_lvl2_name,
+item_cond,
+(count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end))) FA_LL,
+(count(distinct(item_id))) LL,
+(count(distinct item_id)) -count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end))  FA_gap
+from  dw_users ft
+INNER JOIN ( select a.* from  (SELect * FROM P_InventoryPlanning_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR >= 2021 AND ITEM_COND IN('New','Used') AND  categ_lvl2_name in(select distinct categ_lvl2_name from P_ICHAN_T.FITMENT_LEAD_POOL_GMV) ) a 
+						inner join  ACCESS_VIEWS.DW_CAL_DT b 
+						on a.Retail_year=b.Retail_Year and a.Retail_Week=b.retail_Week and AGE_FOR_RTL_WEEK_ID  IN(-1) 
+
+				) a ON FT.user_id=a.slr_id
+
+				group by 1,2,3,4
+				); 
+	
+--	select  count(*) from P_ICHAN_T.FITMENT_MITIGATION_TW;
+				
+				
+DROP TABLE if exists P_ICHAN_T.FITMENT_MITIGATION_LW;--select * from   P_ICHAN_T.FITMENT_MITIGATION_LW limit 100 
+CREATE TABLE P_ICHAN_T.FITMENT_MITIGATION_LW AS 
+(
+select 
+Slr_id,
+a.USER_SLCTD_ID,
+categ_lvl2_name,
+item_cond,
+(count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end))) FA_LL,
+(count(distinct item_id)) LL,
+(count(distinct item_id)) -count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end))  FA_gap
+from  dw_users ft
+INNER JOIN ( select a.* from  (SELect * FROM P_InventoryPlanning_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR >= 2022 AND ITEM_COND IN('New','Used') AND  categ_lvl2_name in(select distinct categ_lvl2_name from P_ICHAN_T.FITMENT_LEAD_POOL_GMV) ) a 
+						inner join  ACCESS_VIEWS.DW_CAL_DT b 
+						on a.Retail_year=b.Retail_Year and a.Retail_Week=b.retail_Week and  AGE_FOR_RTL_WEEK_ID  IN(-2) 
+				) a ON FT.user_id=a.slr_id
+
+				group by 1,2,3,4
+				); 
+	
+	--SELect * FROM P_InventoryPlanning_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR >= 2022 AND ITEM_COND IN('New','Used') AND  categ_lvl2_name in(select distinct categ_lvl2_name from P_ICHAN_T.FITMENT_LEAD_POOL_GMV) and retail_week =10
+-- select *from P_ICHAN_T.FITMENT_MITIGATION_COMBINED AS 
+--SELECT COUNT (DISTINCT SLR_ID) FROM  P_ICHAN_T.FITMENT_MITIGATION_COMBINED -- 28158
+
+DROP TABLE if exists P_ICHAN_T.FITMENT_MITIGATION_COMBINED;
+CREATE TABLE P_ICHAN_T.FITMENT_MITIGATION_COMBINED AS 
+(
+SELect 
+A.SLR_ID, A.USER_SLCTD_ID, A.CATEG_LVL2_NAME, A.ITEM_COND
+, A.FA_LL AS FA_LL_TW, A.LL AS LL_TW, A.FA_GAP AS FA_GAP_TW
+, B.FA_LL AS FA_LL_LW, B.LL AS LL_LW, B.FA_GAP AS FA_GAP_LW
+, ((B.FA_LL - A.FA_LL)) AS FA_LL_CHANGE
+, ((B.LL - A.LL)) AS LL_CHANGE
+, ((B.FA_GAP - A.FA_GAP)) AS FA_GAP_CHANGE
+FROM
+P_ICHAN_T.FITMENT_MITIGATION_TW A
+LEFT JOIN P_ICHAN_T.FITMENT_MITIGATION_LW B ON A.SLR_ID = B.SLR_ID AND A.CATEG_LVL2_NAME = B.CATEG_LVL2_NAME AND A.ITEM_COND = B.ITEM_COND
+);
+-- select * from P_ICHAN_T.FITMENT_MITIGATION_COMBINEd limit 100;
+
+-- green parts sellers
+						
+DROP TABLE if exists P_ICHAN_T.FITMENT_gp;
+CREATE TABLE P_ICHAN_T.FITMENT_gp AS 
+(
+select 
+A.RETAIL_YEAR
+, A.RETAIL_WEEK
+, A.CATEG_LVL2_NAME
+, A.CATEG_LVL3_NAME
+, A.SLR_ID
+, A.USER_SLCTD_ID
+, A.ITEM_COND
+--, B.ITEM_COND AS CONDITION_RANK
+--, B.RK AS RK
+, count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end)) FA_LL
+, (count(distinct item_id)) LL
+, (count(distinct item_id)) -count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end))  FA_gap
+from  (SELect * FROM P_InventoryPlanning_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR   in (select distinct retail_year from ACCESS_VIEWS.DW_CAL_DT where  age_for_rtl_week_id =-1)  AND ITEM_COND IN('Used') AND  categ_lvl2_id in(6030) )A
+INNER JOIN (SELect DISTINCT seller_id FROM P_ICHAN_T.recyclers_upload )B ON A.SLR_ID = B.seller_id
+
+GROUP BY 
+1,2,3,4,5,6,7
+);
+--Select * from  P_ICHAN_T.FITMENT_gp where retail_year=2021 and retail_week >=35;
+-- (SELect * FROM P_WAJ_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR  =2022 AND ITEM_COND IN('Used') AND  categ_lvl2_id in(6030) 
+--SELect * FROM P_InventoryPlanning_T.FITMENT_CAPTURE_2018 and retail_week =35 and CATEG_LVL3_ID	= 96382 ;
+
+-- moto tuning and styling
+					
+DROP TABLE if exists P_ICHAN_T.Moto_tuning;
+CREATE TABLE P_ICHAN_T.Moto_tuning AS 
+(
+select 
+A.RETAIL_YEAR
+, A.RETAIL_WEEK
+, A.CATEG_LVL2_NAME
+, A.CATEG_LVL3_NAME
+--, A.SLR_ID
+--, A.USER_SLCTD_ID
+--, A.ITEM_COND
+--, B.ITEM_COND AS CONDITION_RANK
+--, B.RK AS RK
+, count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end)) FA_LL
+, (count(distinct item_id)) LL
+, (count(distinct item_id)) -count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end))  FA_gap
+from  (SELect * FROM P_InventoryPlanning_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR   in (select distinct retail_year from ACCESS_VIEWS.DW_CAL_DT where  age_for_rtl_week_id =-1) 
+ AND  CATEG_LVL3_ID	= 96382  )A
+GROUP BY 
+1,2,3,4
+);
+
+--select * from P_ICHAN_T.Moto_tuning; 
+
+--oil and paint fitment
+--SELect * FROM P_WAJ_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR  =2022 AND  categ_lvl3_id in(179421 , 179496)
+
+-- collins query
+
+DROP TABLE IF EXISTS P_InventoryPlanning_T.Fitment_LL_UK_user; -- SELECT * FROM P_InventoryPlanning_T.Fitment_LL_UK_user where  USER_ID =270271228 ;
+CREATE  TABLE P_InventoryPlanning_T.Fitment_LL_UK_user 
+      SELECT
+	  USER_ID,
+      ct_mtrcycle,
+      DomesticCBT,
+      SELLER_SEGMENT,
+      FA,
+                ITEM_COND,
+      SUM(LL_f)/7 AS LL
+      FROM (
+            SELECT
+                I.SLR_ID AS USER_ID,
+                I.AUCT_START_DT,
+                I.AUCT_END_DT,
+				CASE WHEN COND.CNDTN_ROLLUP_ID =  1 THEN 'New'
+				WHEN COND.CNDTN_ROLLUP_ID = 2 THEN 'Refurb'
+				WHEN COND.CNDTN_ROLLUP_ID = 3 THEN 'Used'
+				else COND.CNDTN_ROLLUP_ID END AS ITEM_COND,
+            CASE WHEN(CAST (CASE WHEN CAST (I.flags10 as INT) < 0  THEN
+CAST (I.flags10 as INT) + 2147483648 
+ELSE CAST (I.flags10 AS INT  )  END AS   INT  ) & 64 )  >= 1 THEN 'Y' ELSE 'N' END 
+AS FA,
+                ct_mtrcycle,
+                CASE WHEN U.USER_DSGNTN_ID = 2 THEN 'B2C' ELSE 'C2C' END AS SELLER_SEGMENT,
+                CASE WHEN I.SLR_CNTRY_ID = 3 AND I.item_site_id = 3  THEN 'Domestic'
+                     WHEN I.SLR_CNTRY_ID <> 3 AND I.item_site_id = 3 THEN 'Import Active'
+                     WHEN I.SLR_CNTRY_ID = 3 AND I.item_site_id <> 3 THEN 'Export Active' END AS DomesticCBT,
+                COUNT(DISTINCT I.ITEM_ID) AS LL_f
+            FROM DW_LSTG_ITEM I
+                                           LEFT JOIN LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = I.AUCT_END_DT AND COND.ITEM_ID = I.ITEM_ID
+                INNER JOIN      p_csi_tbs_t.SH_UKDE_FITMENT_CATEG_new  AS F ON I.ITEM_SITE_ID = F.SITE_ID AND I.LEAF_CATEG_ID=F.LEAF_CATEG_ID AND fmt_enabled = 'Y'
+--                 INNER JOIN DW_LSTG_ITEM_COLD AS COLD ON I.ITEM_ID = COLD.ITEM_ID AND I.AUCT_END_DT = COLD.AUCT_END_DT
+                                          AND I.AUCT_END_DT >= (SELECT RTL_WEEK_BEG_DT FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID = -1 GROUP BY 1)
+                INNER JOIN DW_USERS U ON U.USER_ID = I.SLR_ID
+            WHERE I.AUCT_END_DT >= (SELECT RTL_WEEK_BEG_DT FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID = -1 GROUP BY 1)
+              AND I.AUCT_TYPE_CODE NOT IN (10,12,15)
+              AND I.wacko_yn = 'N'
+              AND (I.slr_cntry_id = 3 or I.item_site_id = 3)
+            GROUP BY 1,2,3,4,5,6,7,8
+            ) A
+      INNER JOIN DW_CAL_DT CAL ON A.AUCT_START_DT < CAL.CAL_DT AND A.AUCT_END_DT >= CAL.CAL_DT AND AGE_FOR_RTL_WEEK_ID = -1
+	  where DomesticCBT ='Domestic'
+	  and SELLER_SEGMENT ='B2C'
+	  AND ct_mtrcycle IN (	'Mtrcycle','C&T') 
+      GROUP BY 1,2,3,4,5,6;
+	  	 -- select * from  P_InventoryPlanning_T.Fitment_LL_UK_user  ORDER by 1
+	  --select fa, sum(ll) from  P_InventoryPlanning_T.Fitment_LL_UK_user  group by 1
+
+DROP TABLE IF EXISTS   P_InventoryPlanning_T.Fitment_LL_UK_MOTO_REPORT ; 
+CREATE TABLE  P_InventoryPlanning_T.Fitment_LL_UK_MOTO_REPORT AS 
+	SELECT 
+	USER_ID,
+	USER_SLCTD_ID,ct_mtrcycle,ITEM_COND,
+	SUM(ENABLED_LL )  ENABLED_LL,
+	SUM( ADOPTED_LL)  ADOPTED_LL,
+	SUM(ADOPTED_LL/ENABLED_LL) FA_AOPTION
+FROM (
+	  select A.USER_ID, 
+	  user_slctd_id,
+	  ct_mtrcycle,
+	  ITEM_COND,
+	  SUM(case when FA ='Y' THEN LL ELSE 0  END ) AS ADOPTED_LL,
+	   SUM( LL  )  AS ENABLED_LL
+	   FROM  P_InventoryPlanning_T.Fitment_LL_UK_user  A --- select * from  P_InventoryPlanning_T.Fitment_LL_UK_user  limit 100;
+	   LEFT JOIN  DW_USERs U ON U.USER_ID= A.USER_ID 
+	   GROUP BY 1,2,3,4
+	   ) GROUP BY 1,2 ,3,4; 
+----select * from p_InventoryPlanning_T.Fitment_LL_UK_MOTO_REPORT  where  USER_ID in ( 283609349 ,270271228 ) ;  
