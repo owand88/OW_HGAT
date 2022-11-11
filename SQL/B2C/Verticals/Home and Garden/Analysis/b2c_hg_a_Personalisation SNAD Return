@@ -1,0 +1,371 @@
+-- RERUN ON 01JUN2022
+-- snad vs remorse return
+drop table if exists p_macheung_t.personalisation_refund_table;
+CREATE TABLE  p_macheung_t.personalisation_refund_table  AS
+(SELECT 
+retail_year,
+retail_week,
+ck.seller_id
+,usr.user_slctd_id
+,cat.vertical
+,cat.meta_categ_name
+,cat.meta_categ_id
+,cat.categ_lvl2_name
+,cat.categ_lvl2_id
+,cat.categ_lvl3_name
+,cat.categ_lvl3_id
+,cat.categ_lvl4_name
+,cat.categ_lvl4_id
+,cat.leaf_categ_id
+,cat.leaf_categ_name
+,per.item_id
+,lstg.auct_title
+,lstg.item_price,
+ck.TRANSACTION_ID,
+ck.auct_end_dt,
+CASE WHEN CK.REFUND_AMT > 0 THEN 1 ELSE 0 END AS REFUND,
+sum(cast(ck.quantity as decimal(18,2))* cast(ck.item_price as decimal(18,2))*cast(ssa.curncy_plan_rate as decimal(18,2))) as GMV,
+SUM(QUANTITY) AS SI
+
+-- BONNIE PERSONALISATION
+from (
+	--All transactions of personalised items listed on the UK site from 2021-10-17
+	select
+	a.item_id
+	,a.oms_line_item_id
+	,a.trans_id
+	,b.coms_order_id
+	,a.src_cre_dt
+	from access_views.dw_oms_line_item a
+	inner join access_views.dw_oms_order_tags b
+	on a.oms_line_item_id = b.coms_line_item_id and a.oms_order_id = b.coms_order_id 
+	where 
+	b.coms_line_item_id is not null 
+	and b.tag_type = 'EBAY'--Specify certain style/type of orders
+	and b.tag_value = 'BX_ITEM_F_CUSTOMIZED'
+	and a.src_cre_dt >= '2021-10-17'--Dataset dw_oms_order_tags goes online on 2021-10-13, choose 17Oct as the first day of 2021 Week42
+	and a.item_site_id=3--Item's listing site ID
+	group by 1,2,3,4,5
+) per
+
+inner join access_views.dw_checkout_trans ck
+on per.trans_id=ck.transaction_id and per.item_id=ck.item_id
+
+inner join (select curncy_plan_rate,curncy_id from access_views.ssa_curncy_plan_rate_dim group by 1,2)as ssa 																								
+on ck.lstg_curncy_id = ssa.curncy_id     
+
+inner join (
+	select item_id
+	,auct_title
+	,coalesce(start_price_lstg_curncy_amt,bin_price_lstg_curncy_amt,rsrv_price_lstg_curncy_amt) as item_price
+	,case when cast(item_price as decimal(18,2)) > 300.00 then 'Over £300' 
+		  when cast(item_price as decimal(18,2)) >= 100.00 then '£100 - £300'
+		  when cast(item_price as decimal(18,2)) >= 50.00 then '£50 - £100'
+		  when cast(item_price as decimal(18,2)) >= 20.00 then '£20 - £50'
+		  when cast(item_price as decimal(18,2)) >= 10.00 then '£10 - £20'
+		  when cast(item_price as decimal(18,2)) >= 5.00 then '£5 - £10'
+		  when cast(item_price as decimal(18,2)) between 0.01 and 4.99 then 'Under £5'
+		  else 'N/A' end as item_price_bucket
+	from prs_restricted_v.slng_lstg_super_fact_ext) lstg
+on ck.item_id=lstg.item_id
+
+inner join (
+	select meta_categ_name,meta_categ_id,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,leaf_categ_name,site_id
+	,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+		  when meta_categ_id in (26395) then 'Lifestyle'
+		  when categ_lvl3_id in (260325) then 'Lifestyle'
+		  when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+		  when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+		  when categ_lvl3_id in (3244) then 'Parts & Accessories'
+		  when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+		  when categ_lvl2_id in (46576) then 'Parts & Accessories'
+		  else bsns_vrtcl_name end as vertical 																
+	from access_views.dw_category_groupings 
+    group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat																
+on ck.leaf_categ_id = cat.leaf_categ_id	and ck.site_id = cat.site_id and cat.site_id = 3	
+
+inner join access_views.dw_cal_dt cal 
+on ck.created_dt=cal.cal_dt 
+AND CAL.RETAIL_YEAR IN (2022) and AGE_FOR_RTL_WEEK_ID <= -1
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5)as hist 																						
+on ck.seller_id=hist.user_id and ck.created_dt between hist.beg_date and hist.end_date	
+		
+inner join access_views.dw_users as usr																			
+on ck.seller_id = usr.user_id	
+
+left join (select distinct seller_id from P_UK_BC_T.personalisation_PT_focus) as PT
+on ck.seller_id=PT.seller_id
+
+where 
+ck.slr_cntry_id = 3 --UK sellers	
+and ck.byr_cntry_id = 3--UK buyers
+and ck.rprtd_wacko_yn = 'N'																										
+and ck.auct_end_dt >= '2018-12-01'	
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21);
+
+
+
+--select * from p_macheung_t.personalisation_refund_table limit 10;
+
+
+drop table if exists p_macheung_t.per_return_join;
+create table p_macheung_t.per_return_join as(
+select a.*, b.final_claim_type_txt from p_macheung_t.personalisation_refund_table a
+left join RSLTN_ALL b on a.item_id = b.item_id and a.TRANSACTION_ID = b.tran_id);
+-- table on  snad, inr refunds
+
+drop table if exists p_macheung_t.per_return_output;
+create table p_macheung_t.per_return_output as(
+select distinct retail_year, 
+retail_week, 
+seller_id, 
+user_slctd_id, 
+meta_categ_name,
+meta_categ_id,
+categ_lvl2_name,
+categ_lvl2_id,
+categ_lvl3_name,
+categ_lvl3_id,
+categ_lvl4_name,
+categ_lvl4_id,
+refund, 
+case when Refund = 1 then final_claim_type_txt
+	when Refund = 1 and final_claim_type_txt IS NULL then 'Other'
+	when Refund = 0 then NULL
+	end as Return_Reason,
+count(distinct TRANSACTION_ID) as no_trans,
+sum(GMV) as GMV,
+sum(SI) as SI
+
+from p_macheung_t.per_return_join 
+where 1=1
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14);
+
+
+select * from p_macheung_t.per_return_output limit 10;
+
+
+-- NON PERSONALISED LISTINGS IN PERSONAILSABLE CATGORIES
+
+
+select * from P_InventoryPlanning_T.personalised_ll limit 10;
+--716 leaf categories with personalisation enabled
+select * from p_akedia_t.customization_categories_exp where site_id=3
+
+
+drop table if exists p_macheung_t.non_per_ll;
+create table p_macheung_t.non_per_ll as(
+select
+-- cal.retail_week
+-- ,cal.retail_year
+lstg.item_id
+,lstg.auct_title
+,lstg.auct_start_dt
+,lstg.auct_end_dt
+,lstg.slr_id
+,u.user_slctd_id
+,coalesce(lstg.start_price_lstg_curncy_amt,lstg.bin_price_lstg_curncy_amt,lstg.rsrv_price_lstg_curncy_amt) as item_price
+,cat.vertical
+,cat.meta_categ_id
+,cat.meta_categ_name
+,cat.categ_lvl2_name
+,cat.categ_lvl2_id
+,cat.categ_lvl3_name
+,cat.categ_lvl3_id
+,cat.leaf_categ_name
+,cat.leaf_categ_id
+
+from prs_restricted_v.slng_lstg_super_fact_ext lstg
+INNER JOIN p_akedia_t.customization_categories_exp exp on lstg.LEAF_CATEG_ID = exp.LEAF_CATEG_ID
+inner join access_views.dw_users u on lstg.slr_id = u.user_id and u.user_dsgntn_id=2--Business sellers	
+
+inner join (
+	select meta_categ_name,meta_categ_id,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,leaf_categ_name,site_id
+	,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+		  when meta_categ_id in (26395) then 'Lifestyle'
+		  when categ_lvl3_id in (260325) then 'Lifestyle'
+		  when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+		  when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+		  when categ_lvl3_id in (3244) then 'Parts & Accessories'
+		  when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+		  when categ_lvl2_id in (46576) then 'Parts & Accessories'
+		  else bsns_vrtcl_name end as vertical 																
+	from access_views.dw_category_groupings 
+    group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id = 3	
+-- remove personalised ll
+left join P_InventoryPlanning_T.personalised_ll ll on lstg.item_id = ll.item_id
+
+-- inner join dw_cal_dt cal on (lstg.auct_start_dt < cal.cal_dt and lstg.auct_end_dt >= cal.cal_dt)
+-- 	and (cal.age_for_rtl_year_id between -2 and 0) and cal.age_for_rtl_week_id <= -1
+
+where lstg.lstg_site_id=3
+and ll.item_id IS NULL
+and exp.site_id=3
+and lstg.auct_end_dt >= '2018-01-01'
+--and cal.week_beg_date>='2021-10-17'--starts tracking from 2021 Wk42 onwards (aligns with OMS data available time)
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16);
+
+
+--REFUND JOIN
+drop table if exists p_macheung_t.nonper_refund_table;
+CREATE TABLE  p_macheung_t.nonper_refund_table  AS
+(SELECT 
+retail_year,
+retail_week,
+ck.seller_id
+,usr.user_slctd_id
+,cat.vertical
+,cat.meta_categ_name
+,cat.meta_categ_id
+,cat.categ_lvl2_name
+,cat.categ_lvl2_id
+,cat.categ_lvl3_name
+,cat.categ_lvl3_id
+,cat.leaf_categ_id
+,cat.leaf_categ_name
+,per.item_id
+,lstg.auct_title
+,lstg.item_price,
+ck.TRANSACTION_ID,
+ck.auct_end_dt,
+CASE WHEN CK.REFUND_AMT > 0 THEN 1 ELSE 0 END AS REFUND,
+sum(cast(ck.quantity as decimal(18,2))* cast(ck.item_price as decimal(18,2))*cast(ssa.curncy_plan_rate as decimal(18,2))) as GMV,
+SUM(QUANTITY) AS SI
+
+from p_macheung_t.non_per_ll per
+
+inner join access_views.dw_checkout_trans ck on per.item_id=ck.item_id
+
+inner join (select curncy_plan_rate,curncy_id from access_views.ssa_curncy_plan_rate_dim group by 1,2)as ssa 																								
+on ck.lstg_curncy_id = ssa.curncy_id     
+
+inner join (
+	select item_id
+	,auct_title
+	,coalesce(start_price_lstg_curncy_amt,bin_price_lstg_curncy_amt,rsrv_price_lstg_curncy_amt) as item_price
+	,case when cast(item_price as decimal(18,2)) > 300.00 then 'Over £300' 
+		  when cast(item_price as decimal(18,2)) >= 100.00 then '£100 - £300'
+		  when cast(item_price as decimal(18,2)) >= 50.00 then '£50 - £100'
+		  when cast(item_price as decimal(18,2)) >= 20.00 then '£20 - £50'
+		  when cast(item_price as decimal(18,2)) >= 10.00 then '£10 - £20'
+		  when cast(item_price as decimal(18,2)) >= 5.00 then '£5 - £10'
+		  when cast(item_price as decimal(18,2)) between 0.01 and 4.99 then 'Under £5'
+		  else 'N/A' end as item_price_bucket
+	from prs_restricted_v.slng_lstg_super_fact_ext) lstg
+on ck.item_id=lstg.item_id
+
+inner join (
+	select meta_categ_name,meta_categ_id,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,leaf_categ_name,site_id
+	,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+		  when meta_categ_id in (26395) then 'Lifestyle'
+		  when categ_lvl3_id in (260325) then 'Lifestyle'
+		  when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+		  when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+		  when categ_lvl3_id in (3244) then 'Parts & Accessories'
+		  when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+		  when categ_lvl2_id in (46576) then 'Parts & Accessories'
+		  else bsns_vrtcl_name end as vertical 																
+	from access_views.dw_category_groupings 
+    group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat																
+on ck.leaf_categ_id = cat.leaf_categ_id	and ck.site_id = cat.site_id and cat.site_id = 3	
+
+inner join access_views.dw_cal_dt cal 
+on ck.created_dt=cal.cal_dt 
+AND CAL.RETAIL_YEAR IN (2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5)as hist 																						
+on ck.seller_id=hist.user_id and ck.created_dt between hist.beg_date and hist.end_date	
+		
+inner join access_views.dw_users as usr																			
+on ck.seller_id = usr.user_id	
+
+left join (select distinct seller_id from P_UK_BC_T.personalisation_PT_focus) as PT
+on ck.seller_id=PT.seller_id
+
+where 
+ck.slr_cntry_id = 3 --UK sellers	
+and ck.byr_cntry_id = 3--UK buyers
+and ck.rprtd_wacko_yn = 'N'																										
+and ck.auct_end_dt >= '2018-12-01'	
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19);
+
+
+
+--select * from p_macheung_t.personalisation_refund_table limit 10;
+
+
+drop table if exists P_InventoryPlanning_T.nonper_return_join;
+create table P_InventoryPlanning_T.nonper_return_join as(
+select a.*, b.final_claim_type_txt from p_macheung_t.nonper_refund_table a
+left join RSLTN_ALL b on a.item_id = b.item_id and a.TRANSACTION_ID = b.tran_id);
+-- table on  snad, inr refunds
+
+drop table if exists p_macheung_t.nonper_return_output;
+create table p_macheung_t.nonper_return_output as(
+select distinct retail_year, 
+retail_week, 
+seller_id, 
+user_slctd_id, 
+meta_categ_name,
+meta_categ_id,
+categ_lvl2_name,
+categ_lvl2_id,
+categ_lvl3_name,
+categ_lvl3_id,
+refund, 
+case when Refund = 1 then final_claim_type_txt
+	when Refund = 1 and final_claim_type_txt IS NULL then 'Other'
+	when Refund = 0 then NULL
+	end as Return_Reason,
+count(distinct TRANSACTION_ID) as no_trans,
+sum(GMV) as GMV,
+sum(SI) as SI
+
+from P_InventoryPlanning_T.nonper_return_join 
+where 1=1
+group by 1,2,3,4,5,6,7,8,9,10,11,12);
+
+
+-- final output
+select * from p_macheung_t.per_return_output limit 10;
+
+select * from p_macheung_t.nonper_return_output limit 10;
+
+select * from p_macheung_t.per_return_output limit 10;
+select * from p_macheung_t.nonper_return_output limit 10;
+
+select a.retail_year, a.retail_week, a.meta_categ_name, a.categ_lvl2_name, a.categ_lvl3_name, a.Refund_Flag, Per_GMV,Per_Trans, Per_BI, NonPer_GMV, NonPer_Trans, NonPer_BI
+from (
+select retail_year, retail_week, meta_categ_name, meta_categ_id, categ_lvl2_name, categ_lvl2_id, categ_lvl3_name, categ_lvl3_id, 
+	case when refund = 1 and return_reason in ('Return-SNAD', 'Claim-SNAD') then 'SNAD'
+		when refund = 1 then 'Refund-Other'
+		when refund = 0 then 'No Refund'
+		end as Refund_Flag,
+	sum(GMV) as Per_GMV,sum(no_trans) as Per_Trans, sum(SI) as PER_BI
+from p_macheung_t.per_return_output 
+where retail_year = 2022
+group by 1,2,3,4,5,6,7,8,9) a 
+LEFT JOIN (
+select retail_year, retail_week, meta_categ_name, meta_categ_id, categ_lvl2_name, categ_lvl2_id, categ_lvl3_name, categ_lvl3_id, 
+	case when refund = 1 and return_reason in ('Return-SNAD', 'Claim-SNAD') then 'SNAD'
+		when refund = 1 then 'Refund-Other'
+		when refund = 0 then 'No Refund'
+		end as Refund_Flag,
+		sum(GMV) as NonPer_GMV,sum(no_trans) as NonPer_trans, sum(SI) as NonPer_BI
+from p_macheung_t.nonper_return_output 
+group by 1,2,3,4,5,6,7,8,9) b 
+	on a.retail_year = b.retail_year and a.retail_week = b.retail_week and a.meta_categ_id = b.meta_categ_id and a.categ_lvl2_id = b.categ_lvl2_id and a.categ_lvl3_id = b.categ_lvl3_id
+		and a.Refund_Flag = b.Refund_Flag 
+
+select sum(GMV) from p_macheung_t.per_return_output where retail_year = 2022;
+
+select sum(GMV) from p_macheung_t.nonper_return_output where retail_year = 2022

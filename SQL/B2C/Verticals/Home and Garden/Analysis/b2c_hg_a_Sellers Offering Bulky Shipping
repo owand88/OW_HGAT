@@ -1,0 +1,69 @@
+-- sam request -	Can we adapt the query to know the sellers offering these services please?
+
+select 
+	item_id
+	,shipping_method as free_shipping_method
+	,shpmt_mthd_desc as free_shpmt_mthd_desc
+	--, MIN_DLVRY_TM_IN_HOUR
+	, case when MAX_DLVRY_TM_IN_HOUR <= 3*24  then '3 days' -- 3 day shipping
+	else '>3 days'
+	end as free_shp_delivery_time
+	from DW_ITEMS_SHIPPING s
+	left join DW_SHPMT_MTHD_lkp lkp on s.shipping_method = lkp.SHPMT_MTHD_ID
+	where s.shpmt_fee_amt_lstg_curncy = 0
+	and lkp.site_id = 3
+	and lkp.domstc_yn_id = 1
+	qualify row_number() over (partition by item_id order by shipping_method) = 1
+	
+	
+select distinct * from DW_SHPMT_MTHD_lkp where site_id = 3
+limit 10;
+
+--Can we run a report that captures buyers who have used these shipping methods (The 2nd, 3rd and 4th options below) in the last 6 months?
+
+-- shpmt_mthd_id
+-- 373
+-- 371
+-- 372
+
+
+
+drop table if exists p_macheung_t.bulky_sellers;
+create table p_macheung_t.bulky_sellers as(
+select
+cat.meta_categ_id
+,cat.meta_categ_name
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,ck.slr_id
+,u.user_slctd_id as seller_name
+--,count(distinct shp.shpmt_mthd_desc) as number_bulky_shipping_offered
+,count(distinct ck.item_id) as LL
+
+
+from DW_LSTG_ITEM ck	
+left join DW_ITEMS_SHIPPING  s on ck.item_id = s.item_id
+LEFT join DW_SHPMT_MTHD_lkp lkp on s.shipping_method = lkp.SHPMT_MTHD_ID
+inner join dw_users u on ck.slr_id = u.user_id
+inner join (
+	select meta_categ_name,meta_categ_id,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,leaf_categ_name,site_id
+	from access_views.dw_category_groupings 
+	where sap_category_id not in (5,7,41,23,-999) 
+    group by 1,2,3,4,5,6,7,8,9,10,11) as cat																
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id = 3 	
+
+-- inner join access_views.dw_cal_dt cal 
+-- on ck.GMV_dt=cal.cal_dt 
+-- 	and retail_year in (2022)
+-- 	and AGE_FOR_RTL_WEEK_ID <= -1
+
+where 
+1=1
+and lkp.shpmt_mthd_id in (373,371,372)
+and  CK.SLR_CNTRY_ID = 3 --UK sellers
+--AND CK.RPRTD_WACKO_YN = 'N'
+AND CK.AUCT_END_DT >= current_date
+group by 1,2,3,4,5,6);
+
+
+select * from p_macheung_t.bulky_sellers

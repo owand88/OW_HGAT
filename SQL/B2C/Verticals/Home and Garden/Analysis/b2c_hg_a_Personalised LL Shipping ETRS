@@ -1,0 +1,62 @@
+select 
+ll.*
+,CASE WHEN SPS.SPS_SLR_LEVEL_CD = 1 THEN 'eTRS' 
+		WHEN SPS.SPS_SLR_LEVEL_CD = 2 THEN 'Above Standard' 
+		WHEN SPS.SPS_SLR_LEVEL_CD = 3 THEN 'Standard' 
+		WHEN SPS.SPS_SLR_LEVEL_CD = 4 THEN 'Below Standard' 
+		ELSE 'No seller standard'
+		END AS SELLER_STANDARD
+,free_in_3_shipping_flag
+,next_day_under_5_flag
+
+from P_InventoryPlanning_T.personalised_ll ll
+LEFT JOIN (select USER_ID,
+	SPS_SLR_LEVEL_CD,
+	last_eval_Dt from  PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM X
+	where SPS_EVAL_TYPE_CD = 1 AND SPS_PRGRM_ID = 3 
+		group by 1,2,3 
+		qualify (row_number() over (partition by user_id order by last_eval_Dt desc))=1) SPS
+	ON ll.slr_id = sps.user_id
+	
+-- free shipping in 3 days
+left join (select 
+	item_id
+ 	,shipping_method as free_shipping_method
+-- 	,shpmt_mthd_desc as free_shpmt_mthd_desc
+	--, MIN_DLVRY_TM_IN_HOUR
+	, case when MAX_DLVRY_TM_IN_HOUR <= 3*24  then 1 -- 3 day shipping
+		else 0
+		end as free_in_3_shipping_flag
+	from DW_ITEMS_SHIPPING s
+	left join DW_SHPMT_MTHD_lkp lkp on s.shipping_method = lkp.SHPMT_MTHD_ID
+	where s.shpmt_fee_amt_lstg_curncy = 0
+	and lkp.site_id = 3
+	and lkp.domstc_yn_id = 1
+	group by 1,2,3
+	qualify row_number() over (partition by item_id order by free_shipping_method) = 1) shp on ll.item_id = shp.item_id
+	
+-- express shipping flag
+left join (select
+	item_id
+ 	,shipping_method as express_shipping_method
+-- 	,shpmt_mthd_desc as express_shpmt_mthd_desc
+	--, MIN_DLVRY_TM_IN_HOUR
+	, case when MAX_DLVRY_TM_IN_HOUR <= 1*24  then 1 -- 2 day shipping
+	else 0
+	end as next_day_under_5_flag
+	from DW_ITEMS_SHIPPING s
+	left join DW_SHPMT_MTHD_lkp lkp on s.shipping_method = lkp.SHPMT_MTHD_ID
+	where s.shpmt_fee_amt_lstg_curncy <= 5 -- £5 or less for express shipping
+	and lkp.site_id = 3
+	and lkp.domstc_yn_id = 1
+	group by 1,2,3
+	qualify row_number() over (partition by item_id order by express_shipping_method) = 1) exp on exp.item_id = ll.item_id
+	
+where candidate_personalised_lstg = 0 
+	and base_lstg = 1
+	and categ_lvl2_id in (16086,10033,20625,260012,9394,20742,171146,25298,14308,3628,260018,260010,10968,16092,20416,562,100978,260033,176988,26238,157967,593,10290,4196,13905,32615,20737,20400,966,6093,26677,87167)
+	and retail_year = 2022 
+	and retail_week =35
+	and SPS_SLR_LEVEL_CD in (1,2)
+	and free_in_3_shipping_flag = 1
+	and next_day_under_5_flag = 1
