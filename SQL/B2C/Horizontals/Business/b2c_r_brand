@@ -1,0 +1,1212 @@
+/*Aim: Brand of all items that were sold TY, LY and LLY from B2C/C2C UK sellers to UK/Non UK buyers.
+About 3 hours to run*/
+
+
+-- H&G
+drop table if exists p_uktrading_vdm_t.hg_brand_gmv_1;
+create table p_uktrading_vdm_t.hg_brand_gmv_1 as (
+select  
+retail_year
+,retail_week
+,ck.item_id
+,auct_end_dt
+,seller_id
+,user_slctd_id
+,inv.new_vertical
+,case when hist.usegm_id=206 then 'B2C' else 'C2C' end  as slr_segment
+,case when byr_cntry_id=3 then 'DOMESTIC' else 'CBT' end  as byr_segment
+,meta_categ_name
+,meta_categ_id
+,categ_lvl2_name
+,categ_lvl2_id
+,categ_lvl3_name
+,categ_lvl3_id
+,categ_lvl4_name
+,categ_lvl4_id
+,sum(ck.GMV_PLAN_USD) as gmb_plan
+,sum(ck.quantity) as bi
+,count(distinct buyer_id)  as no_buyers
+,gmb_plan / bi as abp 
+ 
+from access_views.dw_checkout_trans as ck
+
+inner join access_views.dw_cal_dt as cal
+on (cal.cal_dt=ck.GMV_dt and age_for_rtl_year_id between -2 and 0)
+
+inner join access_views.dw_category_groupings as cat
+on ((cat.leaf_categ_id=ck.leaf_categ_id and cat.site_id=3) and  ! cat.sap_category_id in(5,7,41,23,-999))
+
+inner join access_views.dw_usegm_hist hist 
+on hist.user_id=ck.seller_id 
+and hist.usegm_grp_id  = 48 
+and case when ck.GMV_dt < '2009-10-11' then cast('2009-10-11' as date) else ck.GMV_dt end between hist.beg_date and hist.end_date  
+
+inner join access_views.dw_users as u
+on ck.seller_id=u.user_id 
+
+left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+on ck.item_id = inv.item_id
+
+where ck.ck_wacko_yn = 'N'
+and ck.auct_end_dt>'2017-12-30'
+and ck.sale_type not in (10,15)
+and ck.slr_cntry_id = 3
+and inv.new_vertical in ('Home & Garden')
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+drop table if exists P_UKTrading_VDM_T.hg_brand_gmv_2;
+create table P_UKTrading_VDM_T.hg_brand_gmv_2
+                   SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                    P_UKTrading_VDM_T.hg_brand_gmv_1  B
+                    INNER JOIN
+                    item_aspct_clssfctn aspct ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1   ;
+
+drop table if exists P_UKTrading_VDM_T.hg_brand_gmv_3;
+create table P_UKTrading_VDM_T.hg_brand_gmv_3
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(aspct_vlu_nm) as brand,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.hg_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN_cold ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(prdct_aspct_nm) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;                                                                
+
+
+drop table if exists P_UKTrading_VDM_T.hg_brand_gmv_4;
+create table P_UKTrading_VDM_T.hg_brand_gmv_4
+select * from P_UKTrading_VDM_T.hg_brand_gmv_2
+union 
+select * from P_UKTrading_VDM_T.hg_brand_gmv_3;                 
+
+drop table if exists P_UKTrading_VDM_T.hg_brand_gmv_5;
+create table P_UKTrading_VDM_T.hg_brand_gmv_5 
+select a.*, b.BRAND
+from P_UKTrading_VDM_T.hg_brand_gmv_1 as a 
+left join P_UKTrading_VDM_T.hg_brand_gmv_4 as b on a.item_id=b.item_id and a.auct_end_dt=b.auct_end_dt;
+
+drop table P_UKTrading_VDM_T.hg_brand_gmv_1;
+create table P_UKTrading_VDM_T.hg_brand_gmv_1 select * from P_UKTrading_VDM_T.hg_brand_gmv_5;
+drop table P_UKTrading_VDM_T.hg_brand_gmv_2;
+drop table P_UKTrading_VDM_T.hg_brand_gmv_3;
+drop table P_UKTrading_VDM_T.hg_brand_gmv_4;
+drop table P_UKTrading_VDM_T.hg_brand_gmv_5;
+
+
+
+-- P&A
+
+drop table if exists P_UKTrading_VDM_T.pa_brand_gmv_1;
+create table p_uktrading_vdm_t.pa_brand_gmv_1 as (
+select  
+retail_year
+,retail_week
+,ck.item_id
+,auct_end_dt
+,seller_id
+,user_slctd_id
+,inv.new_vertical
+,case when hist.usegm_id=206 then 'B2C' else 'C2C' end  as slr_segment
+,case when byr_cntry_id=3 then 'DOMESTIC' else 'CBT' end  as byr_segment
+,meta_categ_name
+,meta_categ_id
+,categ_lvl2_name
+,categ_lvl2_id
+,categ_lvl3_name
+,categ_lvl3_id
+,categ_lvl4_name
+,categ_lvl4_id
+,sum(ck.GMV_PLAN_USD) as gmb_plan
+,sum(ck.quantity) as bi
+,count(distinct buyer_id)  as no_buyers
+,gmb_plan / bi as abp 
+ 
+from access_views.dw_checkout_trans as ck
+
+inner join access_views.dw_cal_dt as cal
+on (cal.cal_dt=ck.GMV_dt and age_for_rtl_year_id between -2 and 0)
+
+inner join access_views.dw_category_groupings as cat
+on ((cat.leaf_categ_id=ck.leaf_categ_id and cat.site_id=3) and  ! cat.sap_category_id in(5,7,41,23,-999))
+
+inner join access_views.dw_usegm_hist hist 
+on hist.user_id=ck.seller_id 
+and hist.usegm_grp_id  = 48 
+and case when ck.GMV_dt < '2009-10-11' then cast('2009-10-11' as date) else ck.GMV_dt end between hist.beg_date and hist.end_date  
+
+inner join access_views.dw_users as u
+on ck.seller_id=u.user_id 
+
+left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+on ck.item_id = inv.item_id
+
+where ck.ck_wacko_yn = 'N'
+and ck.auct_end_dt>'2017-12-30'
+and ck.sale_type not in (10,15)
+and ck.slr_cntry_id = 3
+and inv.new_vertical in ('Parts & Accessories')
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+drop table if exists P_UKTrading_VDM_T.pa_brand_gmv_2;
+create table P_UKTrading_VDM_T.pa_brand_gmv_2
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.pa_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT --and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+					
+drop table if exists P_UKTrading_VDM_T.pa_brand_gmv_3;
+create table P_UKTrading_VDM_T.pa_brand_gmv_3
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.pa_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN_cold ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT --and aspct.auct_end_dt >= date '2018-01-01'
+                   where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.pa_brand_gmv_4;
+create table P_UKTrading_VDM_T.pa_brand_gmv_4
+select * from P_UKTrading_VDM_T.pa_brand_gmv_2
+union 
+select * from P_UKTrading_VDM_T.pa_brand_gmv_3;                 
+
+drop table if exists P_UKTrading_VDM_T.pa_brand_gmv_5;
+create table P_UKTrading_VDM_T.pa_brand_gmv_5 
+select a.*, b.BRAND
+from P_UKTrading_VDM_T.pa_brand_gmv_1 as a 
+left join P_UKTrading_VDM_T.pa_brand_gmv_4 as b on a.item_id=b.item_id and a.auct_end_dt=b.auct_end_dt;
+
+drop table P_UKTrading_VDM_T.pa_brand_gmv_1;
+create table P_UKTrading_VDM_T.pa_brand_gmv_1 select * from P_UKTrading_VDM_T.pa_brand_gmv_5;
+drop table P_UKTrading_VDM_T.pa_brand_gmv_2;
+drop table P_UKTrading_VDM_T.pa_brand_gmv_3;
+drop table P_UKTrading_VDM_T.pa_brand_gmv_4;
+drop table P_UKTrading_VDM_T.pa_brand_gmv_5;
+
+-- Lifesyle
+
+drop table if exists p_uktrading_vdm_t.life_brand_gmv_1;
+create table p_uktrading_vdm_t.life_brand_gmv_1 as (
+select  
+retail_year
+,retail_week
+,ck.item_id
+,auct_end_dt
+,seller_id
+,user_slctd_id
+,inv.new_vertical
+,case when hist.usegm_id=206 then 'B2C' else 'C2C' end  as slr_segment
+,case when byr_cntry_id=3 then 'DOMESTIC' else 'CBT' end  as byr_segment
+,meta_categ_name
+,meta_categ_id
+,categ_lvl2_name
+,categ_lvl2_id
+,categ_lvl3_name
+,categ_lvl3_id
+,categ_lvl4_name
+,categ_lvl4_id
+,sum(ck.GMV_PLAN_USD) as gmb_plan
+,sum(ck.quantity) as bi
+,count(distinct buyer_id)  as no_buyers
+,gmb_plan / bi as abp 
+ 
+from access_views.dw_checkout_trans as ck
+
+inner join access_views.dw_cal_dt as cal
+on (cal.cal_dt=ck.GMV_dt and age_for_rtl_year_id between -2 and 0)
+
+inner join access_views.dw_category_groupings as cat
+on ((cat.leaf_categ_id=ck.leaf_categ_id and cat.site_id=3) and  ! cat.sap_category_id in(5,7,41,23,-999))
+
+inner join access_views.dw_usegm_hist hist 
+on hist.user_id=ck.seller_id 
+and hist.usegm_grp_id  = 48 
+and case when ck.GMV_dt < '2009-10-11' then cast('2009-10-11' as date) else ck.GMV_dt end between hist.beg_date and hist.end_date  
+
+inner join access_views.dw_users as u
+on ck.seller_id=u.user_id 
+
+left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+on ck.item_id = inv.item_id
+
+where ck.ck_wacko_yn = 'N'
+and ck.auct_end_dt>'2017-12-30'
+and ck.sale_type not in (10,15)
+and ck.slr_cntry_id = 3
+and inv.new_vertical in ('Lifestyle')
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+drop table if exists P_UKTrading_VDM_T.life_brand_gmv_2;
+create table P_UKTrading_VDM_T.life_brand_gmv_2
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.life_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.life_brand_gmv_3;
+create table P_UKTrading_VDM_T.life_brand_gmv_3
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.life_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN_cold ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.life_brand_gmv_4;
+create table P_UKTrading_VDM_T.life_brand_gmv_4
+select * from P_UKTrading_VDM_T.life_brand_gmv_2
+union 
+select * from P_UKTrading_VDM_T.life_brand_gmv_3;                
+
+drop table if exists P_UKTrading_VDM_T.life_brand_gmv_5;
+create table P_UKTrading_VDM_T.life_brand_gmv_5 
+select a.*, b.BRAND
+from P_UKTrading_VDM_T.life_brand_gmv_1 as a 
+left join P_UKTrading_VDM_T.life_brand_gmv_4 as b on a.item_id=b.item_id and a.auct_end_dt=b.auct_end_dt;
+
+drop table P_UKTrading_VDM_T.life_brand_gmv_1;
+create table P_UKTrading_VDM_T.life_brand_gmv_1 select * from P_UKTrading_VDM_T.life_brand_gmv_5;
+drop table P_UKTrading_VDM_T.life_brand_gmv_2;
+drop table P_UKTrading_VDM_T.life_brand_gmv_3;
+drop table P_UKTrading_VDM_T.life_brand_gmv_4;
+drop table P_UKTrading_VDM_T.life_brand_gmv_5;
+
+-- Tech
+
+drop table if exists p_uktrading_vdm_t.tech_brand_gmv_1;
+create table p_uktrading_vdm_t.tech_brand_gmv_1 as (
+select  
+retail_year
+,retail_week
+,ck.item_id
+,auct_end_dt
+,seller_id
+,user_slctd_id
+,inv.new_vertical
+,case when hist.usegm_id=206 then 'B2C' else 'C2C' end  as slr_segment
+,case when byr_cntry_id=3 then 'DOMESTIC' else 'CBT' end  as byr_segment
+,meta_categ_name
+,meta_categ_id
+,categ_lvl2_name
+,categ_lvl2_id
+,categ_lvl3_name
+,categ_lvl3_id
+,categ_lvl4_name
+,categ_lvl4_id
+,sum(ck.GMV_PLAN_USD) as gmb_plan
+,sum(ck.quantity) as bi
+,count(distinct buyer_id)  as no_buyers
+,gmb_plan / bi as abp 
+ 
+from access_views.dw_checkout_trans as ck
+
+inner join access_views.dw_cal_dt as cal
+on (cal.cal_dt=ck.GMV_dt and age_for_rtl_year_id between -2 and 0)
+
+inner join access_views.dw_category_groupings as cat
+on ((cat.leaf_categ_id=ck.leaf_categ_id and cat.site_id=3) and  ! cat.sap_category_id in(5,7,41,23,-999))
+
+inner join access_views.dw_usegm_hist hist 
+on hist.user_id=ck.seller_id 
+and hist.usegm_grp_id  = 48 
+and case when ck.GMV_dt < '2009-10-11' then cast('2009-10-11' as date) else ck.GMV_dt end between hist.beg_date and hist.end_date  
+
+inner join access_views.dw_users as u
+on ck.seller_id=u.user_id 
+
+left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+on ck.item_id = inv.item_id
+
+where ck.ck_wacko_yn = 'N'
+and ck.auct_end_dt>'2017-12-30'
+and ck.sale_type not in (10,15)
+and ck.slr_cntry_id = 3
+and inv.new_vertical in ('Electronics')
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+drop table if exists P_UKTrading_VDM_T.tech_brand_gmv_2;
+create table P_UKTrading_VDM_T.tech_brand_gmv_2
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.tech_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.tech_brand_gmv_3;
+create table P_UKTrading_VDM_T.tech_brand_gmv_3   
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.tech_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN_cold ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.tech_brand_gmv_4;
+create table P_UKTrading_VDM_T.tech_brand_gmv_4
+select * from P_UKTrading_VDM_T.tech_brand_gmv_2
+union 
+select * from P_UKTrading_VDM_T.tech_brand_gmv_3;                            
+
+drop table if exists P_UKTrading_VDM_T.tech_brand_gmv_5;
+create table P_UKTrading_VDM_T.tech_brand_gmv_5 
+select a.*, b.BRAND
+from P_UKTrading_VDM_T.tech_brand_gmv_1 as a 
+left join P_UKTrading_VDM_T.tech_brand_gmv_4 as b on a.item_id=b.item_id and a.auct_end_dt=b.auct_end_dt;
+
+drop table P_UKTrading_VDM_T.tech_brand_gmv_1;
+create table P_UKTrading_VDM_T.tech_brand_gmv_1 select * from P_UKTrading_VDM_T.tech_brand_gmv_5;
+drop table P_UKTrading_VDM_T.tech_brand_gmv_2;
+drop table P_UKTrading_VDM_T.tech_brand_gmv_3;
+drop table P_UKTrading_VDM_T.tech_brand_gmv_4;
+drop table P_UKTrading_VDM_T.tech_brand_gmv_5;
+
+-- Fashion
+
+drop table if exists p_uktrading_vdm_t.fash_brand_gmv_1;
+create table p_uktrading_vdM_T.fash_brand_gmv_1 as (
+select  
+retail_year
+,retail_week
+,ck.item_id
+,auct_end_dt
+,seller_id
+,user_slctd_id
+,inv.new_vertical
+,case when hist.usegm_id=206 then 'B2C' else 'C2C' end  as slr_segment
+,case when byr_cntry_id=3 then 'DOMESTIC' else 'CBT' end  as byr_segment
+,meta_categ_name
+,meta_categ_id
+,categ_lvl2_name
+,categ_lvl2_id
+,categ_lvl3_name
+,categ_lvl3_id
+,categ_lvl4_name
+,categ_lvl4_id
+,sum(ck.GMV_PLAN_USD) as gmb_plan
+,sum(ck.quantity) as bi
+,count(distinct buyer_id)  as no_buyers
+,gmb_plan / bi as abp 
+ 
+from access_views.dw_checkout_trans as ck
+
+inner join access_views.dw_cal_dt as cal
+on (cal.cal_dt=ck.GMV_dt and age_for_rtl_year_id between -2 and 0)
+
+inner join access_views.dw_category_groupings as cat
+on ((cat.leaf_categ_id=ck.leaf_categ_id and cat.site_id=3) and  ! cat.sap_category_id in(5,7,41,23,-999))
+
+inner join access_views.dw_usegm_hist hist 
+on hist.user_id=ck.seller_id 
+and hist.usegm_grp_id  = 48 
+and case when ck.GMV_dt < '2009-10-11' then cast('2009-10-11' as date) else ck.GMV_dt end between hist.beg_date and hist.end_date  
+
+inner join access_views.dw_users as u
+on ck.seller_id=u.user_id 
+
+left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+on ck.item_id = inv.item_id
+
+where ck.ck_wacko_yn = 'N'
+and ck.auct_end_dt>'2017-12-30'
+and ck.sale_type not in (10,15)
+and ck.slr_cntry_id = 3
+and inv.new_vertical in ('Fashion')
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+drop table if exists P_UKTrading_VDM_T.fash_brand_gmv_2;
+create table P_UKTrading_VDM_T.fash_brand_gmv_2
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.fash_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.fash_brand_gmv_3;
+create table P_UKTrading_VDM_T.fash_brand_gmv_3
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.fash_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN_cold ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.fash_brand_gmv_4;
+create table P_UKTrading_VDM_T.fash_brand_gmv_4
+select * from P_UKTrading_VDM_T.fash_brand_gmv_2
+union 
+select * from P_UKTrading_VDM_T.fash_brand_gmv_3;              
+
+drop table if exists P_UKTrading_VDM_T.fash_brand_gmv_5;
+create table P_UKTrading_VDM_T.fash_brand_gmv_5 
+select a.*, b.BRAND
+from P_UKTrading_VDM_T.fash_brand_gmv_1 as a 
+left join P_UKTrading_VDM_T.fash_brand_gmv_4 as b on a.item_id=b.item_id and a.auct_end_dt=b.auct_end_dt;
+
+drop table P_UKTrading_VDM_T.fash_brand_gmv_1;
+create table P_UKTrading_VDM_T.fash_brand_gmv_1 select * from P_UKTrading_VDM_T.fash_brand_gmv_5;
+drop table P_UKTrading_VDM_T.fash_brand_gmv_2;
+drop table P_UKTrading_VDM_T.fash_brand_gmv_3;
+drop table P_UKTrading_VDM_T.fash_brand_gmv_4;
+drop table P_UKTrading_VDM_T.fash_brand_gmv_5;
+
+-- Media
+drop table if exists p_uktrading_vdm_t.media_brand_gmv_1;
+create table p_uktrading_vdM_T.media_brand_gmv_1 as (
+select  
+retail_year
+,retail_week
+,ck.item_id
+,auct_end_dt
+,seller_id
+,user_slctd_id
+,inv.new_vertical
+,case when hist.usegm_id=206 then 'B2C' else 'C2C' end  as slr_segment
+,case when byr_cntry_id=3 then 'DOMESTIC' else 'CBT' end  as byr_segment
+,meta_categ_name
+,meta_categ_id
+,categ_lvl2_name
+,categ_lvl2_id
+,categ_lvl3_name
+,categ_lvl3_id
+,categ_lvl4_name
+,categ_lvl4_id
+,sum(ck.GMV_PLAN_USD) as gmb_plan
+,sum(ck.quantity) as bi
+,count(distinct buyer_id)  as no_buyers
+,gmb_plan / bi as abp 
+ 
+from access_views.dw_checkout_trans as ck
+
+inner join access_views.dw_cal_dt as cal
+on (cal.cal_dt=ck.GMV_dt and age_for_rtl_year_id between -2 and 0)
+
+inner join access_views.dw_category_groupings as cat
+on ((cat.leaf_categ_id=ck.leaf_categ_id and cat.site_id=3) and  ! cat.sap_category_id in(5,7,41,23,-999))
+
+inner join access_views.dw_usegm_hist hist 
+on hist.user_id=ck.seller_id 
+and hist.usegm_grp_id  = 48 
+and case when ck.GMV_dt < '2009-10-11' then cast('2009-10-11' as date) else ck.GMV_dt end between hist.beg_date and hist.end_date  
+
+inner join access_views.dw_users as u
+on ck.seller_id=u.user_id 
+
+left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+on ck.item_id = inv.item_id
+
+where ck.ck_wacko_yn = 'N'
+and ck.auct_end_dt>'2017-12-30'
+and ck.sale_type not in (10,15)
+and ck.slr_cntry_id = 3
+and inv.new_vertical in ('Media')
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+drop table if exists P_UKTrading_VDM_T.media_brand_gmv_2;
+create table P_UKTrading_VDM_T.media_brand_gmv_2
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.media_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.media_brand_gmv_3;
+create table P_UKTrading_VDM_T.media_brand_gmv_3
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.media_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN_cold ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.media_brand_gmv_4;
+create table P_UKTrading_VDM_T.media_brand_gmv_4
+select * from P_UKTrading_VDM_T.media_brand_gmv_2
+union 
+select * from P_UKTrading_VDM_T.media_brand_gmv_3;              
+
+drop table if exists P_UKTrading_VDM_T.media_brand_gmv_5;
+create table P_UKTrading_VDM_T.media_brand_gmv_5 
+select a.*, b.BRAND
+from P_UKTrading_VDM_T.media_brand_gmv_1 as a 
+left join P_UKTrading_VDM_T.media_brand_gmv_4 as b on a.item_id=b.item_id and a.auct_end_dt=b.auct_end_dt;
+
+drop table P_UKTrading_VDM_T.media_brand_gmv_1;
+create table P_UKTrading_VDM_T.media_brand_gmv_1 select * from P_UKTrading_VDM_T.media_brand_gmv_5;
+drop table P_UKTrading_VDM_T.media_brand_gmv_2;
+drop table P_UKTrading_VDM_T.media_brand_gmv_3;
+drop table P_UKTrading_VDM_T.media_brand_gmv_4;
+drop table P_UKTrading_VDM_T.media_brand_gmv_5;
+
+-- B&I
+drop table if exists p_uktrading_vdm_t.bi_brand_gmv_1;
+create table p_uktrading_vdM_T.bi_brand_gmv_1 as (
+select  
+retail_year
+,retail_week
+,ck.item_id
+,auct_end_dt
+,seller_id
+,user_slctd_id
+,inv.new_vertical
+,case when hist.usegm_id=206 then 'B2C' else 'C2C' end  as slr_segment
+,case when byr_cntry_id=3 then 'DOMESTIC' else 'CBT' end  as byr_segment
+,meta_categ_name
+,meta_categ_id
+,categ_lvl2_name
+,categ_lvl2_id
+,categ_lvl3_name
+,categ_lvl3_id
+,categ_lvl4_name
+,categ_lvl4_id
+,sum(ck.GMV_PLAN_USD) as gmb_plan
+,sum(ck.quantity) as bi
+,count(distinct buyer_id)  as no_buyers
+,gmb_plan / bi as abp 
+ 
+from access_views.dw_checkout_trans as ck
+
+inner join access_views.dw_cal_dt as cal
+on (cal.cal_dt=ck.GMV_dt and age_for_rtl_year_id between -2 and 0)
+
+inner join access_views.dw_category_groupings as cat
+on ((cat.leaf_categ_id=ck.leaf_categ_id and cat.site_id=3) and  ! cat.sap_category_id in(5,7,41,23,-999))
+
+inner join access_views.dw_usegm_hist hist 
+on hist.user_id=ck.seller_id 
+and hist.usegm_grp_id  = 48 
+and case when ck.GMV_dt < '2009-10-11' then cast('2009-10-11' as date) else ck.GMV_dt end between hist.beg_date and hist.end_date  
+
+inner join access_views.dw_users as u
+on ck.seller_id=u.user_id 
+
+left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+on ck.item_id = inv.item_id
+
+where ck.ck_wacko_yn = 'N'
+and ck.auct_end_dt>'2017-12-30'
+and ck.sale_type not in (10,15)
+and ck.slr_cntry_id = 3
+and inv.new_vertical in ('Business & Industrial')
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+drop table if exists P_UKTrading_VDM_T.bi_brand_gmv_2;
+create table P_UKTrading_VDM_T.bi_brand_gmv_2
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.bi_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.bi_brand_gmv_3;
+create table P_UKTrading_VDM_T.bi_brand_gmv_3
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.bi_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN_cold ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.bi_brand_gmv_4;
+create table P_UKTrading_VDM_T.bi_brand_gmv_4
+select * from P_UKTrading_VDM_T.bi_brand_gmv_2
+union 
+select * from P_UKTrading_VDM_T.bi_brand_gmv_3;              
+
+drop table if exists P_UKTrading_VDM_T.bi_brand_gmv_5;
+create table P_UKTrading_VDM_T.bi_brand_gmv_5 
+select a.*, b.BRAND
+from P_UKTrading_VDM_T.bi_brand_gmv_1 as a 
+left join P_UKTrading_VDM_T.bi_brand_gmv_4 as b on a.item_id=b.item_id and a.auct_end_dt=b.auct_end_dt;
+
+drop table P_UKTrading_VDM_T.bi_brand_gmv_1;
+create table P_UKTrading_VDM_T.bi_brand_gmv_1 select * from P_UKTrading_VDM_T.bi_brand_gmv_5;
+drop table P_UKTrading_VDM_T.bi_brand_gmv_2;
+drop table P_UKTrading_VDM_T.bi_brand_gmv_3;
+drop table P_UKTrading_VDM_T.bi_brand_gmv_4;
+drop table P_UKTrading_VDM_T.bi_brand_gmv_5;
+
+-- Collectibles
+drop table if exists p_uktrading_vdm_t.col_brand_gmv_1;
+create table p_uktrading_vdM_T.col_brand_gmv_1 as (
+select  
+retail_year
+,retail_week
+,ck.item_id
+,auct_end_dt
+,seller_id
+,user_slctd_id
+,inv.new_vertical
+,case when hist.usegm_id=206 then 'B2C' else 'C2C' end  as slr_segment
+,case when byr_cntry_id=3 then 'DOMESTIC' else 'CBT' end  as byr_segment
+,meta_categ_name
+,meta_categ_id
+,categ_lvl2_name
+,categ_lvl2_id
+,categ_lvl3_name
+,categ_lvl3_id
+,categ_lvl4_name
+,categ_lvl4_id
+,sum(ck.GMV_PLAN_USD) as gmb_plan
+,sum(ck.quantity) as bi
+,count(distinct buyer_id)  as no_buyers
+,gmb_plan / bi as abp 
+ 
+from access_views.dw_checkout_trans as ck
+
+inner join access_views.dw_cal_dt as cal
+on (cal.cal_dt=ck.GMV_dt and age_for_rtl_year_id between -2 and 0)
+
+inner join access_views.dw_category_groupings as cat
+on ((cat.leaf_categ_id=ck.leaf_categ_id and cat.site_id=3) and  ! cat.sap_category_id in(5,7,41,23,-999))
+
+inner join access_views.dw_usegm_hist hist 
+on hist.user_id=ck.seller_id 
+and hist.usegm_grp_id  = 48 
+and case when ck.GMV_dt < '2009-10-11' then cast('2009-10-11' as date) else ck.GMV_dt end between hist.beg_date and hist.end_date  
+
+inner join access_views.dw_users as u
+on ck.seller_id=u.user_id 
+
+left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+on ck.item_id = inv.item_id
+
+where ck.ck_wacko_yn = 'N'
+and ck.auct_end_dt>'2017-12-30'
+and ck.sale_type not in (10,15)
+and ck.slr_cntry_id = 3
+and inv.new_vertical in ('Collectibles')
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+drop table if exists P_UKTrading_VDM_T.col_brand_gmv_2;
+create table P_UKTrading_VDM_T.col_brand_gmv_2
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.col_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.col_brand_gmv_3;
+create table P_UKTrading_VDM_T.col_brand_gmv_3
+SELECT
+                    a.item_id,
+                    a.auct_end_dt,
+                    BRAND,
+                    RNum
+                    FROM
+                    (
+                    select
+                    b.item_id,
+                    b.auct_end_dt,
+                    lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+                    upper(ASPCT_VLU_NM) as BRAND,
+                    ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+                    from
+                     P_UKTrading_VDM_T.col_brand_gmv_1  B
+                    INNER JOIN
+                    ITEM_ASPCT_CLSSFCTN_cold ASPCT ON
+                    B.ITEM_ID = ASPCT.ITEM_ID AND B.AUCT_END_DT = ASPCT.AUCT_END_DT and aspct.auct_end_dt >= date '2018-01-01'
+                    where 
+                    lower(PRDCT_ASPCT_NM) in ('brand' ) and ns_type_cd in ('df', 'nf')
+                    ) a
+                    where 
+                    Rnum =1;
+
+drop table if exists P_UKTrading_VDM_T.col_brand_gmv_4;
+create table P_UKTrading_VDM_T.col_brand_gmv_4
+select * from P_UKTrading_VDM_T.col_brand_gmv_2
+union 
+select * from P_UKTrading_VDM_T.col_brand_gmv_3;              
+
+drop table if exists P_UKTrading_VDM_T.col_brand_gmv_5;
+create table P_UKTrading_VDM_T.col_brand_gmv_5 
+select a.*, b.BRAND
+from P_UKTrading_VDM_T.col_brand_gmv_1 as a 
+left join P_UKTrading_VDM_T.col_brand_gmv_4 as b on a.item_id=b.item_id and a.auct_end_dt=b.auct_end_dt;
+
+drop table P_UKTrading_VDM_T.col_brand_gmv_1;
+create table P_UKTrading_VDM_T.col_brand_gmv_1 select * from P_UKTrading_VDM_T.col_brand_gmv_5;
+drop table P_UKTrading_VDM_T.col_brand_gmv_2;
+drop table P_UKTrading_VDM_T.col_brand_gmv_3;
+drop table P_UKTrading_VDM_T.col_brand_gmv_4;
+drop table P_UKTrading_VDM_T.col_brand_gmv_5;
+
+
+
+
+--Final table
+
+drop table if exists P_UKTrading_VDM_T.ebay_brand_data_v1;
+create table P_UKTrading_VDM_T.ebay_brand_data_v1
+select *
+from 
+(
+select 
+      RETAIL_YEAR ,
+      RETAIL_WEEK ,
+      item_id ,
+	  auct_end_Dt,
+      new_vertical ,
+      SLR_SEGMENT,
+      BYR_SEGMENT ,
+      META_CATEG_NAME ,
+      META_CATEG_ID ,
+      CATEG_LVL2_NAME ,
+      CATEG_LVL2_ID ,
+      CATEG_LVL3_NAME ,
+      CATEG_LVL3_ID ,
+      CATEG_LVL4_NAME ,
+      CATEG_LVL4_ID ,
+      BRAND ,
+      sum(GMB_PLAN) as GMB_PLAN ,
+      sum(BI) as BI
+from P_UKTrading_VDM_T.tech_brand_gmv_1
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+
+union all 
+
+select 
+      RETAIL_YEAR ,
+      RETAIL_WEEK ,
+      item_id ,
+	  auct_end_Dt,
+      new_vertical ,
+      SLR_SEGMENT,
+      BYR_SEGMENT ,
+      META_CATEG_NAME ,
+      META_CATEG_ID ,
+      CATEG_LVL2_NAME ,
+      CATEG_LVL2_ID ,
+      CATEG_LVL3_NAME ,
+      CATEG_LVL3_ID ,
+      CATEG_LVL4_NAME ,
+      CATEG_LVL4_ID ,
+      BRAND ,
+      sum(GMB_PLAN) as GMB_PLAN ,
+      sum(BI) as BI
+from P_UKTrading_VDM_T.media_brand_gmv_1
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+
+union all 
+
+select 
+      RETAIL_YEAR ,
+      RETAIL_WEEK ,
+      item_id ,
+	  auct_end_Dt,
+      new_vertical ,
+      SLR_SEGMENT,
+      BYR_SEGMENT ,
+      META_CATEG_NAME ,
+      META_CATEG_ID ,
+      CATEG_LVL2_NAME ,
+      CATEG_LVL2_ID ,
+      CATEG_LVL3_NAME ,
+      CATEG_LVL3_ID ,
+      CATEG_LVL4_NAME ,
+      CATEG_LVL4_ID ,
+      BRAND ,
+      sum(GMB_PLAN) as GMB_PLAN ,
+      sum(BI) as BI
+from P_UKTrading_VDM_T.fash_brand_gmv_1
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+
+union all 
+
+select 
+      RETAIL_YEAR ,
+      RETAIL_WEEK ,
+      item_id ,
+	  auct_end_Dt,
+      new_vertical ,
+      SLR_SEGMENT,
+      BYR_SEGMENT ,
+      META_CATEG_NAME ,
+      META_CATEG_ID ,
+      CATEG_LVL2_NAME ,
+      CATEG_LVL2_ID ,
+      CATEG_LVL3_NAME ,
+      CATEG_LVL3_ID ,
+      CATEG_LVL4_NAME ,
+      CATEG_LVL4_ID ,
+      BRAND ,
+      sum(GMB_PLAN) as GMB_PLAN ,
+      sum(BI) as BI
+from P_UKTrading_VDM_T.life_brand_gmv_1
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+
+union all
+
+select 
+      RETAIL_YEAR ,
+      RETAIL_WEEK ,
+      item_id ,
+	  auct_end_Dt,
+      new_vertical ,
+      SLR_SEGMENT,
+      BYR_SEGMENT ,
+      META_CATEG_NAME ,
+      META_CATEG_ID ,
+      CATEG_LVL2_NAME ,
+      CATEG_LVL2_ID ,
+      CATEG_LVL3_NAME ,
+      CATEG_LVL3_ID ,
+      CATEG_LVL4_NAME ,
+      CATEG_LVL4_ID ,
+      BRAND ,
+      sum(GMB_PLAN) as GMB_PLAN ,
+      sum(BI) as BI
+from P_UKTrading_VDM_T.pa_brand_gmv_1
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+
+union all
+
+select 
+      RETAIL_YEAR ,
+      RETAIL_WEEK ,
+      item_id ,
+	  auct_end_Dt,
+      new_vertical ,
+      SLR_SEGMENT,
+      BYR_SEGMENT ,
+      META_CATEG_NAME ,
+      META_CATEG_ID ,
+      CATEG_LVL2_NAME ,
+      CATEG_LVL2_ID ,
+      CATEG_LVL3_NAME ,
+      CATEG_LVL3_ID ,
+      CATEG_LVL4_NAME ,
+      CATEG_LVL4_ID ,
+      BRAND ,
+      sum(GMB_PLAN) as GMB_PLAN ,
+      sum(BI) as BI
+from P_UKTrading_VDM_T.bi_brand_gmv_1
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+
+union all 
+
+select 
+      RETAIL_YEAR ,
+      RETAIL_WEEK ,
+      item_id ,
+	  auct_end_Dt,
+      new_vertical ,
+      SLR_SEGMENT,
+      BYR_SEGMENT ,
+      META_CATEG_NAME ,
+      META_CATEG_ID ,
+      CATEG_LVL2_NAME ,
+      CATEG_LVL2_ID ,
+      CATEG_LVL3_NAME ,
+      CATEG_LVL3_ID ,
+      CATEG_LVL4_NAME ,
+      CATEG_LVL4_ID ,
+      BRAND ,
+      sum(GMB_PLAN) as GMB_PLAN ,
+      sum(BI) as BI
+from P_UKTrading_VDM_T.col_brand_gmv_1
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+
+union all
+
+select 
+      RETAIL_YEAR ,
+      RETAIL_WEEK ,
+      item_id ,
+	  auct_end_Dt,
+      new_vertical ,
+      SLR_SEGMENT,
+      BYR_SEGMENT ,
+      META_CATEG_NAME ,
+      META_CATEG_ID ,
+      CATEG_LVL2_NAME ,
+      CATEG_LVL2_ID ,
+      CATEG_LVL3_NAME ,
+      CATEG_LVL3_ID ,
+      CATEG_LVL4_NAME ,
+      CATEG_LVL4_ID ,
+      BRAND ,
+      sum(GMB_PLAN) as GMB_PLAN ,
+      sum(BI) as BI
+from P_UKTrading_VDM_T.hg_brand_gmv_1
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+)z;
+

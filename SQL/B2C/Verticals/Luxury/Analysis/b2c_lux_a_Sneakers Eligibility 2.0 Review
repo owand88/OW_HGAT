@@ -1,0 +1,362 @@
+----eligible list 
+drop table if exists AG_eligibility_list_april;
+create temp table AG_eligibility_list_april as
+(select * from P_CATVERTICALS_T.Sneakers_MLG_Level
+where in_uk = 1)
+;
+
+drop table if exists P_ROBEVANS_T.AG_eligibility_list_april_fnl;
+create table P_ROBEVANS_T.AG_eligibility_list_april_fnl as
+select 
+a.*,case when b.ebay_ag_program_yn=1 then 'Y' else 'N' end as model_only_yn
+from AG_eligibility_list_april a left join 
+(select BRAND,MODEL,count(distinct ag_ind) as ebay_ag_program_yn 
+from AG_eligibility_list_april
+where ag_ind is not null
+group by 1,2) b
+on a.BRAND=b.BRAND and a.MODEL=b.MODEL
+;
+
+
+--------
+drop table  if exists FC_SNEAKERS_TRANS_april;
+CREATE temp TABLE FC_SNEAKERS_TRANS_april AS 
+SELECT 
+	a.ITEM_ID,a.TRANSACTION_ID,a.lstg_site_id,a.CREATED_DT,a.TRANS_SITE_ID,a.auct_type,a.item_price, a.item_price*a.LSTG_CURNCY_EXCHNG_RATE as checkout_price_USD
+	,b.AUCT_TITLE,b.START_PRICE_USD,b.listing_tool,b.bolt_listing_tool_detail,b.lstg_channel,b.TOP_BRAND_FLAG,b.focus_vertical_sub
+	,lower(b.top_brand_name) as brand_value
+	,case when c.prod_ref_id is not null and c.at_prod_ref_id is not null then 'Y' else 'N' end as Asctive_adoption_yn
+FROM P_BX_T.SWL_MV_TRANS_ALL a 
+inner join DW_CHECKOUT_TRANS t on a.ITEM_ID=t.ITEM_ID and a.TRANSACTION_ID=t.TRANSACTION_ID and CHECKOUT_STATUS = 2
+LEFT JOIN P_SD_T.LSTG_FC_FACT b on a.item_id = b.item_id and b.auct_end_dt>='2021-12-01'
+left join CTLG_PROD_ITEM_FACT c on a.item_id = c.LSTG_ID and a.lstg_site_id = c.lstg_site_id
+inner join DW_CAL_DT cal on a.gmv_dt = cal.CAL_DT
+	and cal.retail_year = 2022
+	and cal.RETAIL_WEEK between 1 and 26
+WHERE 1=1
+-- AND a.CPS1_FOCUSED_GROUP = 'CPS1-Sneakers'
+and t.LEAF_CATEG_ID in (15709,95672)
+and a.lstg_site_id in (3)
+and TOP_BRAND_FLAG=1
+--and a.item_price*a.LSTG_CURNCY_EXCHNG_RATE>=100
+;
+
+
+
+drop table  if exists ll_brand_SC;
+CREATE temp table ll_brand_SC AS
+SELECT a.*
+,row_number() over(PARTITION by a.item_id,case when PRDCT_ASPCT_NM='MPN' then 'Style Code' else PRDCT_ASPCT_NM end order by case when LSTG_ATTR_ID is not null and NS_TYPE_CD in ('df') then 1 when LSTG_ATTR_ID is not null and NS_TYPE_CD in ('nf') then 2 else 3 end asc) as seq_provided
+,row_number() over(PARTITION by a.item_id,case when PRDCT_ASPCT_NM='MPN' then 'Style Code' else PRDCT_ASPCT_NM end order by case when LSTG_ATTR_ID is null and NS_TYPE_CD in ('umns','df') then aspct_src when LSTG_ATTR_ID is not null and NS_TYPE_CD in ('umns','df') then aspct_src*100 else 999999 end asc) as seq_normalized
+,case when LSTG_ATTR_ID is not null then 1 else 0 end as seller_provided
+,case when LSTG_ATTR_ID is null then 1 else 0 end as seller_normalized
+FROM ITEM_ASPCT_CLSSFCTN a 
+inner join (SELECT distinct item_id from FC_SNEAKERS_TRANS_april) b 
+on a.item_id=b.item_id
+left join ACCESS_VIEWS.DW_ATTR_LSTG_TAG_DTL c 
+on a.item_id=c.item_id and lower(case when PRDCT_ASPCT_NM='MPN' then 'Style Code' else PRDCT_ASPCT_NM end)=lower(case when TAG_NAME='MPN' then 'Style Code' else TAG_NAME end) and lower(a.ASPCT_VLU_NM)=lower(c.TAG_VALUE_TXT) and LSTG_ATTR_ID in (4069,3982) and lower(c.TAG_NAME) in ('mpn','model','style code')
+WHERE 1=1
+AND NS_TYPE_CD in ('df','umns','nf')
+and aspct_src in (101,2,3,22,160)
+AND lower(PRDCT_ASPCT_NM) in ('mpn','model','style code')
+AND a.AUCT_END_DT >= '2021-12-01'
+;
+
+
+drop table  if exists model_tmp;
+CREATE temp table model_tmp AS
+select
+coalesce(a.item_id,b.item_id) as item_id,Model_provided,model_provided_type, Model_normalized
+from 
+(select item_id,lower(aspct_vlu_nm) as Model_provided,NS_TYPE_CD as model_provided_type from ll_brand_SC where lower(PRDCT_ASPCT_NM) in ('model') and seller_provided=1 and seq_provided=1) a 
+full join 
+(select item_id,lower(aspct_vlu_nm) as Model_normalized from ll_brand_SC where lower(PRDCT_ASPCT_NM) in ('model') and seller_normalized=1 and seq_normalized=1) b
+on a.item_id=b.item_id 
+;
+
+
+drop table  if exists sc_tmp;
+CREATE temp table sc_tmp AS
+select
+coalesce(a.item_id,b.item_id) as item_id,SC_provided,SC_provided_type,SC_normalized
+from 
+(select item_id,lower(regexp_replace(aspct_vlu_nm,"-| ","")) as SC_provided,NS_TYPE_CD as SC_provided_type from ll_brand_SC where lower(PRDCT_ASPCT_NM) in ('mpn','style code') and seller_provided=1 and seq_provided=1) a 
+full join 
+(select item_id,lower(regexp_replace(aspct_vlu_nm,"-| ","")) as SC_normalized from ll_brand_SC where lower(PRDCT_ASPCT_NM) in ('mpn','style code') and seller_normalized=1 and seq_normalized=1) b
+on a.item_id=b.item_id 
+;
+
+
+drop table  if exists p_robevans_t.FC_SNEAKERS_TRANS_april_aspect;
+CREATE TABLE p_robevans_t.FC_SNEAKERS_TRANS_april_aspect AS 
+select
+a.*,Model_provided,model_provided_type,Model_normalized,SC_provided,SC_provided_type,SC_normalized
+from FC_SNEAKERS_TRANS_april a 
+left join model_tmp m on a.item_id=m.item_id 
+left join sc_tmp s on a.item_id=s.item_id
+;
+
+
+drop table  if exists FC_SNEAKERS_TRANS_april_aspect_fnl;
+CREATE temp TABLE FC_SNEAKERS_TRANS_april_aspect_fnl AS 
+select a.item_id,a.TRANSACTION_ID
+,max(m1.ebay_ag_program_yn) as Model_provided_yn
+,max(m2.ebay_ag_program_yn) as Model_normalized_yn
+,max(s1.ebay_ag_program_yn) as SC_provided_yn
+,max(s2.ebay_ag_program_yn) as SC_normalized_yn
+,max(coalesce(coalesce(m1.brand,m2.brand),coalesce(s1.brand,s2.brand))) as brand_catal
+from p_robevans_t.FC_SNEAKERS_TRANS_april_aspect a 
+left join (select distinct lower(brand) as brand,lower(model) as model,case when ag_ind = 1 then 'Y' else 'N' end as ebay_ag_program_yn from P_ROBEVANS_T.AG_eligibility_list_april_fnl where model_only_yn='Y') m1 on case when a.brand_value rlike 'yeezy' then 'adidas' when a.brand_value rlike 'jordan' then 'nike' else a.brand_value end =case when m1.brand rlike 'yeezy' then 'adidas' when m1.brand rlike 'jordan' then 'nike' else m1.brand end and a.Model_provided=m1.model
+left join (select distinct lower(brand) as brand,lower(model) as model,case when ag_ind = 1 then 'Y' else 'N' end as ebay_ag_program_yn from P_ROBEVANS_T.AG_eligibility_list_april_fnl where model_only_yn='Y') m2 on case when a.brand_value rlike 'yeezy' then 'adidas' when a.brand_value rlike 'jordan' then 'nike' else a.brand_value end =case when m2.brand rlike 'yeezy' then 'adidas' when m2.brand rlike 'jordan' then 'nike' else m2.brand end and a.Model_normalized=m2.model
+left join (select distinct lower(brand) as brand,lower(regexp_replace(mpn,"-| ","")) as mpn,case when ag_ind = 1 then 'Y' else 'N' end as ebay_ag_program_yn from P_ROBEVANS_T.AG_eligibility_list_april_fnl ) s1 on case when a.brand_value rlike 'yeezy' then 'adidas' when a.brand_value rlike 'jordan' then 'nike' else a.brand_value end =case when s1.brand rlike 'yeezy' then 'adidas' when s1.brand rlike 'jordan' then 'nike' else s1.brand end and a.SC_provided=s1.mpn
+left join (select distinct lower(brand) as brand,lower(regexp_replace(mpn,"-| ","")) as mpn,case when ag_ind = 1 then 'Y' else 'N' end as ebay_ag_program_yn from P_ROBEVANS_T.AG_eligibility_list_april_fnl ) s2 on case when a.brand_value rlike 'yeezy' then 'adidas' when a.brand_value rlike 'jordan' then 'nike' else a.brand_value end =case when s2.brand rlike 'yeezy' then 'adidas' when s2.brand rlike 'jordan' then 'nike' else s2.brand end and a.SC_normalized=s2.mpn
+where TOP_BRAND_FLAG=1
+group by 1,2
+;
+
+select * from P_ROBEVANS_T.FC_SNEAKERS_TRANS_april_aspect_fnl
+
+drop table  if exists P_ROBEVANS_T.FC_SNEAKERS_TRANS_april_aspect_fnl;
+CREATE TABLE P_ROBEVANS_T.FC_SNEAKERS_TRANS_april_aspect_fnl AS 
+SELECT a.*,Model_provided_yn,Model_normalized_yn,SC_provided_yn,SC_normalized_yn,brand_catal
+from p_robevans_t.FC_SNEAKERS_TRANS_april_aspect a 
+inner join FC_SNEAKERS_TRANS_april_aspect_fnl b 
+on a.item_id=b.item_id and a.TRANSACTION_ID=b.TRANSACTION_ID
+;
+
+------
+select lstg_site_id
+,case when item_price>300 then '£300+' when item_price>250 then '£250+' when item_price>200 then '£200+' when item_price>150 then '£150+' 
+	when item_price>120 then '£120+' when item_price>110 then '£110+' when item_price>100 then '£100+' when item_price>90 then '£90+' when item_price>50 then '£50+' when item_price>0 then '<£50' else 'others' end as START_PRICE_buck
+,eligible_type
+,count(*)
+from 
+(select
+case when asctive_adoption_yn='Y' and (SC_provided_yn='Y' or Model_provided_yn='Y') then '1. Eligibile with active adoption'
+	when SC_provided_yn='Y' and brand_value=brand_catal then '2. Eligibile with seller provided SC'
+	when SC_provided_yn='Y' and brand_value<>brand_catal then '2. Eligibile with seller provided SC - brand synonyms'
+	when Model_provided_yn='Y' and brand_value=brand_catal then '3. Eligibile with seller provdied model'
+	when Model_provided_yn='Y' and brand_value<>brand_catal then '3. Eligibile with seller provdied model - brand synonyms'
+	when SC_normalized_yn='Y' then '4. Eligibile with post-list SC extraction'
+	when Model_normalized_yn='Y' then '5. Eligibile with post-list model normalization'
+	when SC_provided_yn='N' or SC_normalized_yn='N' or Model_provided_yn='N' or Model_normalized_yn='N' then '6. Not eligibile with SC/Model'
+	else '7. TBD with manual process'
+	end as eligible_type
+,*
+from P_ROBEVANS_T.FC_SNEAKERS_TRANS_april_aspect_fnl ) 
+-- where eligible_type not rlike '1|2|3'
+group by 1,2,3
+order by 1,2,3
+;
+------
+
+select
+case when asctive_adoption_yn='Y' and (SC_provided_yn='Y' or Model_provided_yn='Y') then '1. Eligibile with active adoption'
+	when SC_provided_yn='Y' and brand_value=brand_catal then '2. Eligibile with seller provided SC'
+	when SC_provided_yn='Y' and brand_value<>brand_catal then '2. Eligibile with seller provided SC - brand synonyms'
+	when Model_provided_yn='Y' and brand_value=brand_catal then '3. Eligibile with seller provdied model'
+	when Model_provided_yn='Y' and brand_value<>brand_catal then '3. Eligibile with seller provdied model - brand synonyms'
+	when SC_normalized_yn='Y' then '4. Eligibile with post-list SC extraction'
+	when Model_normalized_yn='Y' then '5. Eligibile with post-list model normalization'
+	when SC_provided_yn='N' or SC_normalized_yn='N' or Model_provided_yn='N' or Model_normalized_yn='N' then '6. Not eligibile with SC/Model'
+	else '7. TBD with manual process'
+	end as eligible_type
+,count(*) as trans_cnt
+from p_sd_t.FC_SNEAKERS_TRANS_april_aspect_fnl 
+where lstg_site_id=3
+group by 1
+;
+
+
+---sampling
+select eligible_type,ITEM_ID,AUCT_TITLE,brand_value,Model_provided,model_provided_type,Model_normalized,SC_provided,SC_provided_type,SC_normalized
+from 
+(select
+case when asctive_adoption_yn='Y' and (SC_provided_yn='Y' or Model_provided_yn='Y') then '1. Eligibile with active adoption'
+	when SC_provided_yn='Y' and brand_value=brand_catal then '2. Eligibile with seller provided SC'
+	when SC_provided_yn='Y' and brand_value<>brand_catal then '2. Eligibile with seller provided SC - brand synonyms'
+	when Model_provided_yn='Y' and brand_value=brand_catal then '3. Eligibile with seller provdied model'
+	when Model_provided_yn='Y' and brand_value<>brand_catal then '3. Eligibile with seller provdied model - brand synonyms'
+	when SC_normalized_yn='Y' then '4. Eligibile with post-list SC extraction'
+	when Model_normalized_yn='Y' then '5. Eligibile with post-list model normalization'
+	when SC_provided_yn='N' or SC_normalized_yn='N' or Model_provided_yn='N' or Model_normalized_yn='N' then '6. Not eligibile with SC/Model'
+	else '7. TBD with manual process'
+	end as eligible_type
+,*
+from p_sd_t.FC_SNEAKERS_TRANS_april_aspect_fnl where lstg_site_id=3 ) 
+where eligible_type rlike '2|6|7'
+--and rand(0)<=0.04
+;
+
+select * from p_sd_t.FC_SNEAKERS_TRANS_april_aspect_fnl where ITEM_ID=373971113505;
+
+select distinct lower(brand) as brand,lower(regexp_replace(mpn,"-| ","")) as mpn,ebay_ag_program_yn from P_ROBEVANS_T.AG_eligibility_list_april_fnl where lower(mpn) rlike 'ct8013006';
+
+select * from p_sd_t.ag_eligibility_list_april_fnl where lower(model) rlike 'yeezy 700 v3' ;
+
+select * from p_sd_t.ag_eligibility_list_april_fnl where lower(mpn) rlike '1011B016';
+
+------
+select *
+from 
+(select
+case when asctive_adoption_yn='Y' and (SC_provided_yn='Y' or Model_provided_yn='Y') then '1. Eligibile with active adoption'
+	when SC_provided_yn='Y' and brand_value=brand_catal then '2. Eligibile with seller provided SC'
+	when SC_provided_yn='Y' and brand_value<>brand_catal then '2. Eligibile with seller provided SC - brand synonyms'
+	when Model_provided_yn='Y' and brand_value=brand_catal then '3. Eligibile with seller provdied model'
+	when Model_provided_yn='Y' and brand_value<>brand_catal then '3. Eligibile with seller provdied model - brand synonyms'
+	when SC_normalized_yn='Y' then '4. Eligibile with post-list SC extraction'
+	when Model_normalized_yn='Y' then '5. Eligibile with post-list model normalization'
+	when SC_provided_yn='N' or SC_normalized_yn='N' or Model_provided_yn='N' or Model_normalized_yn='N' then '6. Not eligibile with SC/Model'
+	else '7. TBD with manual process'
+	end as eligible_type
+,*
+from p_sd_t.FC_SNEAKERS_TRANS_april_aspect_fnl where ) 
+where eligible_type rlike '5' and Model_provided is not null
+;
+
+
+
+----listing tools & shipping tools
+ CREATE temp TABLE app_dev_name AS
+SELECT
+	app.APP_ID,	app.DEV_ID,	app.APP_NAME, dev.COMPANY
+FROM
+      (SELECT app_id, dev_id, app_name FROM access_views.dw_applications WHERE ENV_IND = 'C' GROUP BY 1,2,3 ) app 
+	  LEFT JOIN (SELECT dev_id, company FROM PRS_SECURE_V.DW_DEVELOPERS WHERE ENV_IND = 'C' GROUP BY 1,2) dev ON app.DEV_ID = dev.DEV_ID 
+GROUP BY 1,2,3,4
+;
+drop table if exists trans_3pp;
+CREATE temp TABLE trans_3pp AS
+select distinct 
+	ssa.lstg_id,
+	ssa.ck_trans_id,
+	ssa.CK_DT,
+	ssa.TRANS_SITE_ID,
+	l.focus_vertical_sub,
+	l.LSTG_TOOL_GRP,
+	l.LISTING_TOOL,
+	ssa.TRKING_UPLOAD_SRC_CD,
+	ssa.CALLER_APP_ID,
+	lstg.application_id,
+	app_trk.dev_id as trking_dev_id,  -- This could be one of many
+	app_trk.app_name as trking_app_name,  -- This could be one of many
+	app_trk.company as trking_dev_company, -- This could be one of many
+	app_lst.dev_id as listing_dev_id, 
+	app_lst.app_name as listing_app_name, 
+	app_lst.company as Listing_dev_company
+FROM SSA_SHPMT_TRANS_FACT ssa
+	inner join DW_CHECKOUT_TRANS ck on ck.ITEM_ID = ssa.LSTG_ID and ck.TRANSACTION_ID = ssa.CK_TRANS_ID and ck.CHECKOUT_STATUS = 2
+	inner JOIN P_ROBEVANS_T.LSTG_FC_FACT l on ssa.lstg_id = l.item_id and l.auct_end_dt>='2022-01-01'
+	INNER JOIN ACCESS_VIEWS.DW_LSTG_ITEM LSTG ON LSTG.ITEM_ID = SSA.LSTG_ID and LSTG.auct_end_dt>='2022-01-01'
+	LEFT JOIN app_dev_name app_trk ON ssa.CALLER_APP_ID =  app_trk.app_id and ssa.CALLER_APP_ID is not null
+	LEFT JOIN app_dev_name app_lst ON lstg.application_id = app_lst.app_id and lstg.application_id is not null
+where ssa.CK_DT >= '2022-01-01'
+and focus_vertical_sub='Lux: Sneakers'
+and top_brand_flag=1
+and ssa.ITEM_PRICE_AMT*ssa.LSTG_CURNCY_EXCHNG_RATE>=100
+;
+
+select ITEM_SITE_ID,count(*) as LL from P_ROBEVANS_T.LSTG_FC_FACT where auct_end_dt>='2022-05-22' and AUCT_START_DT<='2022-05-22' and ITEM_SITE_ID in (0,3,15,77) and top_brand_flag=1 and focus_vertical_sub='Lux: Sneakers' group by 1;
+
+select TRANS_SITE_ID,count(*) as trans from trans_3pp where TRANS_SITE_ID in (0,3,15,77) and CK_DT='2022-05-22' group by 1;
+
+
+
+select LSTG_TOOL_GRP,listing_app_name,count(*)
+from trans_3pp 
+where focus_vertical_sub='Lux: Sneakers' and TRANS_SITE_ID in (0) and LISTING_TOOL = 'Other'
+group by 1,2
+order by 3 desc
+;
+
+select 
+TRANS_SITE_ID,
+case when listing_tool not rlike 'BOLT|CUB|Helix|Mobile' then 'Non-UX-Flow' else 'UX-Flow' end as lstg_tools,
+case when lower(trking_dev_company) rlike 'ebay' then 'eBay_tools' when trking_dev_company is null then 'Missing' else '3rd_party_APIs' end as tracking_tools,
+count(*)
+from trans_3pp 
+where focus_vertical_sub='Lux: Sneakers' and TRANS_SITE_ID in (0,3,15,77)
+group by 1,2,3
+order by 4 DESC;
+
+select 
+TRANS_SITE_ID,
+case when lower(Listing_dev_company) rlike 'ebay' then 'eBay_tools' when Listing_dev_company is null then 'Missing' else '3rd_party_APIs' end as lstg_tools,
+Listing_dev_company,
+count(*)
+from trans_3pp 
+where focus_vertical_sub='Lux: Sneakers' and TRANS_SITE_ID in (0,3,15,77)
+group by 1,2,3
+order by 4 DESC;
+
+select 
+TRANS_SITE_ID,
+case when lower(trking_dev_company) rlike 'ebay' then 'eBay_tools' when trking_dev_company is null then 'Missing' else '3rd_party_APIs' end as tracking_tools,
+trking_dev_company,
+count(*)
+from trans_3pp 
+where focus_vertical_sub='Lux: Sneakers' and TRANS_SITE_ID in (0,3,15,77)
+group by 1,2,3
+order by 4 DESC;
+
+----------GTC 
+drop table  if exists FC_SNEAKERS_TRANS_eligible_tmp1;
+CREATE temp TABLE FC_SNEAKERS_TRANS_eligible_tmp1 AS 
+select
+a.item_id,a.TRANSACTION_ID,a.created_dt,a.checkout_price_usd,a.listing_tool,l.SLR_ID,l.MSKU_IND,l.GTC_IND
+from 
+(select a.*
+,case when asctive_adoption_yn='Y' and (SC_provided_yn='Y' or Model_provided_yn='Y') then '1. Eligibile with active adoption'
+	when SC_provided_yn='Y' and brand_value=brand_catal then '2. Eligibile with seller provided SC'
+	when SC_provided_yn='Y' and brand_value<>brand_catal then '2. Eligibile with seller provided SC - brand synonyms'
+	when Model_provided_yn='Y' and brand_value=brand_catal then '3. Eligibile with seller provdied model'
+	when Model_provided_yn='Y' and brand_value<>brand_catal then '3. Eligibile with seller provdied model - brand synonyms'
+	when SC_normalized_yn='Y' then '4. Eligibile with post-list SC extraction'
+	when Model_normalized_yn='Y' then '5. Eligibile with post-list model normalization'
+	when SC_provided_yn='N' or SC_normalized_yn='N' or Model_provided_yn='N' or Model_normalized_yn='N' then '6. Not eligibile with SC/Model'
+	else '7. TBD with manual process'
+	end as eligible_type
+from p_sd_t.FC_SNEAKERS_TRANS_april_aspect_fnl a 
+where lstg_site_id=0
+) a
+inner join PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT l on a.item_id= l.ITEM_ID and l.AUCT_END_DT >='2022-04-17'
+where eligible_type not rlike '6|7'
+;
+
+
+drop table  if exists FC_SNEAKERS_TRANS_REVISIONS_tmp1;
+CREATE temp TABLE FC_SNEAKERS_TRANS_REVISIONS_tmp1 AS 
+select a.item_id,a.TRANSACTION_ID,max(DATE_REVISED) as DATE_REVISED
+from FC_SNEAKERS_TRANS_eligible_tmp1 a 
+inner join DW_ITEM_REVISIONS r
+on a.item_id=r.item_id and created_dt>=DATE_REVISED and date_revised >='2022-01-01'
+group by 1,2
+;
+
+drop table  if exists FC_SNEAKERS_TRANS_eligible_tmp2;
+CREATE temp TABLE FC_SNEAKERS_TRANS_eligible_tmp2 AS 
+select a.*
+,case when u.USER_ID is not null then 1 else 0 end as bp_seller
+,r.DATE_REVISED
+from FC_SNEAKERS_TRANS_eligible_tmp1 a 
+left join Access_Views.DW_USERS u 
+on a.SLR_ID=u.USER_ID and (cast ( u.flagsex11 as BIGINT) & 256)=256 
+left join FC_SNEAKERS_TRANS_REVISIONS_tmp1 r 
+on a.item_id=r.item_id and a.TRANSACTION_ID=r.TRANSACTION_ID 
+;
+
+
+select case when bp_seller=1 then '1. BP Sellers'
+	when listing_tool not rlike 'BOLT|CUB|Helix|Mobile' then '2. Non-UX-Flow'
+	when MSKU_IND=1 then '3. MSKU'
+	when GTC_IND=1 then
+		case when DATE_REVISED is null then '41. Never Revised' when datediff(created_dt,DATE_REVISED) <=30 then '42. Revised L30D' when datediff(created_dt,DATE_REVISED) <=90 then '43. Revised L90D' else '44. Revised L90D+' end
+	else '5. Remaining' end as grp
+,sum(checkout_price_usd) as GMV 
+,count(*) as trans
+,count(distinct item_id) as lstg_cnt
+,count(distinct SLR_ID) as seller_cnt
+from FC_SNEAKERS_TRANS_eligible_tmp2
+group by 1
+;

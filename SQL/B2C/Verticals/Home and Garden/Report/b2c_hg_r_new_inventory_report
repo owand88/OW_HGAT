@@ -1,0 +1,331 @@
+/*Aim: 
+Explore ways to identify relevant, popular listings (inventory opportunities) that can be submitted by category managers for marketing support
+*/
+
+/*Q42021 Focused Sellers of CMs and PTs
+--Not using this combined table as it lacks PT names
+select * from P_awang_ops_t.uk_managed_sellers_all
+
+--194 H&G Q421 Protrader focused list provided to me by Laura Burke on 2021-10-27
+select * from P_UK_BC_T.PT_focused_Q421
+
+--Check if CM and Protrader have any overlapping focused sellers
+--One overlap (seller_id=818430928) between Pete Sandhar and Nicole Salinger
+
+select * from
+(select seller_id, max(am_name) as category_manager from p_awang_ops_t.seller_ops_83 where seller_vertical='Home & Garden' group by 1) a
+full outer join (select seller_id, max(pt_name) as protrader from P_UK_BC_T.PT_focused_Q421 group by 1) b
+on a.seller_id=b.seller_id
+where a.seller_id is not null and b.seller_id is not null
+*/
+
+
+/********************Manually add seller id 103159216 (26Nov2021)********************/
+--Alex H/Emma would like to add seller id 103159216 to the reporting even though it's not managed by H&G CMs
+--seller id 103159216, 3 Category Manager 
+--Jakim Vernon (seller name: idoodirect)
+--Shiza Aslam (seller name: xsitems_ltd)
+--Alice Winter (seller name: xsitems_ltd)
+/*
+select * from p_awang_ops_t.seller_ops_83 where seller_name="idoodirect" or seller_id=103159216
+select user_slctd_id from access_views.dw_users where user_id=103159216--"idoodirect"
+select user_id from access_views.dw_users where user_slctd_id="xsitems_ltd"--no result
+*/
+
+--Converted new listing in the last 7 days
+drop table if exists p_uk_bc_t.lstg7day_base;
+create table p_uk_bc_t.lstg7day_base as (
+select
+lstg.auct_start_dt
+,cat.categ_lvl2_name
+,cat.categ_lvl2_id
+,cat.categ_lvl3_name
+,cat.categ_lvl3_id
+,cat.categ_lvl4_name
+,cat.categ_lvl4_id
+,ck.seller_id
+,usr.user_slctd_id
+,case when lstg.relist_up_flag = 1 then 'Y' else 'N' end as relist
+
+,case when focus.seller_id is not null and pt_focus.seller_id is not null then "CM & PT Focused Seller" 
+	  when focus.seller_id is not null and pt_focus.seller_id is null then "CM Focused Seller"
+	  when focus.seller_id is null and pt_focus.seller_id is not null then "PT Focused Seller" else "Not Focused Seller" end as seller_type
+
+,case when focus.seller_id is not null and pt_focus.seller_id is not null then concat(focus.category_manager," & ",pt_focus.protrader) 
+	  when focus.seller_id is not null and pt_focus.seller_id is null then focus.category_manager
+	  when focus.seller_id is null and pt_focus.seller_id is not null then pt_focus.protrader else null end as focused_manager
+,lstg.item_id
+,lstg.auct_titl
+,case when lstg.qty_avail > lstg.qty_sold then "In Stock" when lstg.qty_avail=lstg.qty_sold then "Out of Stock" else "N/A" end as stock_level--As of code runs
+,case when lstg.qty_avail > lstg.qty_sold then lstg.qty_avail else null end as available_item
+,case when lstg.auct_end_dt>=current_date then "Live Listing" when lstg.auct_end_dt<current_date then "Listing Ended" else "N/A" end as listing_scheduled_end
+,sum(ck.quantity) as bi																										
+,sum(cast(ck.quantity as decimal(18,2))* cast(ck.item_price as decimal(18,2))*cast(ssa.curncy_plan_rate as decimal(18,2))) as GMV	
+
+from access_views.dw_checkout_trans ck	
+
+inner join (select curncy_plan_rate,curncy_id from access_views.ssa_curncy_plan_rate_dim group by 1,2)as ssa 																								
+on ssa.curncy_id = ck.lstg_curncy_id    
+
+inner join access_views.dw_lstg_item lstg 
+on ck.item_id = lstg.item_id and ck.auct_end_dt = lstg.auct_end_dt	
+	
+inner join (
+	(select distinct meta_categ_id,meta_categ_name,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,move_to,leaf_categ_name,site_id,
+	 case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+	 when meta_categ_id in (26395) then 'Lifestyle'
+	 when categ_lvl3_id in (260325) then 'Lifestyle'
+	 when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+	 when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+	 when categ_lvl3_id in (3244) then 'Parts & Accessories'
+	 when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+	 when categ_lvl2_id in (46576) then 'Parts & Accessories'
+	 else bsns_vrtcl_name end as new_vertical
+	 from access_views.dw_category_groupings
+	 where sap_category_id not in (5,7,23,41,-999))
+	 )  as cat																
+	on lstg.leaf_categ_id = cat.leaf_categ_id and lstg.item_site_id = cat.site_id and cat.site_id=3	
+
+inner join access_views.dw_cal_dt cal 
+on ck.created_dt=cal.cal_dt 
+and cal.cal_dt > '2021-10-01'	
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5)as hist 																						
+on hist.user_id = ck.seller_id	and ck.created_dt between hist.beg_date and hist.end_date	
+
+inner join access_views.dw_users as usr																			
+on ck.seller_id = usr.user_id	
+
+left join (select seller_id, max(am_name) as category_manager from p_awang_ops_t.seller_ops_83 where seller_vertical='Home & Garden' or seller_id=103159216 group by 1) focus/********************Manually add seller id 103159216 (26Nov2021)********************/
+on ck.seller_id=focus.seller_id 
+
+left join (select seller_id, max(pt_name) as protrader from P_UK_BC_T.PT_focused_Q421 group by 1) pt_focus
+on ck.seller_id=pt_focus.seller_id 
+ 
+where cat.new_vertical='Home & Garden'
+and lstg.auct_start_dt between current_date-7 and current_date-1--Listing started in the last 7 full days
+and ck.slr_cntry_id = 3 --UK sellers																										
+and ck.byr_cntry_id = 3 --UK buyers 																									
+and ck.slr_cntry_id = ck.byr_cntry_id --Domestic	
+and ck.rprtd_wacko_yn = 'N'																							
+and ck.auct_end_dt > '2021-10-01'
+and lstg.item_site_id = 3--UK site
+and lstg.auct_type_code not in (10,15)
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17);
+
+--Add watches
+drop table if exists p_uk_bc_t.lstg7day_watches;
+create table p_uk_bc_t.lstg7day_watches as (
+select 
+lstg.item_id
+,dt.trf_max_dt
+,dt.trf_max_dt - lstg.auct_start_dt +1 as watch_day
+,sum(trf.watch_cnt) as watches
+
+from p_uk_bc_t.lstg7day_base lstg
+
+left join (select 
+item_id
+,cal_dt
+,watch_cnt
+from prs_restricted_v.slng_trfc_super_fact
+where site_id = 3 
+and cal_dt> '2021-10-01'
+) trf
+on lstg.item_id=trf.item_id and trf.cal_dt>=lstg.auct_start_dt
+
+cross join (select max(cal_dt) as trf_max_dt from prs_restricted_v.slng_trfc_super_fact) dt
+
+group by 1,2,3);
+
+--Join tables
+drop table if exists p_uk_bc_t.lstg7day;
+create table p_uk_bc_t.lstg7day as (
+select a.*
+,b.trf_max_dt,b.watch_day,b.watches,b.watches/b.watch_day as watches_per_day 
+from p_uk_bc_t.lstg7day_base a
+left join p_uk_bc_t.lstg7day_watches b
+on a.item_id=b.item_id);
+
+
+/*Explore data
+--select * from p_uk_bc_t.lstg7day order by GMV desc
+
+--23,897 converted new listings between 2021-10-19 and 2021-10-25
+select count(*),count(distinct item_id) from p_uk_bc_t.lstg7day
+select max(auct_start_dt),min(auct_start_dt) from p_uk_bc_t.lstg7day
+
+--23437 from Not focussed seller, 460 Focused seller (2%)
+select seller_type,count(*) from p_uk_bc_t.lstg7day group by 1
+
+--60% already OOO
+select stock_level,count(*) from p_uk_bc_t.lstg7day group by 1
+
+--54% listings already ended
+select listing_scheduled_end,count(*) from p_uk_bc_t.lstg7day group by 1
+
+--Listing by seller_id=818430928 (managed by both Pete and Nicole)
+select * from p_uk_bc_t.lstg7day
+where item_id=304192556577
+*/
+	
+--All items listed in the last 7 days
+drop table if exists p_uk_bc_t.all_lstg_7day;
+create table p_uk_bc_t.all_lstg_7day as (
+select
+lstg.auct_start_dt
+,lstg.slr_id
+,u.user_slctd_id
+,case when lstg.relist_up_flag = 1 then 'Y' else 'N' end as relist
+
+,case when focus.seller_id is not null and pt_focus.seller_id is not null then "CM & PT Focused Seller" 
+	  when focus.seller_id is not null and pt_focus.seller_id is null then "CM Focused Seller"
+	  when focus.seller_id is null and pt_focus.seller_id is not null then "PT Focused Seller" else "Not Focused Seller" end as seller_type
+	  
+,case when focus.seller_id is not null and pt_focus.seller_id is not null then concat(focus.category_manager," & ",pt_focus.protrader) 
+	  when focus.seller_id is not null and pt_focus.seller_id is null then focus.category_manager
+	  when focus.seller_id is null and pt_focus.seller_id is not null then pt_focus.protrader else null end as focused_manager
+,lstg.item_id
+,case when lstg.qty_avail > lstg.qty_sold then "In Stock" when lstg.qty_avail=lstg.qty_sold then "Out of Stock" else "N/A" end as stock_level--As of code runs
+,case when lstg.qty_avail > lstg.qty_sold then lstg.qty_avail else null end as available_item
+,case when lstg.auct_end_dt>=current_date then "Live Listing" when lstg.auct_end_dt<current_date then "Listing Ended" else "N/A" end as listing_scheduled_end
+ 
+from access_views.dw_lstg_item lstg 
+
+inner join (
+	(select distinct meta_categ_id,meta_categ_name,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,move_to,leaf_categ_name,site_id,
+	 case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+	 when meta_categ_id in (26395) then 'Lifestyle'
+	 when categ_lvl3_id in (260325) then 'Lifestyle'
+	 when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+	 when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+	 when categ_lvl3_id in (3244) then 'Parts & Accessories'
+	 when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+	 when categ_lvl2_id in (46576) then 'Parts & Accessories'
+	 else bsns_vrtcl_name end as new_vertical
+	 from access_views.dw_category_groupings
+	 where sap_category_id not in (5,7,23,41,-999))
+	 )  as cat																
+	on lstg.leaf_categ_id = cat.leaf_categ_id and lstg.item_site_id = cat.site_id and cat.site_id=3	
+
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id and u.user_dsgntn_id =2--Business sellers	
+
+left join (select seller_id, max(am_name) as category_manager from p_awang_ops_t.seller_ops_83 where seller_vertical='Home & Garden' or seller_id=103159216 group by 1) focus/********************Manually add seller id 103159216 (26Nov2021)********************/   
+on lstg.slr_id=focus.seller_id 
+
+left join (select seller_id, max(pt_name) as protrader from P_UK_BC_T.PT_focused_Q421 group by 1) pt_focus
+on lstg.slr_id=pt_focus.seller_id 
+ 
+where cat.new_vertical='Home & Garden'
+and lstg.auct_start_dt between current_date-7 and current_date-1--Listing started in the last 7 full days
+and lstg.item_site_id = 3--UK site
+and lstg.auct_type_code not in (10,15)
+and lstg.auct_end_dt > '2021-10-01');
+
+
+/*Explore data
+--1,515,119 new listings in a week (exceeds max no of rows in excel)
+select count(*),count(distinct item_id),min(auct_start_dt),max(auct_start_dt) 
+from p_uk_bc_t.all_lstg_7day
+
+--11263
+select count(*) from p_uk_bc_t.all_lstg_7day where focused_manager is not null
+
+--Overlapping CM & PT Focused Seller
+select * from p_uk_bc_t.all_lstg_7day where focused_manager is not null and slr_id=818430928
+*/
+	
+
+--Searches that fall into home & garden category in the last 4 weeks
+drop table if exists p_uk_bc_t.HG_searches_4week;
+create table p_uk_bc_t.HG_searches_4week as (
+select    
+meta_categ_name
+,categ_lvl2_name
+,categ_lvl3_name
+,categ_lvl4_name 
+,age_for_rtl_week_id
+,lower(src.query) as act_srch
+,count(*) as src_cnt 
+
+from  access_views.srch_cnvrsn_event_fact src       
+
+left join dw_lstg_item lst                                                                  
+on substring(src.items,1,instr(src.items,',')-1) = lst.item_id--Assume the first item appears is the most relevant to the search input
+
+inner join (
+	select distinct meta_categ_id,meta_categ_name,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,move_to,leaf_categ_name,site_id,
+	case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+	when meta_categ_id in (26395) then 'Lifestyle'
+	when categ_lvl3_id in (260325) then 'Lifestyle'
+	when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+	when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+	when categ_lvl3_id in (3244) then 'Parts & Accessories'
+	when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+	when categ_lvl2_id in (46576) then 'Parts & Accessories'
+	else bsns_vrtcl_name end as new_vertical
+	from access_views.dw_category_groupings
+	where sap_category_id not in (5,7,23,41,-999)) as cat               
+on lst.leaf_categ_id=cat.leaf_categ_id and src.site_id = cat.site_id and cat.site_id=3
+--and lst.leaf_categ_id=cat.move_to--safeguard future category changes
+
+inner join access_views.dw_cal_dt cal
+on src.session_start_dt = cal.cal_dt and cal.age_for_rtl_week_id between -4 and -1--observe last full 4 weeks trend
+
+where src.site_id = 3  
+and cat.new_vertical='Home & Garden'
+group by 1,2,3,4,5,6);
+
+
+/*Explore data
+--2019-01-01
+select min(session_start_dt) from srch_cnvrsn_event_fact
+ 
+--65,057,044 rows, 281,331,677 searches, circa 10M H&G related searches per day
+select count(*),sum(src_cnt) from p_uk_bc_t.HG_searches_4week
+
+select * from p_uk_bc_t.HG_searches_4week
+order by age_for_rtl_week_id desc,src_cnt desc
+
+--Top 500 searches in last 4 weeks
+select act_srch,sum(src_cnt) as total_search 
+from p_uk_bc_t.HG_searches_4week
+group by 1
+qualify (row_number() over (order by total_search desc))<=500
+
+--Top 500 searches in last week
+select act_srch,sum(src_cnt) as total_search 
+from p_uk_bc_t.HG_searches_4week
+where age_for_rtl_week_id = -1
+group by 1
+qualify (row_number() over (order by total_search desc))<=500
+
+--Searches that increased in popularity compared to 4 weeks ago 
+select 
+act_srch
+,rt_wk_1
+,rt_wk_4
+,case when rt_wk_1 is not null and rt_wk_4 is not null then (rt_wk_1 / rt_wk_4) - 1 else null end as wk_1_wk4_pct_diff
+,row_number() over (order by wk_1_wk4_pct_diff desc) as rown
+from
+(select  
+act_srch
+,sum(case when age_for_rtl_week_id = -4 then src_cnt end) as rt_wk_4
+,sum(case when age_for_rtl_week_id = -1 then src_cnt end) as rt_wk_1
+from p_uk_bc_t.HG_searches_4week
+group by 1)
+qualify (row_number() over (order by rown))<=500
+*/
+
+
+
+
+
+
+

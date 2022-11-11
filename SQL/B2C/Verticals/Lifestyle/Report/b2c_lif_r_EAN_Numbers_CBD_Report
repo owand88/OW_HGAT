@@ -1,0 +1,202 @@
+-- THIS CODE SITS BEHIND A WEEKLY REPORT FOR CBD
+-- THE REPORT'S GOAL IS TO CHECK WHETHER CBD LISTINGS MATCH THEIR LEGAL REQUIREMENTS.
+------------- Food or Oil and Drink: Ingredients must be complete AND RP must equal EAN
+-------------- Skincare: Ingredients must be complete AND EAN must be complete
+-- STEP 1 - EBAY HAS A LIST OF RP NUMBERS THAT CORRELATE TO EANS. THESE ARE PROVIDED BY LIFESTYLE ON A MONTHLY BASIS AND THEN UPLOADED INTO P_robevans_T.CBD_RP_EAN.
+-- STEP 2 - THE BELOW CODE RUNS WEEKLY TO CROSS CHECK LIVE LISTINGS WITH THE ABOVE RP NUMBERS
+----------------------------------------------------------------------------------------------------------------------
+--- RULES
+--------------------------------------------------------------------------------------------------------------------
+-- Listings that follow the Skincare rule: Ingredients must be complete AND EAN must be complete
+-- •	Health & Beauty [26395] > Natural & Alternative Remedies [67659] > CBD Products [262436] > Beauty & Skincare [262437] 
+-- Listings that follow the food rule:  Ingredients must be complete AND RP must equal EAN
+-- •	Health & Beauty [26395] > Natural & Alternative Remedies [67659] > CBD Products [262436] > Food & Drinks [262438]  
+-- •	Health & Beauty [26395] > Natural & Alternative Remedies [67659] > CBD Products [262436] > Oils & Supplements [262439] 
+
+--------------------------------------------------------------------------------------------------------------------
+--- STEP 1
+--- This will clear out everything from the table, so the INSERT must be on everything
+--------------------------------------------------------------------------------------------------------------------
+
+-- SELECT * FROM P_robevans_T.CBD_RP_EAN
+
+
+-- drop table if exists P_robevans_T.CBD_RP_EAN1;
+-- CREATE TABLE P_robevans_T.CBD_RP_EAN1 AS(
+-- SELECT * FROM p_robevans_t.CBD_RP_EAN where brand = 'a');
+
+-- drop table if exists P_robevans_T.CBD_RP_EAN;
+-- CREATE TABLE P_robevans_T.CBD_RP_EAN AS(
+-- SELECT * FROM P_robevans_T.CBD_RP_EAN1);
+
+-- insert into P_robevans_T.CBD_RP_EAN (seller_name, brand, ean, product_title, rp, status) values  
+-- ;
+
+
+--------------------------------------------------------------------------------------------------------------------
+--- STEP 2
+--------------------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_robevans_T.CBD_LL ;
+CREATE TABLE P_robevans_T.CBD_LL 
+
+SELECT 
+I.ITEM_ID
+,I.SLR_ID
+,I.AUCT_START_DT
+,I.AUCT_END_DT
+, CAT.CATEG_LVL4_ID
+, CAT.CATEG_LVL4_NAME
+, B.AUCT_TITLE
+, BRAND
+, Ingredients
+, count_ingredients
+, EAN2
+
+FROM DW_LSTG_ITEM as I
+  
+LEFT JOIN PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT B ON B.ITEM_ID = I.ITEM_ID AND B.AUCT_END_DT = I.AUCT_END_DT
+INNER JOIN DW_CAL_DT CAL 
+	ON I.AUCT_START_DT < cal.CAL_DT and I.AUCT_END_DT >= cal.CAL_DT
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = I.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)  
+	
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('BRAND') then aspct_vlu_nm else NULL end ),'Unknown') as BRAND
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2016-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2016-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+				)SB
+			GROUP BY 1,2) bbase
+					ON I.ITEM_ID = bbase.ITEM_ID AND I.AUCT_END_dt = bbase.AUCT_END_DT
+	
+left join (
+		select *
+		From 
+			(select
+			item_id,
+			auct_end_dt,
+			lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+			collect_set(upper(ASPCT_VLU_NM)) as Ingredients,
+			count(distinct ASPCT_VLU_NM) as count_ingredients,
+			ROW_NUMBER() over  ( partition by  aspct.item_id, auct_end_dt order by count(distinct ASPCT_VLU_NM) desc) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+			FROM ITEM_ASPCT_CLSSFCTN ASPCT
+			where 
+			lower(PRDCT_ASPCT_NM) like ('%ingredients%')
+			Group by 1,2,3)
+		Where RNum = 1
+		) bbase1
+							ON I.ITEM_ID = bbase1.ITEM_ID AND I.AUCT_END_dt = bbase1.AUCT_END_DT
+							
+left join (
+		Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('EAN2') then aspct_vlu_nm else NULL end ),'Unknown') as EAN2
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					'EAN2' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm,
+					ROW_NUMBER() over  ( partition by  item_id, auct_end_dt order by count(distinct ASPCT_VLU_NM) desc) as RNum
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2016-06-01'
+					and upper(prdct_aspct_nm)= upper('SellerTagValues_ind_title')
+				Group by 1,2,3,4
+				)
+			Where RNUM = 1
+			Group by 1,2
+			)bbase2
+							ON I.ITEM_ID = bbase2.ITEM_ID AND I.AUCT_END_dt = bbase2.AUCT_END_DT
+
+WHERE 1=1
+AND I.item_site_id = 3 
+AND cat.CATEG_LVL3_ID = 262436
+AND I.AUCT_TYPE_CODE NOT IN (10,15)
+AND I.AUCT_START_DT <= CURRENT_DATE AND I.AUCT_END_DT >= CURRENT_DATE
+Group by 1,2,3,4,5,6,7,8,9,10,11
+;
+
+
+-----------------------------------------------------------------------------------------------------------------------
+DROP TABLE if exists P_robevans_T.CBT_LL_EAN;
+CREATE TABLE P_robevans_T.CBT_LL_EAN
+
+SELECT 
+
+a.ITEM_VRTN_ID
+,ll.ITEM_ID
+,a.EAN_NUM AS DW_EAN
+,ll.EAN2
+,LL.SLR_ID
+, user_slctd_id as Seller_Name
+,LL.AUCT_START_DT
+,LL.AUCT_END_DT
+, LL.CATEG_LVL4_ID
+, LL.CATEG_LVL4_NAME
+, LL.AUCT_TITLE
+, LL.BRAND
+, Ingredients
+, count_ingredients
+-- , CASE WHEN CATEG_LVL4_ID = 262437 AND (INGREDIENTS IS NULL) THEN 'FLAG - INGREDIENTS MISSING'
+--  WHEN CATEG_LVL4_ID = 262437 AND (INGREDIENTS IS NULL OR a.EAN_NUM IS NULL) THEN 'FLAG - EAN MISSING'
+-- 		WHEN CATEG_LVL4_ID IN (262438,262439) AND (INGREDIENTS IS NULL) THEN 'FLAG - INGREDIENTS MISSING'
+-- 				WHEN CATEG_LVL4_ID IN (262438,262439) AND (a.EAN_NUM IS NULL) THEN 'FLAG - EAN MISSING'
+-- 						WHEN CATEG_LVL4_ID IN (262438,262439) AND EAN.EAN == a.EAN_NUM THEN 'FLAG - EAN DOES NOT MATCH RP'
+-- 		END AS flag
+
+FROM P_robevans_T.CBD_LL LL
+LEFT JOIN LSTG_ITEM_VRTN as A
+ 	ON LL.ITEM_ID = A.ITEM_ID AND LL.AUCT_END_DT = A.AUCT_END_DT
+LEFT JOIN DW_USERS u on u.user_id = ll.slr_id
+
+WHERE 1=1
+
+
+
+
+-- AND A.ITEM_ID IN ( 
+-- 175171132377,
+-- 353930056106,
+-- 144426936556,
+-- 144426936556)
+
+-- DESCRIBE LSTG_ITEM_VRTN
+-- DESCRIBE P_robevans_T.CBD_RP_EAN 
+
+-- Listings that follow the Skincare rule: Ingredients must be complete AND EAN must be complete
+-- •	Health & Beauty [26395] > Natural & Alternative Remedies [67659] > CBD Products [262436] > Beauty & Skincare [262437] 
+-- Listings that follow the food rule:  Ingredients must be complete AND RP must equal EAN
+-- •	Health & Beauty [26395] > Natural & Alternative Remedies [67659] > CBD Products [262436] > Food & Drinks [262438]  
+-- •	Health & Beauty [26395] > Natural & Alternative Remedies [67659] > CBD Products [262436] > Oils & Supplements [] 
+
+

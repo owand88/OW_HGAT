@@ -1,0 +1,118 @@
+
+
+drop table if exists P_SLR_TRACKER_T.aw_rh_2_coup1;
+create table P_SLR_TRACKER_T.aw_rh_2_coup1  
+/*using parquet
+PARTITIONED BY (INCNTV_CD,promotion_type)
+*/
+as (
+SELECT B.* FROM
+(select
+incntv_cd,
+case when redeem_amount <= 100000 then 'rest'
+ when redeem_amount >= 200000 and no_seller <= 150 and incntv_cd like any ('P%') then 'seller coupon'
+ when redeem_amount >=2000000 and no_seller >= 5000 and incntv_cd like any ('P%') then 'site_wide'
+else 'unidentified' end as promotion_type
+
+ from 
+ 
+ (select A.incntv_cd,
+count(distinct(seller_id)) as no_seller,
+sum((redmd_amt)) as redeem_amount
+ 
+ FROM PRS_RESTRICTED_V.DW_EIP_LYLTY_RED_REF AS A
+left outer join ACCESS_VIEWS.DW_CHECKOUT_TRANS ck
+/*on a.transaction_id = ck.transaction_id and created_dt>DATE_SUB(date,8)*/
+ON a.item_id=ck.item_id
+INNER JOIN  PRS_RESTRICTED_V.DW_EIP_INCNTV_LKP AS B
+   ON A.INCNTV_ID = B.INCNTV_ID
+INNER JOIN 
+(selECT retail_year,
+retail_week,
+CAL_DT,
+week_beg_dt,
+week_end_dt
+from 
+ACCESS_VIEWS.DW_CAL_DT CAL 
+where AGE_FOR_RTL_WEEK_ID =-1 /*--BETWEEN-20 AND -1*/
+group by 1,2,3,4,5) c
+        ON c.CAL_DT = CK.CREATED_DT  /*--AND c.age_for_rtl_week_id=-1*/
+        AND c.RETAIL_YEAR >=2020 
+ and a.redmd_date between week_beg_dt and week_end_dt
+ and ck.created_dt between week_beg_dt and week_end_dt
+where 1 =1   
+/* --AND A.REDMD_DATE between date -8 and date -1*/
+AND AUCT_END_dT>=DATE_SUB(CURRENT_DATE,20) 
+   AND A.CK_STATUS = 2
+   AND B.CNTRY_ID = 3
+      AND B.INCNTV_TYPE_ID = 3
+   AND QTY_BGHT > 0
+   AND GMB > 0
+  
+   group by 1)  a)B
+   where promotion_type in ('site_wide', 'seller coupon'));
+   
+/*COLLECT STATS P_SLR_TRACKER_T.aw_rh_2_coup1 COLUMN(incntv_cd, promotion_type); 
+COLLECT STATS P_SLR_TRACKER_T.aw_rh_2_coup1 COLUMN(incntv_cd); 
+COLLECT STATS P_SLR_TRACKER_T.aw_rh_2_coup1 COLUMN( promotion_type);
+
+select distinct redmd_date from P_SLR_TRACKER_T.aw_rh_2_coup2
+*/
+
+
+/*----------------------coupon table step 2 with seller added ------------*/
+
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.aw_rh_2_coup2;
+CREATE TABLE P_SLR_TRACKER_T.aw_rh_2_coup2 
+/*using parquet
+PARTITIONED BY (promotion_type ,seller_id )*/
+
+AS ( 
+selECT 
+promotion_type,
+case when promotion_type='site_wide' then 1 else seller_id end as seller_id,
+redmd_date
+from 
+P_SLR_TRACKER_T.aw_rh_2_coup1 A 
+inner join 
+ (select a.incntv_cd,
+seller_id,
+ redmd_date
+ FROM PRS_RESTRICTED_V.DW_EIP_LYLTY_RED_REF AS A
+left outer join ACCESS_VIEWS.DW_CHECKOUT_TRANS ck
+/*--on a.transaction_id = ck.transaction_id and created_dt>date -8 */
+on a.item_id=ck.item_id
+INNER JOIN  PRS_RESTRICTED_V.DW_EIP_INCNTV_LKP AS B
+   ON A.INCNTV_ID = B.INCNTV_ID
+INNER JOIN 
+(select retail_year,
+retail_week,
+CAL_DT,
+week_beg_dt,
+week_end_dt
+from 
+ACCESS_VIEWS.DW_CAL_DT CAL 
+where AGE_FOR_RTL_WEEK_ID =-1 /*--BETWEEN-10 AND -1*/
+group by 1,2,3,4,5) c
+        ON c.CAL_DT = CK.CREATED_DT  /*--AND c.age_for_rtl_week_id=-1*/
+        AND c.RETAIL_YEAR >=2020 
+ and a.redmd_date between week_beg_dt and week_end_dt
+ and ck.created_dt between week_beg_dt and week_end_dt
+where 1 =1   
+ /*--AND A.REDMD_DATE between date -8 and date -1*/
+AND AUCT_END_dT>=DATE_SUB(CURRENT_DATE,20) 
+   AND A.CK_STATUS = 2
+   AND B.CNTRY_ID = 3
+      AND B.INCNTV_TYPE_ID = 3
+   AND QTY_BGHT > 0
+   AND GMB > 0
+   /*--and incntv_cd='play15'*/
+   group by 1,2,3
+ 
+)  b on a.incntv_cd=b.incntv_cd 
+group by 1,2,3);
+
+/*COLLECT STATS P_SLR_TRACKER_T.aw_rh_2_coup2 COLUMN(seller_id, promotion_type,redmd_date); 
+COLLECT STATS P_SLR_TRACKER_T.aw_rh_2_coup2 COLUMN(seller_id); 
+COLLECT STATS P_SLR_TRACKER_T.aw_rh_2_coup2 COLUMN( promotion_type); 
+COLLECT STATS P_SLR_TRACKER_T.aw_rh_2_coup2 COLUMN( redmd_date); */

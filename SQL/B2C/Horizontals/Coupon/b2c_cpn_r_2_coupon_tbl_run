@@ -1,0 +1,222 @@
+Drop table if exists P_Plan_PPatel_T.PP_CouponHist_1_single_redemp;
+
+create table P_Plan_PPatel_T.PP_CouponHist_1_single_redemp as 
+(
+ SELECT
+   A.INCNTV_CD
+ , a.INCNTV_CD  as coupon_name
+ , A.USER_ID
+ , A.REDMD_DATE
+ , A.TRANSACTION_ID
+ , A.ITEM_ID
+ , coupon_flag
+ , case when apps.app_id is null then 'PC'                           
+   		ELSE 'MOBILE'                       
+   		END AS PLATFORM
+ , CASE WHEN PLATFORM = 'MOBILE' AND apps.EXPLCT_APP_NAME     LIKE '%ANDROID%' THEN 'Android'
+        WHEN PLATFORM = 'MOBILE' AND apps.EXPLCT_APP_NAME     LIKE '%IPHONE%' THEN 'iPhone'
+        WHEN PLATFORM = 'MOBILE' AND apps.EXPLCT_APP_NAME     LIKE '%iPad%' THEN 'iPad'
+        WHEN PLATFORM = 'MOBILE' AND apps.EXPLCT_APP_NAME NOT LIKE ANY ( '%ANDROID%' ,'%IPHONE%' , '%iPad%' ) THEN 'Other Mobile'
+        WHEN PLATFORM = 'PC' THEN 'PC'
+   		END AS DEVICE
+
+ , case when CKt.SLR_CNTRY_ID = 3 then 1 else 0 end as UK_seller_flag
+ , SUM(A.QTY_BGHT) AS QTY_BGHT
+ , SUM(CAST(A.GMB * CAST(PLAN.CURNCY_PLAN_RATE AS FLOAT) AS DECIMAL(24,8))) AS GMB_USD_PLAN
+ , SUM(CAST(A.REDMD_AMT * CAST(PLAN.CURNCY_PLAN_RATE AS FLOAT) AS DECIMAL(24,8))) AS CONTRA_USD_PLAN
+ , SUM(CAST(A.GMB AS DECIMAL(24,8) )) AS GMB_LC
+ , SUM(CAST(A.REDMD_AMT AS DECIMAL(24,8) )) AS CONTRA_LC
+ , SUM(CAST(A.GMB * CAST(A.LSTG_CURNCY_EXCHNG_RATE AS FLOAT) AS DECIMAL(24,8))) AS GMB_USD
+ , SUM(CAST(A.REDMD_AMT * CAST(A.LSTG_CURNCY_EXCHNG_RATE AS FLOAT) AS DECIMAL(24,8))) AS CONTRA_USD
+ , SUM(case when HIST.USEGM_ID = 206 then A.QTY_BGHT else 0 end) AS B2C_QTY_BGHT
+ , SUM( case when HIST.USEGM_ID = 206 then CAST( A.GMB * CAST(PLAN.CURNCY_PLAN_RATE AS FLOAT) AS DECIMAL(24,8)) else 0 end ) AS B2C_GMB_USD_PLAN
+ , SUM( case when HIST.USEGM_ID = 206 then CAST(A.REDMD_AMT * CAST(PLAN.CURNCY_PLAN_RATE AS FLOAT) AS DECIMAL(24,8)) else 0 end ) AS B2C_CONTRA_USD_PLAN
+
+ FROM 
+  (
+ SELECT
+     a.USER_ID
+   , a.REDMD_DATE
+   , a.TRANSACTION_ID
+   , a.ITEM_ID
+   , CAST(COALESCE(A.QTY_BGHT,0) AS DECIMAL(24,8)) AS QTY_BGHT
+   , CAST(COALESCE(A.GMB,0) AS DECIMAL(24,8)) AS GMB
+   , CAST(COALESCE(A.REDMD_AMT,0) AS DECIMAL(24,8)) AS REDMD_AMT
+   , CAST(COALESCE(A.LSTG_CURNCY_EXCHNG_RATE,0) AS FLOAT) AS LSTG_CURNCY_EXCHNG_RATE
+   , Case when B.cmpgn_type_id in (1, 0) then 'Coupon'
+	      when B.INCNTV_CD like any ('%NECTAR%') then 'Coupon' else 'Other' end as coupon_flag
+   , B.INCNTV_CD
+   , B.INCNTV_DESC
+
+ FROM PRS_RESTRICTED_V.DW_EIP_LYLTY_RED_REF AS a
+
+ INNER JOIN PRS_RESTRICTED_V.DW_EIP_INCNTV_LKP AS B
+   ON a.INCNTV_ID = B.INCNTV_ID
+
+ WHERE 1 = 1
+    AND B.CNTRY_ID = 3
+    AND B.INCNTV_TYPE_ID = 3
+ 	AND a.QTY_BGHT > 0
+	AND a.GMB > 0
+	and B.cntry_id = 3
+--    and B.cmpgn_type_id IN (0, 1)
+--    and B.MHN_VRSN = 2
+    and a.redmd_date >= to_date('2018-01-01')
+	and a.REFUND_FLAG = 0
+	 ) A
+
+ INNER JOIN access_views.DW_CHECKOUT_TRANS_V2 AS CKT
+    ON CKT.BUYER_ID = A.USER_ID
+    AND CKT.TRANSACTION_ID = A.TRANSACTION_ID
+    AND CKT.ITEM_ID = A.ITEM_ID
+
+  INNER JOIN access_views.SSA_CURNCY_PLAN_RATE_DIM AS PLAN
+    ON PLAN.CURNCY_ID = CKT.LSTG_CURNCY_ID
+
+  LEFT  JOIN DW_USEGM_HIST HIST 
+    ON HIST.USER_ID=ckt.Seller_ID 
+    AND HIST.USEGM_GRP_ID  = 48 
+    AND CASE WHEN ckt.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ckt.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+	
+	left join ACCESS_VIEWS.DW_API_MBL_APP apps ON ckt.CK_app_id=apps.app_id 
+    
+ WHERE 1 = 1
+    AND CKT.AUCT_END_DT >= date_sub(to_date('2016-12-01'),90)
+    AND CKT.CREATED_DT >= date_sub(to_date('2016-12-01'),90)
+    AND CKT.CK_WACKO_YN = 'N'
+	and coupon_flag in ('Coupon')
+
+ GROUP BY 1,2,3,4,5,6,7,8,9,10
+)
+;
+
+
+
+drop table if exists P_Plan_PPatel_T.PP_CouponHist_1_redemp_data;
+
+create table P_Plan_PPatel_T.PP_CouponHist_1_redemp_data as 
+(
+ SELECT
+  A.INCNTV_CD
+ , coupon_name
+ , A.USER_ID
+ , A.REDMD_DATE
+ , A.TRANSACTION_ID
+ , A.ITEM_ID
+ , A.UK_seller_flag
+ , SUM(A.QTY_BGHT) AS QTY_BGHT
+ , SUM(GMB_USD_PLAN) AS GMB_USD_PLAN
+ , SUM(A.CONTRA_USD_PLAN) AS CONTRA_USD_PLAN
+ , SUM(A.B2C_QTY_BGHT) AS B2C_QTY_BGHT
+
+
+ FROM P_Plan_PPatel_T.PP_CouponHist_1_single_redemp A
+ GROUP BY 1,2,3,4,5, 6,7
+)
+ ;
+
+
+
+drop table if exists P_Plan_PPatel_T.PP_CouponHist_1_coupon_sum1;
+
+create table P_Plan_PPatel_T.PP_CouponHist_1_coupon_sum1 as (
+select 
+a.INCNTV_CD as coupon_name
+,o.INCNTV_DESC as coupon_desc
+,o.discount_offer
+,case when a1.coupon_name is null then 'ebay funded' else 'seller coupon' end as PROMOTION_TYPE
+,o.min_spend
+,o.max_spend
+,o.start_date
+,o.end_date
+,cal.retail_year
+,cal.retail_week
+,a.item_id
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+
+,case 
+when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when cat.meta_categ_id in (26395) then 'Lifestyle'
+when cat.CATEG_LVL3_ID in (260325) then 'Lifestyle'
+when cat.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
+when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
+when cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
+else cat.bsns_vrtcl_name end as vertical
+
+,coalesce(lstg.inventory_prop,'OTHERS') as inventory_prop
+			
+,lstg.FOCUS_FLAG
+ 
+,b.slr_id
+,UK_seller_flag
+,coupon_flag
+, SUM(A.QTY_BGHT) AS QTY_BGHT
+, SUM(GMB_USD_PLAN) AS GMB_USD_PLAN
+, SUM(CONTRA_USD_PLAN) AS CONTRA_USD_PLAN
+, SUM(B2C_QTY_BGHT) AS B2C_QTY_BGHT
+
+from 
+P_Plan_PPatel_T.PP_CouponHist_1_redemp_data a
+
+left join
+
+(SELECT  
+  incntv_cd as coupon_name
+   , coalesce(incntv_discnt_pct, 0)/100 as discount_offer
+   , coalesce(incntv_min_purch_amt, 0) as min_spend
+   ,coalesce(incntv_max_discnt_amt,incntv_discnt_amt) as max_spend
+   ,incntv_start_date as start_date
+   ,incntv_exprn_date as end_date
+   ,incntv_desc 
+    , Case when cmpgn_type_id in (1) then 'Coupon' 
+	   when INCNTV_CD like any ('%NECTAR%') then 'Coupon' else 'Other' end as coupon_flag
+ FROM PRS_RESTRICTED_V.dw_eip_incntv_lkp 
+ WHERE  ( (cntry_id=3 and cmpgn_type_id IN (0, 1)) and mhn_vrsn=2) 
+ GROUP BY 1,2,3,4,5,6,7,8
+) o
+on o.coupon_name = a.INCNTV_CD 
+
+left join P_SLR_TRACKER_T.SLR_COUPON_CONTRA  a1
+on a1.coupon_name = a.INCNTV_CD
+
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
+ON CAL.CAL_DT = a.REDMD_DATE
+
+left join dw_lstg_item b
+on a.item_id = b.item_id
+
+left JOIN (select LEAF_CATEG_ID, categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, meta_categ_id, meta_categ_name, bsns_vrtcl_name from DW_CATEGORY_GROUPINGS where site_id = 3 AND SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) group by 1, 2, 3, 4, 5, 6, 7, 8) CAT 
+ON CAT.LEAF_CATEG_ID = b.LEAF_CATEG_ID
+
+LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
+ON a.ITEM_ID = CNDTN.ITEM_ID
+
+left join p_awang_ops_t.item_invent_lstg lstg on a.item_id = lstg.item_id
+where coupon_flag in ('Coupon')
+
+group by 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,20,21
+
+);
+
+select * from P_Plan_PPatel_T.PP_CouponHist_1_coupon_sum1 where coupon_name = 'TAKE25'
+;
+
+-- SELECT  
+--   incntv_cd as coupon_name
+--    , coalesce(incntv_discnt_pct, 0)/100 as discount_offer
+--    , coalesce(incntv_min_purch_amt, 0) as min_spend
+--    ,coalesce(incntv_max_discnt_amt,incntv_discnt_amt) as max_spend
+--    ,incntv_start_date as start_date
+--    ,incntv_exprn_date as end_date
+--    ,incntv_desc 
+--     , Case when cmpgn_type_id in (1) then 'Coupon' 
+-- 	   when INCNTV_CD like any ('%NECTAR%') then 'Coupon' else 'Other' end as coupon_flag
+--  FROM PRS_RESTRICTED_V.dw_eip_incntv_lkp 
+--  WHERE cntry_id=3 and cmpgn_type_id IN (0, 1) and mhn_vrsn=2
+--  and incntv_cd = 'TAKE25'

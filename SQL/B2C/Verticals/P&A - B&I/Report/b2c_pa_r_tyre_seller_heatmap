@@ -1,0 +1,739 @@
+-------------------------------------------------
+-- Heatmap for Tyre sellers-------
+----------------------------------------------------
+--   select * from p_InventoryPlanning_t.tyres_install_sellers
+--   select COUNT(*), COUNT(DISTINCT SELLER_ID)  from p_InventoryPlanning_t.tyres_install_sellers
+
+
+drop table if exists   p_InventoryPlanning_t.tyres_install_sellers  ; 
+create table  p_InventoryPlanning_t.tyres_install_sellers  as (
+select distinct seller_id from  DW_CHECKOUT_TRANS ck 
+	left outer JOIN DW_USERs U ON U.USER_ID= ck.SELLER_ID 
+where site_id =3 
+and USER_SLCTD_ID in ( select distinct seller_name from P_ICHAN_T.tyre_install_upload ));
+--- 1. Listing with MPN and graded
+--2. GMV
+--3.Free shipping and fast and free
+--4. Fitment
+
+--------------------------------
+--- 1. Listing with MPN and graded
+------------------------------------
+
+-----------------------------------------
+--2. GMV superfact 
+---------------------------------------------
+DROP TABLE IF EXISTS  P_ICHAN_T.Tyre_heatmap_gmv_superfact ;
+create table P_ICHAN_T.Tyre_heatmap_gmv_superfact as (
+
+select
+cal.retail_year 
+--,cal.retail_week	
+--,cal.retail_wk_end_date
+,cat.meta_categ_id
+,cat.meta_categ_name
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+--,cat.categ_lvl4_id
+--,cat.categ_lvl4_name
+,u.user_slctd_id as seller_name
+,ck.seller_id
+/*,case when lstg.item_cndtn_id = 1000 then 'New'
+	  when lstg.item_cndtn_id = 1500 then 'New - Other'
+	  when lstg.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when ck.GMV_dt < '2021-02-15' and lstg.item_cndtn_id = 2000 then 'Refurb - Manufacturer'
+	  when lstg.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when sr.launch_category is not null and ck.GMV_dt < sr.launch_date and lstg.item_cndtn_id in (2010,2020,2030,2500) then 'Refurb - Seller'
+	  when sr.launch_category is not null and ck.GMV_dt >= sr.launch_date and lstg.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when sr.launch_category is not null and ck.GMV_dt >= sr.launch_date and lstg.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when sr.launch_category is not null and ck.GMV_dt >= sr.launch_date and lstg.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when lstg.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when lstg.item_cndtn_id = 3000 then 'Used'
+	  when lstg.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when lstg.item_cndtn_id = 5000 then 'Used - Good'
+	  when lstg.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when lstg.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition*/
+	  /*
+,case when lstg.cndtn_rollup_id = 1 then 'New'
+	  when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+	  when lstg.cndtn_rollup_id = 3 then 'Used'
+	  else 'Other' end as condition_rollup*/
+	  
+,sum(ck.GMV20_plan) as tot_GMV
+,sum(ck.GMV20_sold_quantity) AS tot_BI
+,count(distinct ck.item_id) as converted_lstg
+
+from prs_restricted_v.slng_trans_super_fact ck 
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on ck.item_id=lstg.item_id
+
+inner join (select meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt
+and cal.age_for_rtl_year_id in (-1,0) and cal.age_for_rtl_week_id <= -1 
+    
+inner join access_views.dw_users u 
+on ck.seller_id = u.user_id
+
+--Only inventory that are part of the SR program's already launched categories
+---inner join (select * from p_uk_bc_t.SR_categories where launch_date < current_date) sr on cat.categ_lvl2_id=sr.categ_lvl2_id and cat.categ_lvl3_id=sr.categ_lvl3_id and cat.categ_lvl4_id=sr.categ_lvl4_id
+		
+where 
+ck.EU_B2C_C2C_flag='B2C'
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.lstg_site_id = 3 
+and ck.iscore = 1
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+--and cat.vertical='Electronics'
+and cat.categ_lvl4_id=179680
+and lstg.cndtn_rollup_id = 1
+AND RETAIL_WEEK IN ( SELECT DISTINCT RETAIL_WEEK FROM   access_views.dw_cal_dt cal  WHERE cal.age_for_rtl_year_id in (0) and cal.age_for_rtl_week_id <= -1  ) 
+AND SELLER_ID IN ( SELECT DISTINCT SELLER_ID FROM   p_InventoryPlanning_t.tyres_install_sellers  )
+group by 1,2,3,4,5,6,7,8,9
+);
+
+-- GMV summary table
+Drop table if exists   P_ICHAN_T.Tyre_heatmap_gmv_YOY;
+create table P_ICHAN_T.Tyre_heatmap_gmv_YOY as (
+ SELECT SELLER_ID ,
+SUM( case when retail_year =2021 then tot_GMV else 0 end) as GMV_LY,
+SUM(case when retail_year =2022 then tot_GMV else 0 end )as  GMV_TY,
+SUM(case when retail_year =2022 then tot_GMV else 0 end) /	SUM(case when retail_year =2021 then tot_GMV else 0 end )as YOY
+FROM P_ICHAN_T.Tyre_heatmap_gmv_superfact  
+GROUP BY 1 );
+---SELECT *,YOY-1  AS YOY_PC FROM P_ICHAN_T.Tyre_heatmap_gmv_YOY; 
+--- SELECT sum(gmv_ty) FROM P_ICHAN_T.Tyre_heatmap_gmv_YOY; 
+
+-- GMV top level
+Drop table if exists   P_ICHAN_T.Tyre_heatmap_gmv_YOY_top;
+create table P_ICHAN_T.Tyre_heatmap_gmv_YOY_top as (
+ SELECT 
+SUM( case when retail_year =2021 then tot_GMV else 0 end) as GMV_LY,
+SUM(case when retail_year =2022 then tot_GMV else 0 end )as  GMV_TY,
+SUM(case when retail_year =2022 then tot_GMV else 0 end) /	SUM(case when retail_year =2021 then tot_GMV else 0 end )as YOY
+FROM P_ICHAN_T.Tyre_heatmap_gmv_superfact  
+ );
+ --select *, YOY-1 yoy_pc  from  P_ICHAN_T.Tyre_heatmap_gmv_YOY_top;
+------------------------------------------------------------------------------
+-- 3. SHIPPING
+------------------------------------------------------------------------------
+ Drop table if exists   P_ICHAN_T.Tyre_heatmap_shipping_1;
+--CREATE OR REPLACE TEMPORARY VIEW p2p_transactions AS 
+create table P_ICHAN_T.Tyre_heatmap_shipping_1 as (
+SELECT
+lstg.SELLER_ID,
+ lstg.lstg_id,
+  categ_lvl3_name,categ_lvl3_id ,categ_lvl2_name,categ_lvl2_id
+--,CK_TRANS_ID
+--,CK_DT
+,lstg.HNDLNG_DAY_NUM,
+lkp.shpmt_mthd_id,
+i.shipping_method,
+lkp.SHPMT_MTHD_DESC,
+lkp.LCL_NAME,
+lkp.MIN_DLVRY_TM_IN_HOUR,
+lkp.API_SOAP_SRVC_CODE
+,lstg.lstg_end_dt
+--,CAST(lkp.Min_DLVRY_TM_IN_HOUR/24 AS DECIMAL (18,0)) min_dlvry_tm_in_hour
+,CASE WHEN lkp.Min_DLVRY_TM_IN_HOUR IS NULL THEN NULL
+	             WHEN lkp.Min_DLVRY_TM_IN_HOUR < 0 THEN NULL
+	             WHEN CAST(lkp.Min_DLVRY_TM_IN_HOUR/24 AS DECIMAL (18,0)) >= 6 THEN 6
+	             ELSE CAST(lkp.Min_DLVRY_TM_IN_HOUR/24 AS DECIMAL (18,0))
+	END AS SLA_P2P
+
+,CASE WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=1 THEN 1 
+	        ELSE 0 
+END AS PRO_1D_P2P
+
+	,CASE WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=1 THEN  1 
+	          WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=2 THEN  1 
+	          WHEN lstg.HNDLNG_DAY_NUM=1 AND SLA_P2P=1 THEN  1
+	          WHEN lstg.HNDLNG_DAY_NUM=1 AND SLA_P2P=0 THEN  1
+	          
+	          WHEN lstg.HNDLNG_DAY_NUM=2 AND SLA_P2P=1 THEN  1
+	          WHEN lstg.HNDLNG_DAY_NUM=1 AND SLA_P2P=2 THEN  1
+	          WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=3 THEN  1
+	          ELSE 0 
+	END AS PRO_3D_P2P
+
+	--,CASE WHEN PRO_3D_P2P=1 AND FACT.FREE_SHPNG_YN_IND='Y' THEN  1 ELSE 0 END AS PRO_3D_FREE_P2P 
+	,CASE WHEN PRO_3D_P2P=1 AND i.new_free_shpng_ind =1 THEN  1 ELSE 0 END AS PRO_3D_FREE_P2P 
+	--,case when FACT.FREE_SHPNG_YN_IND='Y' THEN  1 ELSE 0 End  as Free_shipping
+	,i.new_free_shpng_ind as Free_shipping
+,case when fact.shpmt_mthd_id in (301,302, 303,304,322,327,328,336,337,363,364,365, 366) then 1 else 0 end as shpmt_mthd_id_flag
+FROM ssa_shpmt_lstg_fact lstg -- select count(distinct lstg_id) from ssa_shpmt_lstg_fact where seller_id=141455937 and lstg_end_dt >= current_date lstg  limit 100
+inner join  (select distinct seller_id from  p_InventoryPlanning_t.tyres_install_sellers  ) v on lstg.seller_id=v.seller_id
+--inner join P_ICHAN_T.recyclers_upload c on lst.slr_id=c.seller_id--   select * from P_ICHAN_T.recyclers_upload
+left join  DW_ITEMS_SHIPPING i on i.item_id=lstg.lstg_id-- = 402688783703 limit 10
+--left join DW_SHPMT_MTHD_LKP lk on lk.shpmt_mthd_id=i.shipping_method
+LEFT JOIN  SSA_SHPMT_TRANS_FACT FACT on lstg.lstg_id = fact.LSTG_ID and lstg.lstg_end_dt >= date_sub(current_date , 60) --  select * from SSA_SHPMT_TRANS_FACT FACT limit 10
+LEFT JOIN DW_SHPMT_MTHD_LKP LKP ON i.shipping_method=lkp.shpmt_mthd_id
+---LEFT JOIN ssa_shpmt_lstg_fact lstg on lstg.lstg_id = fact.LSTG_ID and lstg.lstg_end_dt >= date_sub(current_date , 60) 
+INNER JOIN ( select distinct  meta_categ_id, LEAF_CATEG_ID , SITE_ID ,  categ_lvl3_name,categ_lvl3_id ,categ_lvl2_name,categ_lvl2_id from DW_CATEGORY_GROUPINGS where site_id =3 and   categ_lvl2_id in (6030)) CAT
+							ON CAT.LEAF_CATEG_ID = lstg.LEAF_CATEG_ID AND CAT.SITE_ID = lstg.SELLER_SITE_ID   and cat.site_id = 3	
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lstg.LSTG_END_DT AND COND.ITEM_ID = lstg.LSTG_ID  AND  COND.CNDTN_ROLLUP_ID =  1  /*THEN 'Used' */  
+WHERE -- fact.BUYER_CNTRY_ID=3
+lstg.SELLER_CNTRY_ID=3
+AND lstg.LSTG_SITE_ID=3
+--AND CK_DT between date_sub(current_date , 60) AND date_sub(current_date , 1)
+--AND CDE_MIN_DT=CDE_MAX_DT
+--AND fact.shpmt_mthd_id in (301,302, 303,304,322,327,328,336,337,363,364,365, 366)
+--AND CK_TRANS_ID<>0
+and lstg.lstg_end_dt >= CURRENT_DATE
+AND categ_lvl3_name='Wheels, Tyres & Parts'
+and lstg.seller_id in (select distinct seller_id from p_InventoryPlanning_t.tyres_install_sellers   ));
+
+
+
+
+Drop table if exists P_ICHAN_T.Tyre_heatmap_shipping_2;
+create table  P_ICHAN_T.Tyre_heatmap_shipping_2 as (
+Select 
+Seller_id,
+lstg_id,
+max(free_shipping) free_shipping,
+max(PRO_3D_FREE_P2P) as PRO_3D_FREE_P2P
+from  ( select distinct * from   P_ICHAN_T.Tyre_heatmap_shipping_1 )
+group by 1,2 );
+--  select distinct * from  P_ICHAN_T.gp_heatmap_free_listings  where lstg_id= 363272334503
+
+Drop table if exists  P_ICHAN_T.Tyre_heatmap_shipping_3;
+create table  P_ICHAN_T.Tyre_heatmap_shipping_3 as (
+Select 
+seller_id,
+free_shipping,
+PRO_3D_FREE_P2P,
+count(distinct lstg_id) ll
+from P_ICHAN_T.Tyre_heatmap_shipping_2
+group by 1,2,3);
+---  Select * from P_ICHAN_T.Tyre_heatmap_shipping_3 where seller_id =164367776 ;
+
+
+dROP TABLE  if exists   p_ichan_t.Tyre_heatmap_shipping_4 ;
+create table   p_ichan_t.Tyre_heatmap_shipping_4 as (
+select seller_id,
+U.USER_SLCTD_ID,
+sum(case when free_shipping='1' then  ll else 0 end ) free_shipping_ll,
+sum(ll)as total_ll ,
+sum(case when free_shipping='1' then  ll else 0 end )/sum(ll)as free_shipping_pc ,
+sum(case when PRO_3D_FREE_P2P='1' then  ll else 0 end )/sum(ll) as fnf_pc
+from  p_ichan_t.Tyre_heatmap_shipping_3  a 
+left outer JOIN DW_USERs U ON U.USER_ID= a.seller_id 
+group by 1,2);
+
+--select * from  p_ichan_t.Tyre_heatmap_shipping_T ; ; 
+-- shipping top
+
+dROP TABLE  if exists   p_ichan_t.Tyre_heatmap_shipping_T ;
+create table   p_ichan_t.Tyre_heatmap_shipping_T as (
+select 
+sum(case when free_shipping='1' then  ll else 0 end ) free_shipping_ll,
+sum(ll)as total_ll ,
+sum(case when free_shipping='1' then  ll else 0 end )/sum(ll)as free_shipping_pc ,
+sum(case when PRO_3D_FREE_P2P='1' then  ll else 0 end )/sum(ll) as fnf_pc
+from  p_ichan_t.Tyre_heatmap_shipping_3  a 
+left outer JOIN DW_USERs U ON U.USER_ID= a.seller_id 
+);
+------------------------------------------------------------------------------
+-- 4. Fitment adoption
+--------------------------------------------------------------------------------
+	
+----------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------
+-- second view
+---------------------------------------------------------------------------------------------------------------------
+---5   Tyre parameters
+---------------------------------------------------------------------------------------------------------------------
+Drop table if exists   p_ichan_t.Tyre_heatmap_ll_second ;
+create table  p_ichan_t.Tyre_heatmap_ll_second as 
+(
+select 
+Retail_week,
+attribute_1 as Tyre_width,
+attribute_2 as Aspect_ratio,
+attribute_3 as Rim_diameter,
+attribute_4  as Load_Index,
+attribute_5 as Speed_rating,
+attribute_6 as Unit_quantity,
+
+lst.Item_id,
+lst.Slr_ID,
+  U.USER_SLCTD_ID
+  ---lst.AUCT_START_DT,
+--  cal.retail_year,
+ -- cal.retail_week,
+ /*  CAT.meta_categ_id, 
+	 CAT.CATEG_LVL2_ID, 
+	 CAT.categ_lvl2_name, 
+	  CAT.CATEG_LVL3_ID, 
+	 CAT.categ_lvl3_name, 
+	  CAT.CATEG_LVL4_ID, 
+	 CAT.categ_lvl4_name*/
+	 ----,site_id
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+inner join (select distinct seller_id from p_InventoryPlanning_t.tyres_install_sellers)  c on lst.slr_id=c.seller_id-- select * from   p_InventoryPlanning_t.tyres_install_sellers
+
+left join (select
+						upper(ASPCT_VLU_NM) as attribute_1,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('tyre width' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) abase
+				ON lst.ITEM_ID = abase.ITEM_ID
+		
+				
+				left join (select
+						upper(ASPCT_VLU_NM) as attribute_2,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('aspect ratio' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) bbase
+				ON lst.ITEM_ID = bbase.ITEM_ID
+		left join (select
+						upper(ASPCT_VLU_NM) as attribute_3,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('rim diameter' ) and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) cbase
+				ON lst.ITEM_ID = cbase.ITEM_ID
+		
+		
+		-- 456
+		
+left join (select
+						upper(ASPCT_VLU_NM) as attribute_4,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('load index' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) dbase
+				ON lst.ITEM_ID = dbase.ITEM_ID
+		
+				
+				left join (select
+						upper(ASPCT_VLU_NM) as attribute_5,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('speed rating' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) ebase
+				ON lst.ITEM_ID =ebase.ITEM_ID
+		left join (select
+						upper(ASPCT_VLU_NM) as attribute_6,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('unit quantity' ) and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) fbase
+				ON lst.ITEM_ID = fbase.ITEM_ID
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  AND  COND.CNDTN_ROLLUP_ID =  1  
+--inner  JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL    	ON CAL.CAL_DT =lst.AUCT_START_DT and age_for_rtl_week_id in ( -1)---- and retail_week between 2 and 23 and lst.AUCT_START_DT >= '2020-03-01'--  and  age_for_rtl_week_id >= -10
+---INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL  	ON CAL.CAL_DT =lst.AUCT_START_DT AND retail_year >=2022 and age_for_rtl_week_id  in ( -1,0) and lst.AUCT_START_DT >= '2021-03-01'--  and  age_for_rtl_week_id >= -10
+--INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+--INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON  CAL.CAL_DT = lst.CREATED_DT AND 				RETAIL_YEAR >= 2017
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL   ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT   and age_for_rtl_week_id  in ( -1) 
+---AND RETAIL_YEAR >=2021 AND AGE_FOR_YEAR_ID IN  (0,-1)--and age_for_rtl_week_id  in ( -1,0) 
+
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID and retail_year >=  2020
+--INNER JOIN dw_lstg_item_cold lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--WHERE lst.AUCT_end_dt >= date -- limiit on live listings
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and categ_lvl4_id in (179680)
+
+ );
+--   SELECT DISTINCT RETAIL_YEAR FROM DW_CAL_DT WHERE   AGE_FOR_YEAR_ID IN  (0,-1)  AND RETAIL_YEAR >=2021
+-- select COUNT(DISTINCT ITEM_ID) from  p_ichan_t.Tyre_heatmap_ll_second WHERE USER_SLCTD_ID ='buytyreonline';
+-- select  distinct retail_week from  p_ichan_t.Tyre_heatmap_ll_second;
+--select * from p_ichan_t.Tyre_heatmap_ll_second  where user_slctd_id like '%banco%' ; 
+ 
+ drop table if exists p_ichan_t.Tyre_heatmap_ll_second_ouput; 
+ create table  p_ichan_t.Tyre_heatmap_ll_second_ouput as  (
+ 
+ select *, 
+ case when Tyre_width is not null then 1 else 0 end as Tyre_width_flag	, 
+ case when Aspect_ratio is not null then 1 else 0 end as Aspect_ratio_flag	,
+ case when Rim_diameter is not null then 1 else 0 end as Rim_diameter_flag,
+    
+ case when Load_Index is not null then 1 else 0 end as Load_Index_flag	,
+ case when Speed_rating is not null then 1 else 0 end as Speed_rating_flag	,
+ case when Unit_quantity is not null then 1 else 0 end as Unit_quantity_flag
+ from   ( 
+ select retail_week,
+ item_id, 
+ max( Slr_ID ) as Slr_ID,
+ max(USER_SLCTD_ID ) as USER_SLCTD_ID,
+ max(Tyre_width ) Tyre_width,
+max(Aspect_ratio )  Aspect_ratio ,
+max(Rim_diameter) Rim_diameter  ,
+
+ max(Load_Index ) Load_Index,
+max(Speed_rating )  Speed_rating ,
+max(Unit_quantity) Unit_quantity  
+from   p_ichan_t.Tyre_heatmap_ll_second group by 1,2 ) sub 
+);
+
+--select * from p_ichan_t.Tyre_heatmap_ll_second_pc  where user_slctd_id like'%bancouk%'  limit 100 ;  
+
+drop table if exists   p_ichan_t.Tyre_heatmap_ll_second_pc;
+create table   p_ichan_t.Tyre_heatmap_ll_second_pc  as  
+select
+Retail_week,
+slr_id, 
+user_slctd_id,
+count(distinct item_id ) Total_ll,
+sum(Tyre_width_flag	)/count(distinct item_id )  as  Tyre_width_pc, 
+sum(Aspect_ratio_flag) /count(distinct item_id ) as  Aspect_ratio_pc	,
+sum(Rim_diameter_flag)/count(distinct item_id )  as  Rim_diameter_pc,
+      
+sum(Load_Index_flag)/count(distinct item_id )  as  Load_Index_pc,
+ sum(Speed_rating_flag) /count(distinct item_id ) as 	 Speed_rating_pc,
+sum(Unit_quantity_flag) /count(distinct item_id ) as  Unit_quantity_pc,
+
+sum(Unit_quantity)/count(distinct item_id ) as  Avg_Unit_quantity
+from  p_ichan_t.Tyre_heatmap_ll_second_ouput
+group by 1,2,3;  
+
+-- top level
+drop table if exists   p_ichan_t.Tyre_heatmap_ll_top_pc;
+create table   p_ichan_t.Tyre_heatmap_ll_top_pc  as  
+select
+Retail_week,
+
+count(distinct item_id ) Total_ll,
+sum(Tyre_width_flag	)/count(distinct item_id )  as  Tyre_width_pc, 
+sum(Aspect_ratio_flag) /count(distinct item_id ) as  Aspect_ratio_pc	,
+sum(Rim_diameter_flag)/count(distinct item_id )  as  Rim_diameter_pc,
+      
+sum(Load_Index_flag)/count(distinct item_id )  as  Load_Index_pc,
+ sum(Speed_rating_flag) /count(distinct item_id ) as 	 Speed_rating_pc,
+sum(Unit_quantity_flag) /count(distinct item_id ) as  Unit_quantity_pc,
+
+sum(Unit_quantity)/count(distinct item_id ) as  Avg_Unit_quantity
+from  p_ichan_t.Tyre_heatmap_ll_second_ouput
+group by 1; 
+--select * from p_ichan_t.Tyre_heatmap_ll_top_pc;
+-----------------------------------------------------------------------------------------------------
+------6. WEEKLY AVERAGE LL 
+---------------------------------------------------------------------------------------------------------------------
+
+----SELECT * FROM    p_ichan_t.Tyre_heatmap_ll_second  LIMIT 100  
+--SELECT user_slctd_id, COUNT ( DISTINCT ITEM_ID) WEEKLY_LL FROM   p_ichan_t.Tyre_heatmap_ll_second GROUP BY 1  ORDER BY 2 DESC ;
+--select  count(item_id) , count(distinct item_id)  from p_ichan_t.Tyre_heatmap_ll_second_ouput;  
+--select * from p_ichan_t.Tyre_heatmap_ll_second_ouput; 
+
+ Drop table if exists   p_ichan_t.Tyre_heatmap_ll_average ;
+create table  p_ichan_t.Tyre_heatmap_ll_average as 
+(
+select 
+Retail_year,
+Retail_week,
+lst.Slr_ID,
+U.USER_SLCTD_ID,
+count(distinct lst.Item_id) ll
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+inner join (select distinct seller_id from p_InventoryPlanning_t.tyres_install_sellers)  c on lst.slr_id=c.seller_id-- select * from   p_InventoryPlanning_t.tyres_install_sellers
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  AND  COND.CNDTN_ROLLUP_ID =  1  
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL  ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT  
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 
+and categ_lvl4_id in (179680)
+and retail_year >=2021
+and retail_week in ( select distinct retail_week from  DW_CAL_DT where   age_for_rtl_week_id  in ( -1) )
+group by 1,2,3,4)
+ ;
+--- select * from p_ichan_t.Tyre_heatmap_ll_average ; 
+ 
+ DROP TABLE IF EXISTS P_ICHAN_T.Tyre_heatmap_ll_average_yoy;
+CREATE TABLE P_ICHAN_T.Tyre_heatmap_ll_average_yoy AS (
+ select slr_id, 
+ USER_SLCTD_ID,
+ sum( case when retail_year =2021 then ll else 0 end) Total_ll,
+ sum( case when retail_year =2022 then ll else 0 end) / sum( case when retail_year =2021 then ll else 0 end) yoy
+ from p_ichan_t.Tyre_heatmap_ll_average
+ group by 1,2 ); 
+ 
+--   SELECT DISTINCT RETAIL_YEAR FROM DW_CAL_DT WHERE   AGE_FOR_YEAR_ID IN  (0,-1)  AND RETAIL_YEAR >=2021
+-- select COUNT(DISTINCT ITEM_ID) from  p_ichan_t.Tyre_heatmap_ll_second WHERE USER_SLCTD_ID ='buytyreonline';
+-- category top
+ DROP TABLE IF EXISTS P_ICHAN_T.Tyre_heatmap_ll_average_yoy_T;
+CREATE TABLE P_ICHAN_T.Tyre_heatmap_ll_average_yoy_T AS (
+ select Retail_week,
+ sum( case when retail_year =2021 then ll else 0 end) Total_ll,
+ sum( case when retail_year =2022 then ll else 0 end) / sum( case when retail_year =2021 then ll else 0 end) yoy
+ from p_ichan_t.Tyre_heatmap_ll_average
+ group by 1
+ ); 
+--- select* from P_ICHAN_T.Tyre_heatmap_ll_average_yoy_T;
+
+-- ---------------------------------------------------------------
+-- 7. Seller Standard
+-- --------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_ICHAN_T.ETRS_DATA_tyres;
+CREATE TABLE P_ICHAN_T.ETRS_DATA_tyres AS
+(
+SELECT
+usr.user_id,
+usr.user_slctd_id,
+
+CASE WHEN SPS_SLR_LEVEL_CD = 1 THEN 'eTRS' WHEN SPS_SLR_LEVEL_CD = 2 THEN 'Above Standard' WHEN SPS_SLR_LEVEL_CD = 3 THEN 'Standard' WHEN SPS_SLR_LEVEL_CD = 4 THEN 'Below Standard' ELSE 'No seller standard'END AS SELLER_STANDARD
+FROM prs_secure_v.dw_users usr  -- SELECT * FROM prs_secure_v.dw_users WHERE USER_ID = 1193174283 LIMIT 100
+left join ( SELECT USER_ID,
+				SPS_SLR_LEVEL_CD, 
+				last_eval_Dt 
+				from  PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM X   -- select * from  PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM limit 10 
+				where SPS_EVAL_TYPE_CD = 1 AND SPS_PRGRM_ID = 3 group by 1,2,3 qualify (row_number() over (partition by user_id order by last_eval_Dt desc))=1)std     on usr.user_id = std.user_id
+WHERE   usr.user_id in ( select distinct seller_id from  p_InventoryPlanning_t.tyres_install_sellers  )
+
+);
+ --(select * from p_InventoryPlanning_t.tyres_install_sellers   )
+-- select * from P_ICHAN_T.ETRS_DATA_tyres; 
+-- c on lst.slr_id=c.seller_id#
+
+------------------------
+--- 8. IMAGE
+---------------------------------------
+drop table if exists   P_ICHAN_T.images_ll_TYRES; -- select distinct photo_count from   P_ICHAN_T.images_ll
+
+create table P_ICHAN_T.images_ll_TYRES as(
+select	seller_id,	Slr_ID	,	RETAIL_WEEK,photo_count	, count(distinct item_id)  ll 
+from ( 
+			SELECT
+			RETAIL_WEEK,
+			 --meta_categ_id, 
+			 --  categ_lvl3_name,
+			 --categ_lvl2_id,
+			-- categ_lvl3_name,
+			-- categ_lvl3_id ,
+			U.USER_SLCTD_ID as seller_id,
+			lst.Slr_ID,
+			lst.item_id,
+			photo_count
+			--oem_part_number_for_reference,
+			--reference_oe_oem_number,
+			--ean,
+			--Grade,
+			--case when u.user_dsgntn_id = 2 then 'B2C' else 'C2C' end as segment 
+			--count(distinct lst.item_id) ll,
+			--sum(photo_count) as tot_photos
+			--count(distinct(lst.item_id)) as LL
+FROM ( select distinct  item_id,  photo_count, Slr_ID, LEAF_CATEG_ID, ITEM_SITE_ID,AUCT_END_DT,  AUCT_START_DT,WACKO_YN,  AUCT_TYPE_CODE,  SLR_CNTRY_ID 
+					from DW_LSTG_ITEM 
+					where  WACKO_YN = 'N'    and AUCT_TYPE_CODE NOT IN (10,15)  and  SLR_CNTRY_ID in ( 3  ,99)   and item_site_id = 3 		)  lst 
+inner join ( select distinct seller_ID from  p_InventoryPlanning_t.tyres_install_sellers )  i on lst.slr_id=i.seller_id
+--  p_InventoryPlanning_t.tyres_install_sellers
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+
+INNER JOIN ( select distinct  meta_categ_id, LEAF_CATEG_ID , SITE_ID ,  categ_lvl3_name,categ_lvl3_id ,categ_lvl2_id ,categ_lvl2_name,  categ_lvl4_name,categ_lvl4_id from DW_CATEGORY_GROUPINGS where site_id =3) CAT
+							ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID   and cat.site_id = 3 ----and 	 categ_lvl2_id = 6030 --107059 --6030	
+INNER JOIN ( select distinct  CNTRY_ID, REV_ROLLUP_ID from  DW_COUNTRIES )   CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
+--INNER JOIN ( select distinct item_id , AUCT_END_DT , FLAGS9  from dw_lstg_item_cold where   AUCT_END_DT >= '2017-01-01'   ) lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+INNER JOIN  DW_CAL_DT CAL ON lst.AUCT_START_DT < CAL.CAL_DT AND lst.AUCT_END_DT >= CAL.CAL_DT  AND AGE_FOR_RTL_WEEK_ID =-1
+--and AGE_FOR_RTL_WEEK_ID in (-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-53,-54,-55,-56,-57,-58,-59,-60,-61,-62,-63,-64,-65) and day_of_week_id = 3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID --- AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */      
+
+where  
+lst.AUCT_end_dt >= current_date -- limiit on live listings
+and lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_CNTRY_ID in(3    ,99)
+and categ_lvl4_id in (179680)
+ and lst.item_site_id = 3 ) group by 1,2,3,4 );
+ 
+-- group by 1,2,3);
+ --select * from p_ichan_t.gp_images_seller 
+-- histogram
+  Drop table if exists   p_ichan_t.TYRES_img_histogram ;
+create table   p_ichan_t.TYRES_img_histogram as (
+select	RETAIL_WEEK, seller_id,	Slr_ID	,	photo_count	, sum(ll) ll 
+from    p_ichan_t.images_ll_TYRES
+group by 1,2,3,4);
+--select sum(photo_count*ll)/sum(ll) as avg_img from  p_ichan_t.TYRES_img_histogram limit 100 ;;;
+--  select distinct retail_week from  p_ichan_t.TYRES_img_histogram ; 
+
+ Drop table if exists   p_ichan_t.TYRES_images ;
+create table   p_ichan_t.TYRES_images as (
+ Select Seller_id,
+ Slr_id,
+ retail_week,
+ -- categ_lvl3_name,	
+--  categ_lvl3_id,
+sum(photo_count*ll)/sum(ll) as avg_img
+ from    P_ICHAN_T.TYRES_img_histogram -- select * from   P_ICHAN_T.gp_images_seller
+ group by 1,2,3);
+ -- select * from p_ichan_t.TYRES_images ; select COUNT(*), COUNT( DISTINCT SELLER_ID)  from p_ichan_t.TYRES_images ;
+--- select COUNT(distinct seller_ID ) from  p_InventoryPlanning_t.tyres_install_sellers
+ 
+ -- 
+ Drop table if exists   p_ichan_t.TYRES_images_T ;
+create table   p_ichan_t.TYRES_images_T as (
+ Select retail_week,
+sum(photo_count*ll)/sum(ll) as avg_img
+ from    P_ICHAN_T.TYRES_img_histogram -- select * from   P_ICHAN_T.gp_images_seller
+group by 1 );
+ -- select * from p_ichan_t.TYRES_images ; select COUNT(*), COUNT( DISTINCT SELLER_ID)  from p_ichan_t.TYRES_images ;
+--- select COUNT(distinct seller_ID ) from  p_InventoryPlanning_t.tyres_install_sellers
+ --select * from   p_ichan_t.TYRES_images_T ;
+ ----------------- -------------------------------------
+--9. Adtoption rates
+-----------------------------------------
+drop table if exists  p_ichan_t.Tyre_seller_adoption  ; 
+create table p_ichan_t.Tyre_seller_adoption as 
+ select * from   p_InventoryPlanning_t.tyres_install_WEEKLY  where retail_week in ( select distinct retail_week from DW_CAL_DT where AGE_FOR_WEEK_ID =-1 ) 
+
+ ; 
+ -- select * from p_ichan_t.Tyre_seller_adoption  ; 
+ drop table if exists  p_ichan_t.Tyre_seller_adoption_TOP  ; 
+create table p_ichan_t.Tyre_seller_adoption_TOP as (
+ SELECT RETAIL_WEEK, SUM(installation_transaction)/SUM(tyre_transaction) AS ADOPTION_RATE_LEVEL FROM p_ichan_t.Tyre_seller_adoption  GROUP BY 1  ); 
+ 
+ 
+ --SELECT * FROM p_ichan_t.Tyre_seller_adoption_TOP  ; 
+------------------------------------
+-----final output to heatmap
+------------------------------------------------------------------
+-- Seller level
+drop table if exists  p_ichan_t.Tyre_seller_heatmap_OUTPUT ;
+create table   p_ichan_t.Tyre_seller_heatmap_OUTPUT as (
+select 
+--F.RETAIL_WEEK,
+a.SELLER_ID,
+U.USER_SLCTD_ID,
+G.SELLER_STANDARD,
+IFNULL(B.GMV_LY,0)GMV_LY,
+IFNULL(B.GMV_TY,0)GMV_TY,
+IFNULL(B.YOY-1 ,0) AS GMV_YOY,
+IFNULL(I.TOTAL_LL,0)   AS  TOTAL_LL,
+IFNULL(I.YOY-1,0) AS WEEKLY_LL_YOY,
+
+--ifnull(C.MPN_SUM_FLAG/C.TOTAL_LL,0)  AS MPN_PC,
+--IFNULL(C.GRADE_Y/C.TOTAL_LL,0) AS GRADE_PC,
+IFNULL(F.Tyre_width_pc,0)   AS  Tyre_width_pc,
+IFNULL(F.Aspect_ratio_pc,0) AS   Aspect_ratio_pc,
+IFNULL(F.Rim_diameter_pc,0)  AS  Rim_diameter_pc,
+      
+IFNULL(F.Load_Index_pc,0)   AS Load_Index_pc,
+IFNULL(F.Speed_rating_pc,0)  AS  Speed_rating_pc,
+IFNULL(F.Unit_quantity_pc,0)  AS  Unit_quantity_pc,
+
+IFNULL(F.Avg_Unit_quantity,0) AS Avg_Unit_quantity,
+--IFNULL(D.FITMENT_ADOPTION,0) FITMENT_ADOPTION ,
+IFNULL(H.AVG_IMG,0) AVG_IMG ,
+
+E.FREE_SHIPPING_PC as Free_shipping,
+E.FNF_PC as FastnFree,
+IFNULL(J.ADOPTION_RATE,0) AS ADOPTION_RATE
+from p_InventoryPlanning_t.tyres_install_sellers a -- SELECT * FROM  p_InventoryPlanning_t.tyres_install_sellers
+left JOIN DW_USERs U ON U.USER_ID= a.seller_id  
+left join  P_ICHAN_T.Tyre_heatmap_gmv_YOY   B ON A.SELLER_ID=B.SELLER_ID
+LEFT JOIN  P_ICHAN_T.Tyre_heatmap_mpn C ON A.SELLER_ID=C.SLR_ID
+LEFT JOIN  p_ichan_t.Tyre_heatmap_fitment_pc D ON D.SLR_ID=A.seller_id
+LEFT JOIN  p_ichan_t.Tyre_heatmap_shipping_4 E ON A.SELLER_ID=E.SELLER_ID 
+LEFT JOIN  p_ichan_t.Tyre_heatmap_ll_second_pc F ON A.SELLER_ID=F.SLR_ID 
+LEFT JOIN  P_ICHAN_T.ETRS_DATA_tyres G ON A.SELLER_ID=G.USER_ID
+LEFT JOIN  P_ICHAN_T.TYRES_images H ON A.SELLER_ID=H.SLR_ID
+left join  P_ICHAN_T.Tyre_heatmap_ll_average_yoy I on A.SELLER_ID=I.SLR_ID
+LEFT JOIN  p_ichan_t.Tyre_seller_adoption  J ON U.USER_SLCTD_ID =J.USER_SLCTD_ID
+);
+--select * from p_ichan_t.Tyre_seller_heatmap_OUTPUT  where  USER_SLCTD_ID ='blackcircles_tyres';
+
+--Drop table  p_ichan_t.Tyre_seller_heatmap_HISTORY ;
+--Select * from  p_ichan_t.Tyre_seller_heatmap_HISTORY   ; 
+--CREATE TABLE p_ichan_t.Tyre_seller_heatmap_HISTORY AS 
+INSERT INTO p_ichan_t.Tyre_seller_heatmap_HISTORY  
+SELECT EXTRACT(week FROM (SELECT MAX(CAL_DT) FROM DW_CAL_DT WHERE AGE_FOR_WEEK_ID=-1 )) AS RETAIL_WEEK, *from  p_ichan_t.Tyre_seller_heatmap_OUTPUT  ; 
+ 
+ 
+ ----------------------------------
+ -- Total seller Top level:
+ drop table if exists  p_ichan_t.Tyre_seller_heatmap_TOTAL ;
+create table   p_ichan_t.Tyre_seller_heatmap_TOTAL as (
+SELECT F.RETAIL_WEEK,
+IFNULL(B.GMV_LY,0)GMV_LY,
+IFNULL(B.GMV_TY,0)GMV_TY,
+IFNULL(B.YOY-1 ,0) AS GMV_YOY,
+IFNULL(i.TOTAL_LL ,0) AS LL_TOTAL,
+IFNULL(i.YOY-1 ,0) AS LL_YOY,
+IFNULL(F.Tyre_width_pc,0)   AS  Tyre_width_pc,
+IFNULL(F.Aspect_ratio_pc,0) AS   Aspect_ratio_pc,
+IFNULL(F.Rim_diameter_pc,0)  AS  Rim_diameter_pc,
+IFNULL(F.Load_Index_pc,0)   AS Load_Index_pc,
+IFNULL(F.Speed_rating_pc,0)  AS  Speed_rating_pc,
+IFNULL(F.Unit_quantity_pc,0)  AS  Unit_quantity_pc,
+IFNULL(F.Avg_Unit_quantity,0) AS Avg_Unit_quantity,
+IFNULL(H.AVG_IMG,0) AVG_IMG ,
+E.FREE_SHIPPING_PC as Free_shipping,
+E.FNF_PC as FastnFree,
+IFNULL(J.ADOPTION_RATE_LEVEL,0) AS ADOPTION_RATE
+FROM  (select  EXTRACT(week FROM (SELECT MAX(CAL_DT) FROM DW_CAL_DT WHERE AGE_FOR_WEEK_ID=-1 )) AS RETAIL_WEEK,  *, YOY-1 yoy_pc from  P_ICHAN_T.Tyre_heatmap_gmv_YOY_top) B---- ON B.RETAIL_WEEK=F.RETAIL_WEEK
+ LEFT JOIN P_ichan_t.Tyre_heatmap_ll_top_pc F  ON B.RETAIL_WEEK=F.RETAIL_WEEK
+ left join   P_ICHAN_T.TYRES_images_T H ON f.retail_week=h.retail_week
+ left join   (select  EXTRACT(week FROM (SELECT MAX(CAL_DT) FROM DW_CAL_DT WHERE AGE_FOR_WEEK_ID=-1 )) AS RETAIL_WEEK,  *  from  P_ICHAN_T.Tyre_heatmap_shipping_t) E ON E.RETAIL_WEEK=F.RETAIL_WEEK
+  LEFT JOIN p_ichan_t.Tyre_seller_adoption_TOP   J  ON F.RETAIL_WEEK=J.RETAIL_WEEK
+  left join  P_ICHAN_T.Tyre_heatmap_ll_average_yoy_T i on f.retail_week=i.retail_week
+ );
+
+ -- ADD TO HISTORY TABLE 
+ -----------------------------------
+-- DROP TABLE   p_ichan_t.Tyre_seller_heatmap_REPORT ;
+--CREATE TABLE p_ichan_t.Tyre_seller_heatmap_REPORT AS  SELECT  * from  p_ichan_t.Tyre_seller_heatmap_TOTAL  ; 
+INSERT INTO p_ichan_t.Tyre_seller_heatmap_REPORT  
+SELECT  * from  p_ichan_t.Tyre_seller_heatmap_TOTAL  ; 
+ 
+ -- SELECT * FROM  p_ichan_t.Tyre_seller_heatmap_REPORT  ; 

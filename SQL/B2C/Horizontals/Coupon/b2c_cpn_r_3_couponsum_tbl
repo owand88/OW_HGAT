@@ -1,0 +1,49 @@
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- DEVELOPMENTS
+-- 1 - ADD VERTICAL TO  P_MDALL_V.SFDC_HIVE_Coupon_Co_Invest
+-- 2 - ADD TO (2)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- 1 -- Coupon table
+------- Summary table including top-level data on each coupon and it's mechanism
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- SELECT * FROM P_HROON_T.CPN_PLAN where neg_AGE_FLAG = 0
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS  P_HROON_T.CPN_PLAN;
+CREATE TABLE P_HROON_T.CPN_PLAN
+SELECT
+-- CPN_ID
+-- ,
+CPN_SRC_NAME
+, COFUND_START_DATE
+, COFUND_START_TIME
+, CAL1.RETAIL_YEAR
+, CAL1.RETAIL_WEEK
+, CAL1.QTR_OF_YEAR_ID
+, COFUND_END_DATE
+, COFUND_END_TIME
+, (COFUND_END_DATE - COFUND_START_DATE) +1 AS DAYS
+, CPN_COFND_YN
+, CPN_EBAY_BDGT
+, CPN_DSCNT_PCT
+, CPN_AMNT
+, CAST(CPN_NEGOTIATION_END_DT AS Date)
+, CPN_CAP
+, CPN_MIN_TRNS_VAL
+, CURRENT_DATE -  CAST(CPN_NEGOTIATION_END_DT AS Date) AS NEG_FLAG
+, CAL.AGE_FOR_WEEK_ID AS neg_AGE_FLAG
+, CAL1.AGE_FOR_WEEK_ID AS sTart_AGE_FLAG
+, CAL.CAL_DATE
+, count(distinct SELLER_ID) as slr_cnt
+
+FROM P_MDALL_V.SFDC_HIVE_Coupon_Co_Invest
+
+LEFT JOIN DW_CAL_DT CAL2 ON CAL2.CAL_DATE = CURRENT_DATE
+LEFT JOIN DW_CAL_DT CAL1 ON CAL1.CAL_DATE = COFUND_START_DATE
+LEFT JOIN DW_CAL_DT CAL ON CAL.CAL_DATE = CAST(CPN_NEGOTIATION_END_DT AS Date)
+
+WHERE SITE_ID = 3
+and (COFUND_END_DATE - COFUND_START_DATE) +1  in (2,3,4,5,6,7) and CAL1.retail_year >= 2020
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20;
+

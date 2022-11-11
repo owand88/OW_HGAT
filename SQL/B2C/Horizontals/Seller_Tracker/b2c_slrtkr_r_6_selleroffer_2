@@ -1,0 +1,160 @@
+/*-- ------------------------------------------------------------------------------
+-- Seller offer dashboard code part 2a
+-- ------------------------------------------------------------------------------
+-- 2019 Q4 inventory props
+-- ---------------------------------------------
+
+-- part 2 irene
+SELECT 
+-- case when INVENTORY_PROP like '%Protrader%' then 'Protrader' else 'Others' end as INVENTORY_PROP,
+sum(RPP_GMV) as gmv_event
+from P_SLR_TRACKER_T.seller_vert where 1=1  group by 1;
+
+*/
+drop table if exists  P_SLR_TRACKER_T.seller_union_all ;
+create table P_SLR_TRACKER_T.seller_union_all as (
+select 
+a.* from  P_SLR_TRACKER_T.rpp_union a
+union all 
+select b.* from  P_SLR_TRACKER_T.SME_union b
+union all
+select c.* from P_SLR_TRACKER_T.coupon_union c
+union all 
+ select d.* from P_SLR_TRACKER_T.dailydeals d );
+
+ /*
+ select distinct PROMOTION_TYPE from P_SLR_TRACKER_T.seller_union_all
+COLLECT STATS P_SLR_TRACKER_T.seller_union_all COLUMN (SELLER_ID, PROMOTION_TYPE, VERTICAL, INVENTORY_PROP); 
+COLLECT STATS P_SLR_TRACKER_T.seller_union_all COLUMN(SELLER_ID); 
+COLLECT STATS P_SLR_TRACKER_T.seller_union_all COLUMN( PROMOTION_TYPE); 
+COLLECT STATS P_SLR_TRACKER_T.seller_union_all COLUMN( VERTICAL);
+COLLECT STATS P_SLR_TRACKER_T.seller_union_all COLUMN( INVENTORY_PROP);
+
+*/
+
+
+/*
+-----seller vertical level 
+
+DROP TABLE  P_SLR_TRACKER_T.seller_vert;
+CREATE MULTISET TABLE P_SLR_TRACKER_T.seller_vert
+(
+VERTICAL VARCHAR(50),
+      RETAIL_WEEK DECIMAL(4,0),
+      RETAIL_YEAR DECIMAL(4,0),
+      SELLER_ID DECIMAL(18,0),
+      SELLER VARCHAR(64),
+      SELLER_FLAG VARCHAR(10),
+      SME_GMV DECIMAL(38,8),
+      RPP_GMV DECIMAL(38,8),
+      COUPON_GMV DECIMAL(38,8),
+      DAILYDEAL_GMV DECIMAL(38,8),
+      TOTAL_PROMO_GMV DECIMAL(38,8),
+      CHEAPER_NEW_GMV DECIMAL(38,6),
+      SELLER_STORE_GMV DECIMAL(38,6)
+      
+) 
+PRIMARY INDEX (SELLER_ID, retail_week, vertical);
+*/
+drop table if exists P_SLR_TRACKER_T.seller_vert ;
+create table P_SLR_TRACKER_T.seller_vert as (
+SELect 
+X.*,
+/*--CHEAPER_NEW_GMV/TOTAL_PROMO_GMV as PER_CHEAPER_NEW_GMV,*/
+SELLER_STORE_GMV
+FROM
+(
+SELect 
+X.vertical, /*--this will cause seller duplication*/
+retail_week,
+retail_year,
+X.seller_id,
+X.seller,
+SELLER_FLAG,
+sum((case when PROMOTION_TYPE='SME'  then PROMOTION_GMV else 0 end)) AS SME_GMV,
+sum((case when PROMOTION_TYPE='CODED COUPONS'  then PROMOTION_GMV else 0 end)) AS SME_CODEDCPNS_GMV,
+sum((case when PROMOTION_TYPE='RPP'  then PROMOTION_GMV else 0 end)) AS RPP_GMV,
+sum((case when PROMOTION_TYPE='COUPON'  then PROMOTION_GMV else 0 end)) AS COUPON_GMV,
+sum((case when PROMOTION_TYPE='DAILY DEALS'  then PROMOTION_GMV else 0 end)) AS DAILYDEAL_GMV,
+sum((case when PROMOTION_TYPE in ('SME','RPP','COUPON','DAILY DEALS','CODED COUPONS') then PROMOTION_GMV else 0 end)) AS TOTAL_PROMO_GMV,
+sum((NO_PREV_GMV+CHEAPER_GMV)) as CHEAPER_NEW_GMV
+/*--CHEAPER_NEW_GMV/TOTAL_PROMO_GMV as PER_CHEAPER_NEW_GMV,
+--sum((NO_PREV_GMV)+sum((CHEAPER_GMV))))/TOTAL_PROMO_GMV AS CHEAPER_NEW_GMV,
+--sum((store_GMV)) AS SELLER_STORE_GMV*/
+ from P_SLR_TRACKER_T.seller_union_all X
+     GROUP BY 1,2,3,4,5,6
+ )X
+ LEFT OUTER JOIN 
+( select z.* from (
+SELect
+       /* --CAL.RETAIL_YEAR
+       -- ,retail_week*/
+        seller_id,
+   
+inv.new_vertical as vertical, 
+/*--SUM(CK.QUANTITY) AS BI*/
+    SUM(CK.GMV_PLAN_USD) AS SELLER_STORE_GMV
+   /*--   -- GMV/BI as ASP*/
+
+    
+    FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS AS CK
+    INNER JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID     
+    INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+	LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+ON ck.ITEM_ID = INV.ITEM_ID	
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT  AND CAL.age_for_rtl_week_id=-1
+        AND CAL.RETAIL_YEAR >=2020
+    INNER JOIN DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2015-12-30'        
+    INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+    WHERE 1=1
+        AND CK.SLR_CNTRY_ID = 3 
+        AND CK.BYR_CNTRY_ID = 3 
+        AND CK.SLR_CNTRY_ID = CK.BYR_CNTRY_ID 
+        AND CK.RPRTD_WACKO_YN = 'N'
+        AND CK.AUCT_END_DT >= '2015-12-30'
+        AND CK.GMV_DT >= '2015-12-30'        
+        
+    GROUP BY 1,2 )z where VERTICAL NOT IN ('Vehicles', 'Unknown', 'Real Estate'))r /*--Add Media from EU_FUNNEL below*/
+    on x.vertical=r.vertical and x.seller_id=r.seller_id);
+     
+/*
+select count(*),sum(CHEAPER_NEW_GMV),sum(TOTAL_PROMO_GMV) from P_SLR_TRACKER_T.seller_vert;
+
+COLLECT STATS P_SLR_TRACKER_T.seller_vert COLUMN(SELLER_ID, retail_week, vertical); 
+COLLECT STATS P_SLR_TRACKER_T.seller_vert COLUMN(SELLER_ID); 
+COLLECT STATS P_SLR_TRACKER_T.seller_vert COLUMN( retail_week); 
+----SELLER INV PROP 
+*/
+
+/*DROP TABLE  P_SLR_TRACKER_T.seller_inv_prop;
+CREATE MULTISET TABLE P_SLR_TRACKER_T.seller_inv_prop
+(
+VERTICAL VARCHAR(50),
+      RETAIL_WEEK DECIMAL(4,0),
+      RETAIL_YEAR DECIMAL(4,0),
+      INVENTORY_PROP VARCHAR(128) CHARACTER SET UNICODE NOT CASESPECIFIC,
+      INVENTORY_PROP_FLAG VARCHAR(10),
+      CATEG_LVL2_NAME VARCHAR(256) CHARACTER SET UNICODE NOT CASESPECIFIC,
+      CATEG_LVL3_NAME VARCHAR(256) CHARACTER SET UNICODE NOT CASESPECIFIC,  
+      SELLER_ID DECIMAL(18,0),
+      SELLER VARCHAR(64),
+      SELLER_FLAG VARCHAR(10),
+      SME_GMV DECIMAL(38,8),
+      RPP_GMV DECIMAL(38,8),
+      COUPON_GMV DECIMAL(38,8),
+      DAILYDEAL_GMV DECIMAL(38,8),
+      TOTAL_PROMO_GMV DECIMAL(38,8),
+      CHEAPER_NEW_GMV DECIMAL(38,6),
+      SELLER_STORE_GMV DECIMAL(38,6)
+) 
+PRIMARY INDEX (SELLER_ID, retail_week, vertical,INVENTORY_PROP);*/

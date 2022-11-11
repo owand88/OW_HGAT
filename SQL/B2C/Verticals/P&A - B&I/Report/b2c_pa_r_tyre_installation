@@ -1,0 +1,1170 @@
+-- Tyre installation Report 
+-- only 2 sellers provide the installation services currently
+-- 1 – Can Asdatyres 2049396253 / etyres 2053643116 / ityrescom 1086909773 be added as sellers on Tab 1?  They are now completely set up with tyre installation
+-- ----------------------------------------------------------------------
+--- check master table
+---select * from  p_InventoryPlanning_t.tyres_install_sellers_master;
+---select distinct seller_id from p_InventoryPlanning_t.tyres_install_sellers_master where seller_id in (
+----INSERT INTO  p_InventoryPlanning_t.tyres_install_sellers_master VALUES (24169195);
+
+
+
+-- check active table
+---select distinct * from p_InventoryPlanning_t.tyres_install_active where seller_id in (
+----INSERT INTO  p_InventoryPlanning_t.tyres_install_sellers_master VALUES (24169195);
+
+
+
+-- check : select* from  p_InventoryPlanning_t.tyres_install_active where  seller_id in  ( 1008203182,82983844,965537218,1533027708,141294272);
+-- check : select* from  p_InventoryPlanning_t.tyres_install_active where  seller_id in  (1040434542);
+--tyre-bayuk	1768094783
+--baigtyres2013	1184433259
+
+--- select distinct* from P_ICHAN_T.tyre_install_upload  where seller_name  in ('blackcircles_tyres' );
+--  select * from P_ICHAN_T.tyre_install_upload  where seller_name in ('tyre-bayuk');
+
+
+drop table if exists   p_InventoryPlanning_t.tyres_install_sellers  ; 
+create table  p_InventoryPlanning_t.tyres_install_sellers  as (
+select distinct ck.seller_id ,
+case when  ck.seller_id=w.seller_id_active then 'Y' else 'N' end as active_seller
+from  DW_CHECKOUT_TRANS ck 
+left outer JOIN DW_USERs U ON U.USER_ID= ck.SELLER_ID 
+left join ( select distinct SELLER_ID as seller_id_active from    p_InventoryPlanning_t.tyres_install_active ) w on ck.seller_id=w.seller_id_active
+where site_id =3 
+--and USER_SLCTD_ID in ( select distinct seller_name from P_ICHAN_T.tyre_install_upload )
+and seller_id in (select distinct seller_id from p_InventoryPlanning_t.tyres_install_sellers_master ) 
+);
+--select * from P_ICHAN_T.tyre_install_upload;
+--INSERT INTO  P_ICHAN_T.tyre_install_upload VALUES ('whocanfixmycar') ; 
+--select active_seller, count(distinct seller_id ) from   p_InventoryPlanning_t.tyres_install_sellers group by 1;
+
+--INSERT INTO  p_InventoryPlanning_t.tyres_install_sellers VALUES (2336060201, 'Y');
+--select USER_ID, USER_SLCTD_ID from DW_USERs where USER_SLCTD_ID ='blackcircles_tyres' );
+--USER_ID	USER_SLCTD_ID
+--1136288810	luanshehu2012
+--select USER_ID, USER_SLCTD_ID from DW_USERs where USER_SLCTD_ID = 'cvpartsinmotion';
+--select* from  p_InventoryPlanning_t.tyres_install_sellers  ;
+/*
+select distinct USER_SLCTD_ID ,  user_id from  DW_USERs where  USER_SLCTD_ID in (
+'blackcircles_tyres',
+'asdatyres',
+'ractyres',
+'etyres',
+'buytyreonline',
+'tyre_catalogue',
+'ityrescom',
+'getoffroad4x4',
+'unityres',
+'f1_tyres_braintree',
+'rochfordtyres',
+'unityres',
+'elitetyresolutions',
+'tyremenonline',
+'boothtowncarparts-halifax',
+'evotiononline',
+'nuts4wheels',
+'tyre.direct',
+'oem_refurbished_wheels',
+'autojama',
+'tyrecityuk',
+'tegiwaimports',
+'lobancouk');
+*/
+-- select * from  p_InventoryPlanning_t.tyres_install_sellers 
+
+/*
+USER_SLCTD_ID	user_id
+lobancouk	782395250
+tyre.direct	1697050722
+elitetyresolutions	86860770
+unityres	1269140333
+buytyreonline	164367776
+boothtowncarparts-halifax	302479642
+blackcircles_tyres	1198964979
+tyre_catalogue	2351735741
+tegiwaimports	786749920
+ractyres	2053636368
+f1_tyres_braintree	1118631543
+getoffroad4x4	1235174518
+ityrescom	1086909773
+tyremenonline	528821430
+rochfordtyres	80445535
+etyres	2053643116
+nuts4wheels	935437070
+oem_refurbished_wheels	2305561637
+asdatyres	2049396253
+autojama	1167129559
+evotiononline	1884526041
+
+*/
+-- select distinct user_slctd_id from    p_InventoryPlanning_t.tyres_install_txn ;
+-- select *  from    p_InventoryPlanning_t.tyres_install_txn where user_slctd_id='blackcircles_tyres' and retail_week =31 ;
+-- oms_extrnl_rfrnc_id 03-08937-25878
+--select * from   DW_CHECKOUT_TRANS  where oms_extrnl_rfrnc_id =11-08822-22984 and CREATED_DT >='2022-06-02' -- SELLER_ID=1198964979 ; 
+ --select * from DW_USERs where user_slctd_id='whocanfixmycar' ;
+--select * from   DW_CHECKOUT_TRANS where seller_id = 2336060201 and CREATED_DT >='2022-06-02'  ; 
+--select * from  DW_CATEGORY_GROUPINGS  where leaf_categ_id= 177599 and site_id =3 ; 
+--leaf_categ_id	leaf_categ_name
+--177599	Vehicle Parts & Accessories:Vehicle Services & Repairs
+--select * from   DW_CHECKOUT_TRANS  where oms_extrnl_rfrnc_id in (16-08952-04783,02-08946-59971,17-08938-50272,03-08937-25878,09-08931-26182,27-08925-78640) and site_id =3  and SALE_TYPE NOT IN (10,15) ;
+
+--select * from p_InventoryPlanning_t.tyres_install_txn where seller_id =2336060201;
+ ---select * from  p_InventoryPlanning_t.tyres_install_sellers  where seller_id =2336060201;
+ 
+
+-- Transaction level data 
+drop table if exists   p_InventoryPlanning_t.tyres_install_txn  ; 
+create table  p_InventoryPlanning_t.tyres_install_txn
+as 
+(select * from (
+SELECT	
+  U.USER_SLCTD_ID,
+  ck.SELLER_ID,
+  BUYER_ID,
+  TRANSACTION_ID,
+   CK.CREATED_DT,
+   ck.item_id, 
+   ck.oms_extrnl_rfrnc_id,
+   Active_seller,
+CASE WHEN Retail_year  IN (2018,2019) AND RETAIL_WEEK =1 THEN 2019
+WHEN Retail_year  IN (2019,2020) AND RETAIL_WEEK =1 THEN 2020
+WHEN Retail_year  IN (2020,2021) AND RETAIL_WEEK =53 THEN 2020
+WHEN Retail_year  IN (2021,2022) AND RETAIL_WEEK =52 THEN 2021
+ELSE Retail_year end as Retail_year ,
+cal.AGE_FOR_QTR_ID,
+cal.QTR_OF_YEAR_ID,
+cal.RETAIL_week,
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
+		when meta_categ_id in (26395) then 'Lifestyle'
+		when CATEG_LVL3_ID in (260325) then 'Lifestyle'
+		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+		when categ_lvl3_id in (3244) then 'Parts & Accessories'
+		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+		when categ_lvl2_id in (46576) then 'Parts & Accessories'
+		when bsns_vrtcl_name in ('Collectibles') and meta_categ_id in (220, 237, 550)  then 'Collectibles B2C'
+		when bsns_vrtcl_name in ('Collectibles') and categ_lvl2_id in (180250) then 'Collectibles B2C' 
+		else bsns_vrtcl_name end as vertical,
+meta_categ_id, 
+CATEG_LVL2_ID, 
+categ_lvl2_name, 
+categ_lvl3_name, 
+categ_lvl3_id,
+categ_lvl4_name, 
+categ_lvl4_id,
+ QUANTITY,
+ item_price,
+ GMV_PLAN_USD as  GMV_20
+--case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  CNDTN_ROLLUP_ID  end as Condition,
+--SUM(CAST(CK.QUANTITY AS DECIMAL(18,2))* CAST(CK.ITEM_PRICE AS DECIMAL(18,2))*CAST(LPR.CURNCY_PLAN_RATE AS DECIMAL(18,2))) AS GMV,
+--sum(QUANTITY) as BI
+			FROM   DW_CHECKOUT_TRANS ck -- select * from   DW_CHECKOUT_TRANS  where item_id=143974673597 and site_id =3  and SALE_TYPE NOT IN (10,15) and GMV_DT >='2022-08-10';
+			
+			INNER join ( select seller_id, max(active_seller) active_seller from  p_InventoryPlanning_t.tyres_install_sellers group by 1 ) as  t  on ck.seller_id=t.seller_id
+			---left join (  select distinct seller_id from  p_InventoryPlanning_t.tyres_install_active ) as  w  on ck.seller_id=w.seller_id
+			INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS LPR
+				ON LPR.CURNCY_ID = CK.LSTG_CURNCY_ID
+			INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.GMV_DT   and retail_year >=2022  and  age_for_rtl_week_id <=0
+			INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			--ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+
+			inner JOIN lstg_item_cndtn CNDTN ON ck.item_id = CNDTN.item_id  AND ck.auct_end_dt = CNDTN.AUCT_END_DT
+			left outer JOIN DW_USERs U ON U.USER_ID= ck.SELLER_ID 
+			
+			WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				--and buyer_id ='1861757700'
+				and ck.site_id = 3
+				and slr_cntry_id = 3
+				and SLR_CNTRY_ID=BYR_CNTRY_ID
+				and  CNDTN_ROLLUP_ID = 1
+				-----and oms_extrnl_rfrnc_id in (16-08952-04783,02-08946-59971,17-08938-50272,03-08937-25878,09-08931-26182,27-08925-78640)
+			--	and  ck.seller_id in (1198964979 , 2053636368,2049396253,2053643116,1086909773)
+				--and BUYER_ID= 171694201
+				--GROUP BY 1,2 ,3 ,4,5,6,7,8,9,10,11,12,13,14
+)
+where  	vertical IN ('Parts & Accessories','Business & Industrial'));
+-- 1564  
+--SELECT distinct USER_SLCTD_ID FROM p_InventoryPlanning_t.tyres_install_txn order by 1  transaction_id ;
+--Select * from lstg_item_cndtn where item_id =225037939266;
+--SELECT count(*)FROM p_InventoryPlanning_t.tyres_install_txn  where  user_slctd_id ='blackcircles_tyres' and retail_week =33 ;
+--select * from  p_InventoryPlanning_t.tyres_install_txn where user_slctd_id='ractyres' and retail_week >=33;
+--where oms_extrnl_rfrnc_id  in ('03-08705-81182')
+--select * from  DW_CATEGORY_GROUPINGS CAT where LEAF_CATEG_ID =177599 and site_id =3;
+--select user_slctd_id from DW_USERS_INFO where user_id =2206558076;
+--select user_id ,  user_slctd_id from DW_USERS_INFO where user_slctd_id='tyre.direct';
+--Select * from  p_InventoryPlanning_t.WCFMC_PROFILE  where SELLER_NAME ='tyre.direct';
+--SELECT *  FROM DW_CHECKOUT_TRANS  ck  where oms_extrnl_rfrnc_id = '17-09143-79173'  and gmv_dt >='2022-09-01';
+/*SELECT *  FROM DW_CHECKOUT_TRANS  ck 
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+where buyer_id =182904410  and gmv_dt >='2022-09-25'
+and categ_lvl3_id in (33743);
+*/
+/*
+create table  p_InventoryPlanning_t.tyres_install_who as
+select * FROM DW_CHECKOUT_TRANS  ck 
+where seller_id =2336060201   and gmv_dt >='2022-09-01' and SITE_ID in(3) ;*/
+/*
+create table  p_InventoryPlanning_t.tyres_install_slr as 
+select ck.* FROM DW_CHECKOUT_TRANS  ck 
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+where 1=1 
+and seller_id in (164367776) 
+ and gmv_dt >='2022-09-01' and cat.SITE_ID in(3) and categ_lvl3_id in (33743);*/
+/*
+select b.* from   p_InventoryPlanning_t.tyres_install_slr  a
+inner join   p_InventoryPlanning_t.tyres_install_who b
+ on a.buyer_id=b.buyer_id and a.gmv_dt=b.gmv_dt ;*/
+--select * from  p_InventoryPlanning_t.tyres_install_who;
+--checkout_flags
+--Select * from  p_InventoryPlanning_t.tyres_install_txn  where oms_extrnl_rfrnc_id = '02-09308-59745';-- this was received in week 44 but will report to week 45 
+--SELECT *  FROM DW_CHECKOUT_TRANS  ck  where oms_extrnl_rfrnc_id = '02-09308-59745' and gmv_dt >='2022-11-01';
+--select * from p_InventoryPlanning_t.tyres_install_sellers where seller_id =2336060201
+-- 15-09142-79409
+--SELECT *  FROM DW_CHECKOUT_TRANS  ck  where oms_extrnl_rfrnc_id = '15-09142-79409' and gmv_dt >='2022-11-01';
+-- item_id =225042142123
+--User ID	Buyer Profile	Order Number
+--zimcitytyres	tiniankurty	15-09142-79409
+--this buyer country is 1
+--select * from lstg_item_cndtn where item_id =225042139947;
+-- 582547
+
+-- Add  aspect tyre number
+drop table if exists   p_InventoryPlanning_t.tyres_install_data  ; 
+create table  p_InventoryPlanning_t.tyres_install_data as (
+SELECT ck.* ,base.unit_quantity
+FROM p_InventoryPlanning_t.tyres_install_txn ck -- select count(*) from   p_InventoryPlanning_t.tyres_install_txn ;
+left join (select item_id, max(unit_quantity) as unit_quantity  from ( select 
+						upper(ASPCT_VLU_NM) as unit_quantity,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('unit quantity' )and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2021-01-01' group by 1,2,3,4)group by 1 )  base
+ 						ON ck.ITEM_ID = base.ITEM_ID ) ;
+-- 582547 
+
+
+--drop table if exists   p_InventoryPlanning_t.tyres_install_rank  ; 
+--create table  p_InventoryPlanning_t.tyres_install_rank as (
+--select * , Row_number() OVER (    PARTITION BY ITEM_ID      ORDER BY unit_quantity  DESC) RANK_NO
+--			 from  p_InventoryPlanning_t.tyres_install_data_du );
+-- 582547 
+	 
+--drop table if exists   p_InventoryPlanning_t.tyres_install_data  ; 
+--create table  p_InventoryPlanning_t.tyres_install_data as (select * from   p_InventoryPlanning_t.tyres_install_data_du ) ;
+-- select * from  p_InventoryPlanning_t.tyres_install_data ; -- 471
+
+--select * 	 from  p_InventoryPlanning_t.tyres_install_data 		  where oms_extrnl_rfrnc_id ='25-08992-54525';
+---select * 	  from  p_InventoryPlanning_t.tyres_install_data_du   where oms_extrnl_rfrnc_id in ('25-08992-54525','11-08996-68315');
+-------------------------
+-- Whocanfixmycar 
+-------------------------
+--select * from P_ICHAN_T.WCFMC_UPLOAD A ; 
+
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('s.r.tyres'	,'nursebigsausage69y1973'	,'03-09013-95586'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('new-online-tyres'	,'mr-c-macb'	,'11-08986-22785');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('buytyreonline'	,'marianna081974'	,'25-08992-54525');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('buytyreonline'	,'man2005-10'	,'11-08996-68315');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ctyres-online'	,'uk2014_cear'	,'05-09000-14518');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ctyres-online'	,'piotrekpawlak'	,'08-09000-82639');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('demontweeksdirect' 	,'likemike2318'	,'15-09003-35641');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('baigtyres2013'	,'tomasruzgyst'	,'13-09004-36895');
+
+
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('s.r.tyres',	'bigsausage69',	'03-09013-95586'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('autojama',	'csabee1892',	'24-09022-73412'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ctyres-online',	'robmicha56',	'17-09013-88347'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ityrescom',	'2gexpertise',	'19-09014-65737'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('getoffroad4x4',	'benedictireland1973',	'17-09021-17975'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ukwholesaletyresltd',	'pauevera',	'16-09024-37528'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('tyresonline-ltd',	'brainik75',	'23-09025-65869'); 
+
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('buytyreonline',	'anitmajo0',	'01-09065-23124'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ityrescom',	'jjen.ri.naxeaaix',	'18-09067-96447'); 
+
+--buytyreonline	anitmajo0	01-09065-23124	Sept 5th 2022
+--ityrescom	jjen.ri.naxeaaix	18-09067-96447	Sept 6th 2022
+
+
+--Seller	Buyer	Order ID	
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('getoffroad4x4',		'krzysztofkulak111',	'26-09031-48268'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('save_on_tyres_direct',	'shorse0_0',			'08-09037-54565'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('next_wheels_tyres',	'ninu3824',				'12-09045-23756'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('buytyreonline',		'alda1237_mlvz5vcn',	'24-09056-21406'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ctyres-online',		'cushtygeezerz32',		'18-09047-19603'); 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('tyresonline-ltd',		'simiomir_0',			'07-09051-58886'	); 
+
+
+-- week 38 
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('s.r.tyres',	'milenluk-0',	'09-09122-17388');
+-- week 39
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('zimcitytyres',	'tiniankurty',	'15-09142-79409');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('Demontweeksdirect', 	'3953ian',	'17-09143-79173');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('buytyreonline',	'sueb3828',	'18-09151-68328');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('tyremenonline',	'loopyluke0_0',	'07-09166-23642');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('tyremenonline',	'loopyluke0_0',	'15-09165-96590');
+
+-- week 40
+--User ID	Buyer Profile	Order Number
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('jjcraceandrally',	'yncognyto',	'15-09171-79845');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ctyres-online',	'libertgreenstree7',	'23-09172-03287');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('tyremenonline',	'sebastiasin-0',	'03-09180-42378');
+
+-- week 41
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('uk-tradetyres',	'nortoniq',	'04-09214-93631');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('buytyreonline',	'sisuperfox',	'02-09216-24963');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('new-online-tyres',	'grodgers1992',	'23-09209-35479');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('jjcraceandrally',	'lambo555',	'05-09225-56244');
+
+-- week 42
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('baigtyres2013',	'avalaugh',	'26-09223-77345');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ctyres-online',	'bobbydassler',	'18-09224-28546');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ityrescom',	'vkrug6666',	'09-09229-51991');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('tyresonline-ltd',	'cristiandorultan',	'20-09232-16853');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('top-notch-tires',	'pelikanperformance',	'14-09236-22320');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('zimcitytyres',	'icemandacre',	'19-09240-44724');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('m8ryres2014',	'jt.apb99',	'20-09244-99712');
+
+-- week 43
+/*
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('totaltyrecontrol',	'harmony8uk',		'15-09256-84564');
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('zimcitytyres',		'trikhimwingbo-0',		'16-09256-52334');
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ctyres-online',	'daidriann',		'09-09259-65265');
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('getoffroad4x4',	'nenic-0c11hz',		'22-09256-48795');
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('baigtyres2013',	'ioior5883_6enhjj',		'13-09265-66721');
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ctyres-online',	'bshpro',		'16-09266-03736');
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('buytyreonline',	'nobsizx9r',		'27-09268-36169');
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('baigtyres2013',	'tomasruzgyst',		'01-09277-77366');
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('tgc_automotive',	'jleddington1',		'23-09272-95009');
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('zoom-tyres', 		'mafirm43',		'07-09279-38312');
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ukwholesaletyresltd',	'anis_3183',		'18-09277-30079');
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ukwholesaletyresltd',	'jasmin8515',		'13-09279-18721');
+INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ukwholesaletyresltd',	'wonder.016',		'25-09274-94479');
+
+*/
+
+
+---- week 44
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('buytyreonline',	'admirtula2011',	'07-09282-67325');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('baigtyres2013',	'walle-64',	'14-09293-28542');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('ctyres-online',	'nel1970',	 '27-09294-69413');
+--INSERT INTO  P_ICHAN_T.WCFMC_UPLOAD VALUES ('buytyreonline',	'carloz-1375',	'02-09308-59745');
+
+--SELECT * FROM P_ICHAN_T.WCFMC_WK33 ; 
+
+ drop table if exists   p_InventoryPlanning_t.WCFMC_PROFILE  ; 
+create table  p_InventoryPlanning_t.WCFMC_PROFILE AS 
+ SELECT lower(A.USER_ID) AS SELLER_NAME,
+  U.USER_ID AS SELLER_ID,
+  lower(A.BUYER_PROFILE) AS BUYER_NAME,
+  y.USER_ID AS BUYER_ID,
+  A.ORDER_NUMBER  
+FROM  P_ICHAN_T.WCFMC_UPLOAD A
+left outer JOIN DW_USERs U ON U.USER_SLCTD_ID= A.USER_ID  
+left join  DW_USERs y  on  y.USER_SLCTD_ID= a.BUYER_PROFILE;
+-- select distinct * from  p_InventoryPlanning_t.WCFMC_PROFILE; -- 110
+--select * from P_ICHAN_T.WCFMC_UPLOAD A ; -- 58 --67
+
+-- add WCFMC flag
+drop table if exists   p_InventoryPlanning_t.tyres_install_WCFMC_txn  ;
+create table  p_InventoryPlanning_t.tyres_install_WCFMC_txn as (			 
+select a.* ,b.retail_year, b.retail_week,
+case when b.oms_extrnl_rfrnc_id=a.order_number then 1 else 0 end as WCFMC_txn
+from  p_InventoryPlanning_t.WCFMC_PROFILE a --- select * from   p_InventoryPlanning_t.WCFMC_PROFILE where ORDER_NUMBER = '25-08992-54525'
+inner join  p_InventoryPlanning_t.tyres_install_data  b on b.oms_extrnl_rfrnc_id=a.order_number 			  
+); -- select * from  p_InventoryPlanning_t.tyres_install_data where  oms_extrnl_rfrnc_id =  '25-08992-54525';
+-- 56   --65
+
+
+--select * from p_InventoryPlanning_t.tyres_install_txn  where  oms_extrnl_rfrnc_id =  '25-08992-54525';
+-- select * from p_InventoryPlanning_t.tyres_install_data_du  where  oms_extrnl_rfrnc_id =  '25-08992-54525';
+--select * from p_InventoryPlanning_t.tyres_install_WCFMC_txn where seller_name ='buytyreonline' and retail_week>=33; --select * from p_InventoryPlanning_t.tyres_install_data where  oms_extrnl_rfrnc_id='13-09004-36895';
+-- select * from   p_InventoryPlanning_t.WCFMC_PROFILE ;
+-- select * from  p_InventoryPlanning_t.tyres_install_data  where  USER_SLCTD_ID   ='new-online-tyres'  and retail_week>=33;;
+--  select * from  p_InventoryPlanning_t.tyres_install_data  where oms_extrnl_rfrnc_id ='25-08992-54525';
+
+-- WCFMC latest week
+select distinct  a.seller_name ,   order_number ,retail_year, retail_week from  p_InventoryPlanning_t.tyres_install_WCFMC_txn a
+where retail_week >=35 and retail_year =2022; 
+select distinct * from  p_InventoryPlanning_t.tyres_install_WCFMC_txn a
+where retail_week >=35 and retail_year =2022; 
+
+--  select * from DW_CHECKOUT_TRANS ck where oms_extrnl_rfrnc_id ='25-08992-54525' and site_id =3 and CK.SALE_TYPE NOT IN (10,15)  and GMV_DT >='2022-08-10';
+------------------------------------------------------------
+ 
+ drop table if exists   p_InventoryPlanning_t.tyres_install_top ; 
+create table  p_InventoryPlanning_t.tyres_install_top
+as 
+(select * from (
+SELECT	
+
+   Active_seller,
+CASE WHEN Retail_year  IN (2018,2019) AND RETAIL_WEEK =1 THEN 2019
+WHEN Retail_year  IN (2019,2020) AND RETAIL_WEEK =1 THEN 2020
+WHEN Retail_year  IN (2020,2021) AND RETAIL_WEEK =53 THEN 2020
+WHEN Retail_year  IN (2021,2022) AND RETAIL_WEEK =52 THEN 2021
+ELSE Retail_year end as Retail_year ,
+cal.AGE_FOR_QTR_ID,
+cal.QTR_OF_YEAR_ID,
+cal.RETAIL_week,
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
+		when meta_categ_id in (26395) then 'Lifestyle'
+		when CATEG_LVL3_ID in (260325) then 'Lifestyle'
+		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+		when categ_lvl3_id in (3244) then 'Parts & Accessories'
+		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+		when categ_lvl2_id in (46576) then 'Parts & Accessories'
+		when bsns_vrtcl_name in ('Collectibles') and meta_categ_id in (220, 237, 550)  then 'Collectibles B2C'
+		when bsns_vrtcl_name in ('Collectibles') and categ_lvl2_id in (180250) then 'Collectibles B2C' 
+		else bsns_vrtcl_name end as vertical,
+meta_categ_id, 
+CATEG_LVL2_ID, 
+categ_lvl2_name, 
+categ_lvl3_name, 
+categ_lvl3_id,
+categ_lvl4_name, 
+categ_lvl4_id,
+ sum(QUANTITY) quantity,
+count(distinct TRANSACTION_ID) tran_count,
+count( distinct ck.item_id) ck_count,
+ --item_price,
+ sum(GMV_PLAN_USD ) as  GMV_20
+--case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  CNDTN_ROLLUP_ID  end as Condition,
+--SUM(CAST(CK.QUANTITY AS DECIMAL(18,2))* CAST(CK.ITEM_PRICE AS DECIMAL(18,2))*CAST(LPR.CURNCY_PLAN_RATE AS DECIMAL(18,2))) AS GMV,
+--sum(QUANTITY) as BI
+			FROM   DW_CHECKOUT_TRANS ck
+			left join ( select seller_id, max(active_seller) active_seller from  p_InventoryPlanning_t.tyres_install_sellers group by 1 ) as  t  on ck.seller_id=t.seller_id
+			---left join (  select distinct seller_id from  p_InventoryPlanning_t.tyres_install_active ) as  w  on ck.seller_id=w.seller_id
+			INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS LPR
+				ON LPR.CURNCY_ID = CK.LSTG_CURNCY_ID
+			INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.GMV_DT   and retail_year >=2022  and  age_for_rtl_week_id <=-1
+			INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			--ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+
+			inner JOIN lstg_item_cndtn CNDTN ON ck.item_id = CNDTN.item_id  AND ck.auct_end_dt = CNDTN.AUCT_END_DT
+			left outer JOIN DW_USERs U ON U.USER_ID= ck.SELLER_ID 
+			
+			WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				--and buyer_id ='1861757700'
+				and ck.site_id = 3
+				and slr_cntry_id = 3
+				and SLR_CNTRY_ID=BYR_CNTRY_ID
+				and  CNDTN_ROLLUP_ID = 1
+				and CATEG_LVL4_ID =179680 
+			--	and  ck.seller_id in (1198964979 , 2053636368,2049396253,2053643116,1086909773)
+				--and BUYER_ID= 171694201
+				GROUP BY 1,2 ,3 ,4,5,6,7,8,9,10,11,12,13
+)
+where  	vertical IN ('Parts & Accessories','Business & Industrial'));
+-- 1564  
+--SELECT distinct USER_SLCTD_ID FROM p_InventoryPlanning_t.tyres_install_txn order by 1  transaction_id ;
+
+
+ -- listing
+ -- Seller standard
+ DROP TABLE IF EXISTS P_InventoryPlanning_T.ETRS_TYRE_SELLER;
+CREATE TABLE P_InventoryPlanning_T.ETRS_TYRE_SELLER AS
+(
+SELECT
+usr.user_id,
+usr.user_slctd_id,
+SPS_SLR_LEVEL_CD,
+
+CASE WHEN SPS_SLR_LEVEL_CD = 1 THEN 'eTRS' 
+WHEN SPS_SLR_LEVEL_CD = 2 THEN 'Above Standard' 
+WHEN SPS_SLR_LEVEL_CD = 3 THEN 'Standard' 
+WHEN SPS_SLR_LEVEL_CD = 4 THEN 'Below Standard' 
+ELSE 'No seller standard'END AS SELLER_STANDARD
+FROM
+prs_secure_v.dw_users usr 
+left join ( SELECT USER_ID,
+			SPS_SLR_LEVEL_CD, 
+				last_eval_Dt from  PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM X 
+				where SPS_EVAL_TYPE_CD = 1 AND SPS_PRGRM_ID = 3 group by 1,2,3 qualify (row_number() over (partition by user_id order by last_eval_Dt desc))=1)std
+    on usr.user_id = std.user_id	
+where USR.user_id in ( select SELLER_ID from p_InventoryPlanning_t.tyres_install_sellers_master )
+);
+ -- 662 
+ select user_id  from p_InventoryPlanning_T.ETRS_TYRE_SELLER where SPS_SLR_LEVEL_CD in (1,2,3) ; 
+ 
+
+ --LISTING LEVEL
+Drop table if exists   p_ichan_t.ll_tyre_installation_a ;
+create table  p_ichan_t.ll_tyre_installation_a as 
+(
+select * from (
+select 
+age_for_rtl_week_id,
+--rim_diameter,
+--ManufacturerPartNumber,
+--Grade,
+active_seller,
+lst.Slr_ID,
+  U.USER_SLCTD_ID,
+cal.retail_year,
+cal.retail_week,
+   CAT.meta_categ_id, 
+	 CAT.CATEG_LVL2_ID, 
+	 CAT.categ_lvl2_name, 
+	  CAT.CATEG_LVL3_ID, 
+	 CAT.categ_lvl3_name, 
+	  CAT.CATEG_LVL4_ID, 
+	 CAT.categ_lvl4_name,
+	 count( distinct lst.item_id) as ll
+	-- site_id
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id 
+inner join (select user_id  from p_InventoryPlanning_T.ETRS_TYRE_SELLER where SPS_SLR_LEVEL_CD in (1,2,3) ) etrs on lst.slr_id=etrs.user_id		
+inner join ( select distinct seller_id, max(active_seller) active_seller  from   p_InventoryPlanning_t.tyres_install_sellers  group by 1 ) w on lst.slr_id=w.seller_id 
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and cat.site_id =3 and CATEG_LVL4_ID in (179680)-- select distinct site_id from 
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID AND  COND.CNDTN_ROLLUP_ID =  1  /*THEN 'Used' */  
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 	ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR =2022 -- and AGE_FOR_RTL_WEEK_ID <= -1 
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+inner join (select item_id, max(rim_diameter) as rim_diameter  from ( select 
+						upper(ASPCT_VLU_NM) as rim_diameter,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('rim diameter' )and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt >=  date '2022-01-01' group by 1,2,3,4) where rim_diameter in (13,14,15,16,17,18,19,20 ,21,22) group by 1 )  base
+						 on base.item_id=lst.item_id
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.ITEM_CNTRY_ID=3
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+--- 	and  CATEG_LVL3_ID in (33743)
+-- and CATEG_LVL3_ID in (177599,33743)
+and CATEG_LVL4_ID in (179680)
+and lst.AUCT_end_dt between '2022-01-01' and   '2022-12-31'
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13) where retail_year =2022  and AGE_FOR_RTL_WEEK_ID <= -1 
+ );
+ select active_seller, retail_week,  sum(ll) from   p_ichan_t.ll_tyre_installation_a where  USER_SLCTD_ID ='' group by 1,2 ;
+-- 177599
+---177599
+
+--Select * from  p_ichan_t.ll_tyre_installation_a where  USER_SLCTD_ID ='getoffroad4x4'; --	1235174518
+  ----ROW_NUMBER() OVER (    PARTITION BY ITEM_ID      ORDER BY BRAND, MPN ,ManufacturerPartNumber,EAN DESC) 
+  ---select distinct  CATEG_LVL3_ID from  DW_CATEGORY_GROUPINGS  where   categ_lvl3_name in ('Wheels, Tyres & Parts'  ,'Vehicle Services & Repairs')
+
+select distinct   CAT.CATEG_LVL2_ID, 
+	 CAT.categ_lvl2_name, 
+	 CAT.CATEG_LVL3_ID, 
+	 CAT.categ_lvl3_name, 
+	 CAT.CATEG_LVL4_ID, 
+	 CAT.categ_lvl4_name from  DW_CATEGORY_GROUPINGS  cat where categ_lvl4_name ='Vehicle Services & Repairs' and site_id =3 ; 
+-- report -------------------
+--GMV Tyre Category
+--GMV Services Category
+--Adoption Rate
+--YoY Tyre Category GMV
+--Experience
+--Buyers
+--New Buyers
+--Aspect “Quantity” – to get a view if buyers are buying in multiples of 2/3/4 tyres
+------------------------------------------------------------------------------------------
+---- ----------------------------------------------------------------------
+----------------------------------------------------------------------
+----------------------------------------------------------------------
+----------------------------------------------------------------------
+-- DEFINE INSTALLATION DEFINITION
+			
+DROP TABLE IF EXISTS   p_InventoryPlanning_t.tyres_install_ADOPTION_AK  ;
+CREATE TABLE    p_InventoryPlanning_t.tyres_install_ADOPTION_AK  AS (
+
+SELECT 
+A.RETAIL_YEAR,A.RETAIL_WEEK,
+A.USER_SLCTD_ID,
+SUM(IFNULL(B.INSTALLATION_COUNT,0)) AS INSTALLATION_COUNT_OWN,
+SUM(IFNULL(WCF.WCFMC_TXN,0)) AS INSTALLATION_COUNT_WCFMC,
+SUM(IFNULL(TYRE_CK_COUNT,0)) AS TYRE_CK_COUNT
+--SUM(IFNULL(INSTALLATION_COUNT,0))/SUM(IFNULL(TYRE_CK_COUNT,0)) ADOPTION_RATE
+FROM   (
+			SELECT 
+			RETAIL_YEAR,RETAIL_WEEK, 
+			USER_SLCTD_ID,
+			COUNT(*) AS TYRE_CK_COUNT  FROM (
+			sELECT DISTINCT  RETAIL_YEAR,RETAIL_WEEK, 
+			USER_SLCTD_ID,
+			BUYER_ID,
+			CREATED_DT,TRANSACTION_ID
+			FROM p_InventoryPlanning_t.tyres_install_data 
+			WHERE   CATEG_LVL4_ID in (179680 ) ) -- tyres and tube /* ,124313*/
+			GROUP BY 1,2,3 )A 
+LEFT JOIN  ( 
+		SELECT 
+		RETAIL_YEAR,
+			RETAIL_WEEK, 
+			USER_SLCTD_ID,
+			COUNT(*) AS INSTALLATION_COUNT  
+			FROM (
+					sELECT DISTINCT  RETAIL_WEEK,RETAIL_YEAR, 
+					USER_SLCTD_ID,
+					BUYER_ID,
+					CREATED_DT,TRANSACTION_ID
+					FROM p_InventoryPlanning_t.tyres_install_data WHERE  categ_lvl4_name ='Vehicle Services & Repairs'  )
+					
+			GROUP BY 1,2,3 ) B ON A.RETAIL_YEAR=B.RETAIL_YEAR AND  A.RETAIL_WEEK=B.RETAIL_WEEK AND A.USER_SLCTD_ID=B.USER_SLCTD_ID
+LEFT JOIN (select distinct seller_name,  retail_year, retail_week , count(distinct order_number)  as WCFMC_TXN from p_InventoryPlanning_t.tyres_install_WCFMC_txn group by 1,2, 3 ) WCF  ON A.RETAIL_YEAR=WCF.RETAIL_YEAR AND  A.RETAIL_WEEK=WCF.RETAIL_WEEK AND A.USER_SLCTD_ID=WCF.Seller_name
+GROUP BY 1,2,3		) ;
+
+--SELECT * FROM p_InventoryPlanning_t.tyres_install_WCFMC_txn  ;
+---left join (select * from p_InventoryPlanning_t.tyres_install_3P ;) 
+----SELECT DISTINCT  USER_SLCTD_ID FROM    p_InventoryPlanning_t.tyres_install_ADOPTION_CK ; 
+
+DROP TABLE IF EXISTS   p_InventoryPlanning_t.tyres_install_ADOPTION_CK  ;
+CREATE TABLE    p_InventoryPlanning_t.tyres_install_ADOPTION_CK  AS (
+
+SELECT 
+RETAIL_YEAR,
+RETAIL_WEEK,
+USER_SLCTD_ID,
+SUM(IFNULL(INSTALLATION_COUNT_OWN,0)) AS INSTALLATION_COUNT_OWN,
+SUM(IFNULL(INSTALLATION_COUNT_WCFMC,0)) AS INSTALLATION_COUNT_WCFMC,
+SUM(IFNULL(TYRE_CK_COUNT,0)) AS TYRE_CK_COUNT,
+SUM(IFNULL(INSTALLATION_COUNT_OWN,0)+ IFNULL(INSTALLATION_COUNT_WCFMC,0) )/SUM(IFNULL(TYRE_CK_COUNT,0)) ADOPTION_RATE
+FROM  p_InventoryPlanning_t.tyres_install_ADOPTION_AK 
+GROUP BY 1,2,3);
+
+--SELECT * FROM  p_InventoryPlanning_t.tyres_install_ADOPTION_CK WHERE USER_SLCTD_ID like '%buy%';
+--SELECT * FROM  p_InventoryPlanning_t.tyres_install_ADOPTION_CK WHERE  retail_year =2022 and retail_week >=28; 
+---------------------------------------------------------------------------------------------------------------------------------
+
+----- WEEKLY REPORT--------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------
+
+
+-- Adoption Rate and KPIs
+DROP TABLE IF EXISTS   p_InventoryPlanning_t.tyres_install_WEEKLY  ;
+CREATE TABLE    p_InventoryPlanning_t.tyres_install_WEEKLY  AS 
+
+SELECT 
+A.USER_SLCTD_ID,
+A.Active_seller,
+CASE WHEN A.USER_SLCTD_ID=PL.USER_SLCTD_ID THEN 'Y' ELSE 'N' END AS ADOPT_WCFMC,
+A.Retail_year,
+A.Retail_week,
+
+IFNULL(W.INSTALLATION_COUNT_OWN,0) AS INSTALLATION_TRANSACTION,
+IFNULL(W.INSTALLATION_COUNT_WCFMC,0) AS INSTALLATION_TRANSACTION_WCFMC,
+IFNULL(W.TYRE_CK_COUNT,0)  AS TYRE_TRANSACTION,
+IFNULL(W.ADOPTION_RATE,0)  AS ADOPTION_RATE,
+
+A.GMV20_Tyre_Category,
+A.GMV20_Services_Category,
+g.GMV_Top, 
+IFNULL(B.buyer_COUNT,0)AS  buyer_COUNT,
+GMV20_Tyre_Category/g.gmv_top as pc_gmv_tyre_categ,
+GMV20_Services_Category/g.gmv_top as pc_adoption_tyre_categ,
+IFNULL(lst.tyre_ll,0) AS tyre_ll,
+IFNULL(lst.tyre_ll,0)/IFNULL(k.ll_top ,0) as pc_tyre_listing
+FROM 
+( 
+
+select 
+USER_SLCTD_ID,
+Active_seller,
+Retail_year,
+Retail_week,
+
+
+
+--sum(case when  categ_lvl3_name ='Vehicle Services & Repairs' then QUANTITY ELSE 0 END )ADOPTION,
+--sum(case when   CATEG_LVL4_ID =179680 then QUANTITY ELSE 0 END )TOTAL_QUANTITY,
+--sum(case when  categ_lvl3_name ='Vehicle Services & Repairs' then QUANTITY ELSE 0 END )/sum(case when   CATEG_LVL4_ID =179680 then QUANTITY ELSE 0 END )ADOPTION_RATE,
+sum(case when   CATEG_LVL4_ID =179680 then QUANTITY*item_price ELSE 0 END ) GMV_Tyre_Category,
+sum(case when  categ_lvl3_name ='Vehicle Services & Repairs' then QUANTITY * item_price ELSE 0 END ) GMV_Services_Category,
+
+sum(case when   CATEG_LVL4_ID =179680 then GMV_20 ELSE 0 END ) GMV20_Tyre_Category,
+sum(case when  categ_lvl3_name ='Vehicle Services & Repairs' then GMV_20 ELSE 0 END ) GMV20_Services_Category
+--,sum(case when   CATEG_LVL4_ID =179680 then GMV_20 ELSE 0 END )/
+
+from p_InventoryPlanning_t.tyres_install_data group by 1,2,3 ,4   ) A-- select * from   p_InventoryPlanning_t.tyres_install_data  WHERE USER_SLCTD_ID='blackcircles_tyres' AND BUYER_ID=2010524604 ===CREATED_DT='2022-03-30'--AND  TRANSACTION_ID=1974593668004--ITEM_ID =142534755622 limit 1000;
+left join p_InventoryPlanning_t.tyres_install_ADOPTION_CK  W on A.USER_SLCTD_ID=W.USER_SLCTD_ID AND A.Retail_year=W.Retail_year AND A.retail_week=W.RETAIL_WEEK-- select * from   p_InventoryPlanning_t.tyres_install_ADOPTION_CK  WHERE USER_SLCTD_ID='blackcircles_tyres'
+LEFT JOIN (select
+				RETAIL_YEAR,
+				RETAIL_WEEK,
+				USER_SLCTD_ID,
+				
+				count(distinct buyer_id )buyer_COUNT
+				from p_InventoryPlanning_t.tyres_install_data 
+				WHERE categ_lvl3_name ='Vehicle Services & Repairs' group by 1,2,3) B ON A.RETAIL_YEAR=B.RETAIL_YEAR and A.RETAIL_WEEK=B.RETAIL_WEEK AND A.USER_SLCTD_ID=B.USER_SLCTD_ID
+				
+Left join ( select Retail_year, retail_week, sum( GMV_20)  as Gmv_top from p_InventoryPlanning_t.tyres_install_top  where  CATEG_LVL4_ID =179680 group by 1,2 ) g on a.retail_year =g.retail_year and  a.retail_week =g.retail_week
+
+left join (
+						select
+						retail_year,
+						slr_id,
+						user_slctd_id,
+						retail_week,
+						sum(case when  CATEG_LVL3_ID =177599 then ll else 0 end )  as vehicle_service,
+						sum(case when  CATEG_LVL4_ID =179680 then ll else 0 end )as tyre_ll,---sum(ll) ll ,
+						sum(case when CATEG_LVL4_ID =179680  then ll else 0 end ) /sum(ll) as pc_tyre_listing
+						from    p_ichan_t.ll_tyre_installation_a 
+						where active_seller ='Y'
+						group by 1,2,3,4 		) lst on   a.retail_year =lst.retail_year and  a.retail_week =lst.retail_week AND A.USER_SLCTD_ID=lst.USER_SLCTD_ID
+						
+Left join ( select Retail_year, retail_week, sum( ll)  as ll_top from    p_ichan_t.ll_tyre_installation_a  where  CATEG_LVL4_ID =179680 group by 1,2 ) k on a.retail_year =k.retail_year and  a.retail_week =k.retail_week
+left join ( select USER_SLCTD_ID , sum(INSTALLATION_COUNT_WCFMC) WCFMC 
+			from p_InventoryPlanning_t.tyres_install_ADOPTION_CK GROUP BY 1 
+				HAVING WCFMC>0 ) PL ON A.USER_SLCTD_ID=PL.USER_SLCTD_ID
+
+;
+--- select active_seller, Retail_year, retail_week, sum( GMV_20)  as Gmv_top from p_InventoryPlanning_t.tyres_install_top  where  CATEG_LVL4_ID =179680 group by 1,2,3;
+--   select * from  p_InventoryPlanning_t.tyres_install_WEEKLY where user_slctd_id='blackcircles_tyres' ;
+----select 
+-- SELECT distinct USER_SLCTD_ID FROM p_InventoryPlanning_t.tyres_install_WEEKLY order by USER_SLCTD_ID, Retail_year,Retail_week;
+
+--USER_SLCTD_ID			ADOPTION	TOTAL_QUANTITY	ADOPTION_RATE			GMV_Tyre_Category	GMV_Services_Category
+--ractyres				14			279				0.05017921146953405		28507.42			200.00
+--blackcircles_tyres	218			1267			0.17205998421468036		163570.05			432.00
+select retail_week, sum(installation_transaction_WCFMC) wcfmc , sum( tyre_transaction) tyre  from  p_InventoryPlanning_t.tyres_install_WEEKLY where retail_week >=33 group by 1  ; 
+select * from   p_InventoryPlanning_t.tyres_install_WEEKLY  where retail_week =42 limit 100 ;
+
+
+---------------------------------------
+-- update
+--
+-- Transaction level data 
+drop table if exists   p_InventoryPlanning_t.tyres_install_group_buyer  ; 
+create table  p_InventoryPlanning_t.tyres_install_group_buyer
+as 
+(
+SELECT	
+  U.USER_SLCTD_ID,
+  ck.SELLER_ID,
+  ck.BUYER_ID,
+  TRANSACTION_ID,
+   CK.CREATED_DT,
+   ck.item_id, 
+CASE WHEN Retail_year  IN (2018,2019) AND RETAIL_WEEK =1 THEN 2019
+WHEN Retail_year  IN (2019,2020) AND RETAIL_WEEK =1 THEN 2020
+WHEN Retail_year  IN (2020,2021) AND RETAIL_WEEK =53 THEN 2020
+WHEN Retail_year  IN (2021,2022) AND RETAIL_WEEK =52 THEN 2021
+ELSE Retail_year end as Retail_year ,
+cal.AGE_FOR_QTR_ID,
+cal.QTR_OF_YEAR_ID,
+cal.RETAIL_week,
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
+		when meta_categ_id in (26395) then 'Lifestyle'
+		when CATEG_LVL3_ID in (260325) then 'Lifestyle'
+		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+		when categ_lvl3_id in (3244) then 'Parts & Accessories'
+		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+		when categ_lvl2_id in (46576) then 'Parts & Accessories'
+		--when bsns_vrtcl_name in ('Collectibles') and meta_categ_id in (220, 237, 550)  then 'Collectibles B2C'
+		--when bsns_vrtcl_name in ('Collectibles') and categ_lvl2_id in (180250) then 'Collectibles B2C' 
+		else bsns_vrtcl_name end as vertical,
+meta_categ_id, 
+CATEG_LVL2_ID, 
+categ_lvl2_name, 
+categ_lvl3_name, 
+categ_lvl3_id,
+ QUANTITY,
+ item_price,
+ GMV_PLAN_USD as  GMV_20
+--case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  CNDTN_ROLLUP_ID  end as Condition,
+--SUM(CAST(CK.QUANTITY AS DECIMAL(18,2))* CAST(CK.ITEM_PRICE AS DECIMAL(18,2))*CAST(LPR.CURNCY_PLAN_RATE AS DECIMAL(18,2))) AS GMV,
+--sum(QUANTITY) as BI
+			FROM   DW_CHECKOUT_TRANS ck
+			INNER join ( select distinct BUYER_ID from  p_InventoryPlanning_t.tyres_install_txn WHERE categ_lvl3_name ='Vehicle Services & Repairs'  ) as  t  on ck.BUYER_ID=t.BUYER_ID
+			--INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS LPR 				ON LPR.CURNCY_ID = CK.LSTG_CURNCY_ID
+			INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.GMV_DT   and retail_year >=2019  and  age_for_rtl_week_id <=-1
+			INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			--ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+
+			inner JOIN lstg_item_cndtn CNDTN ON ck.item_id = CNDTN.item_id  AND ck.auct_end_dt = CNDTN.AUCT_END_DT
+			left outer JOIN DW_USERs U ON U.USER_ID= ck.SELLER_ID 
+			
+			WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				--and buyer_id ='1861757700'
+				and ck.site_id = 3
+				and slr_cntry_id = 3
+				and SLR_CNTRY_ID=BYR_CNTRY_ID
+		
+);
+DROP TABLE IF EXISTS   p_InventoryPlanning_t.tyres_install_BUYER_timeline  ;
+CREATE TABLE    p_InventoryPlanning_t.tyres_install_BUYER_timeline  AS  (
+SELECT * , RANK() OVER (    PARTITION BY BUYER_ID      ORDER BY CREATED_DT  ) RANK_NO
+FROM p_InventoryPlanning_t.tyres_install_group_buyer   );
+-----select * from  p_InventoryPlanning_t.tyres_install_BUYER_timeline   where  RANK_NO =1  and AGE_FOR_QTR_ID >=-1 order by  BUYER_ID ,  RANK_NO ;
+ ---select * from  p_InventoryPlanning_t.tyres_install_BUYER_timeline   where buyer_id= 2374037425;
+ 
+ -- to show whos new to the  category /vertical / whos new to site?
+DROP TABLE IF EXISTS   p_InventoryPlanning_t.tyres_install_BUYER_new  ;
+CREATE TABLE    p_InventoryPlanning_t.tyres_install_BUYER_new  AS  (
+ SELECT 
+ CASE 
+ WHEN INSTALLATION ='Y' AND CURRENT_QTR ='Y' THEN 'New Installation Buyer'
+ WHEN CURRENT_QTR ='Y' AND  WHEELS_CATEGORY ='Y' THEN  'New to Wheels Category'
+ WHEN CURRENT_QTR ='Y' AND  Vertical ='h.Parts & Accessories'  THEN  'New to P&A'
+  WHEN CURRENT_QTR ='Y'  THEN  'New to Site'
+ else 'Existing Buyer'  END AS BUYER_COHORT,* from 
+ 
+(  select buyer_id, 
+ count( distinct vertical) as nbr_of_verticals_first_purchase,
+ min(created_dt) as first_purchase,
+ MAX(INSTALLATION) INSTALLATION,
+ MAX(WHEELS_CATEGORY) WHEELS_CATEGORY,
+ MAX(CURRENT_QTR) CURRENT_QTR,
+ max( New_Vertical) Vertical
+ from  (SELECT * ,
+ case when categ_lvl3_name  ='Vehicle Services & Repairs'  then 'Y' ELSE 'N' END AS  INSTALLATION,
+ case when  categ_lvl3_name  ='Wheels, Tyres & Parts'   then 'Y' ELSE 'N' END AS  WHEELS_CATEGORY,
+ CASE WHEN AGE_FOR_QTR_ID >=-1 THEN 'Y' ELSE 'N' END AS CURRENT_QTR,
+ case when vertical ='Electronics' then 'a.Electronics'
+ when vertical ='Lifestyle' then 'b.Lifestyle'
+ when vertical ='Home & Garden' then 'c.Home & Garden'
+ when vertical ='Media' then 'd.Media'
+ when vertical ='Collectibles' then 'e.Collectibles'
+ when vertical ='Fashion' then 'f.Fashion'
+ when vertical ='Business & Industrial' then 'g.Business & Industrial'
+ when vertical ='Parts & Accessories' then 'h.Parts & Accessories' else 'other' end as New_Vertical
+ from  p_InventoryPlanning_t.tyres_install_BUYER_timeline   where  RANK_NO =1) 
+ group by 1)) ;
+-------------------------------------------------------------------------------------
+---------------------------------------------------------------------
+
+-- ARE THE BUYERS B2B BUYERS OR MAY BE B2C SELLERS
+-- CHECK POSTCODE OF DELIVERY
+-- B2B BUYERS 
+--SELECT * FROM p_eupricing_t.ymm_b2b_buyers
+-- B2C SELLERS
+
+drop table if exists   P_ICHAN_T.b2c_sellers;
+create table P_ICHAN_T.b2c_sellers as(
+sELECT 	seller_ID
+			,USER_SLCTD_ID
+			, CASE WHEN HIST.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END SLR_SEGMENT
+			 ,        SUM( GMV_PLAN_USD )as  GMV_20
+			,              sum(QUANTITY) as BI
+			FROM   DW_CHECKOUT_TRANS ck
+		--	INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS SSA				ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID
+			INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.GMV_DT  and  age_for_rtl_week_id >= -52  and  age_for_rtl_week_id <=-1 -- and retail_year in (2021) --change here for time period if needed 
+			INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+			inner JOIN lstg_item_cndtn cond ON ck.item_id = cond.item_id  AND ck.auct_end_dt = cond.AUCT_END_DT
+			inner  JOIN DW_USEGM_HIST HIST ON HIST.USER_ID=ck.Seller_ID AND HIST.USEGM_GRP_ID  = 48 
+			left outer JOIN DW_USERs U ON U.USER_ID= ck.seller_id 
+			WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				and ck.site_id = 3
+				and slr_cntry_id = 3
+				AND BYR_CNTRY_ID=3
+				and HIST.USEGM_ID = 206
+				AND bsns_vrtcl_name ='Parts & Accessories'
+			GROUP BY 1,2,3);
+-- 65919 rows affected.
+--SELECT * FROM P_ICHAN_T.b2c_sellers order by 1 LIMIT 100
+
+
+
+--- BUYER INFO
+Drop table  if exists  p_InventoryPlanning_t.TYRE_INSTALL_BUYER_GROUP;
+create table p_InventoryPlanning_t.TYRE_INSTALL_BUYER_GROUP as(
+select distinct TRANSACTION_ID ,
+A.BUYER_ID,
+CASE WHEN  A.BUYER_ID=B.PRIMARY_USER_ID THEN 'B2B BUYER'
+WHEN A.BUYER_ID=C.USER_SLCTD_ID THEN 'B2C SELLER' ELSE 'OTHER' END AS BUYER_GROUPING,
+CASE WHEN A.BUYER_ID=D.BUYER_ID  THEN BUYER_COHORT ELSE 'EXISTING BUYER' END AS BUYER_COHORT
+
+from  p_InventoryPlanning_t.tyres_install_txn A
+LEFT JOIN ( SELECT DISTINCT PRIMARY_USER_ID FROM p_eupricing_t.ymm_b2b_buyers )  B ON A.BUYER_ID=B.PRIMARY_USER_ID
+LEFT JOIN ( SELECT DISTINCT USER_SLCTD_ID FROM P_ICHAN_T.b2c_sellers ) C ON A.BUYER_ID=C.USER_SLCTD_ID
+left join ( select distinct buyer_id, buyer_cohort from   p_InventoryPlanning_t.tyres_install_BUYER_new ) D ON A.BUYER_ID=D.BUYER_ID
+);
+--SELECT * FROM  p_InventoryPlanning_t.TYRE_INSTALL_BUYER_GROUP;
+
+--- DELIVERY ADDRESS
+Drop table  if exists  p_InventoryPlanning_t.TYRE_INSTALL_shipping;
+create table p_InventoryPlanning_t.TYRE_INSTALL_shipping as(
+   SELECT SSA.CK_TRANS_ID
+   ,X.BUYER_ID
+    , X.BUYER_GROUPING
+	,X.BUYER_COHORT
+	, ADR.cntct_name
+	, ADR.ZIP
+	, ADR.ADDR1_TXT
+	, ADR.ADDR2_TXT
+	, ADR.CITY_TXT
+	, ADR.CNTRY_ID
+	, ADR.CNTRY_TXT
+	, LBL_AD.CNTCT_NAME AS LBL_CONTACT_NAME
+	, LBL_AD.ADDR1_TXT AS LBL_ADDR1
+	, LBL_AD.ADDR2_TXT AS LBL_ADDR2
+	, LBL_AD.CITY_TXT AS LBL_CITY
+	, LBL_AD.CNTRY_TXT AS LBL_COUNTRY
+	, LBL_AD.STATE_PRVNC_TXT AS LBL_STATE
+	, LBL_AD.PSTL_CODE_TXT AS LBL_ZIP
+FROM SSA_SHPMT_TRANS_FACT SSA
+LEFT JOIN  PRS_SECURE_V.DW_USER_ADDRESSES ADR
+	ON SSA.CK_TO_ADDR_ID = ADR.ADDRESS_ID
+LEFT JOIN DW_SHIPMENT SHP
+	on SSA.SHIPMENT_ID = SHP.SHIPMENT_ID
+LEFT JOIN PRS_SECURE_V.DW_SHPMT_LABEL_ADDR LBL_AD
+	ON SHP.TO_ADDRESS_ID = LBL_AD.SHPMT_LABEL_ADDR_ID
+-- If SHPMNT_CLNT_CD = 0 then COALESCE(DW_USER_ADRESSES.ADDRESS_ID, DW_SHPMT_SOLD_SHPNG_ADDR.SHPNG_ADDR_ID)
+-- if SHPMNT_CLNT_CD = 1 then COALESCE(DW_SHPMT_LABEL_ADDR.SHPMT_LABEL_ADDR_ID, DW_USER_ADRESSES.ADDRESS_ID)
+INNER JOIN (select distinct TRANSACTION_ID,BUYER_ID, BUYER_GROUPING ,BUYER_COHORT from  p_InventoryPlanning_t.TYRE_INSTALL_BUYER_GROUP) X ON  SSA.CK_TRANS_ID =X.TRANSACTION_ID
+WHERE 1=1
+-- AND SSA.CK_DT > '2021-01-01'
+AND SSA.BUYER_CNTRY_ID = 3 ) ;
+--AND SSA.CK_TRANS_ID IN (select distinct TRANSACTION_ID, BUYER_GROUPING from  p_InventoryPlanning_t.TYRE_INSTALL_BUYER_GROUP));
+
+--SELECT * FROM p_InventoryPlanning_t.TYRE_INSTALL_shipping; 
+
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+----Buyer location
+-- buyer segmentation
+DROP TABLE IF EXISTS   p_InventoryPlanning_t.tyres_install_HEATMAP  ;
+CREATE TABLE    p_InventoryPlanning_t.tyres_install_HEATMAP  AS 
+select a.*,B.BUYER_GROUPING ,B.BUYER_COHORT, B.cntct_name , B.ZIP, B.CITY_TXT
+from 
+(
+select BUYER_ID,  retail_year, retail_week,
+
+sum(case when  categ_lvl3_name ='Vehicle Services & Repairs' then QUANTITY ELSE 0 END )ADOPTION,
+sum(case when  categ_lvl3_name ='Wheels, Tyres & Parts' then QUANTITY*item_price ELSE 0 END ) GMV_Tyre_Category,
+sum(case when  categ_lvl3_name ='Vehicle Services & Repairs' then QUANTITY * item_price ELSE 0 END ) GMV_Services_Category,
+sum( case when vertical='Parts & Accessories' then  QUANTITY * item_price ELSE 0 END) Total_PA_GMV,
+sum( case when vertical<>'Parts & Accessories' then  QUANTITY * item_price ELSE 0 END) Other_vertical_GMV
+
+---FROM  p_InventoryPlanning_t.tyres_install_data --- select * from p_InventoryPlanning_t.tyres_install_group_buyer
+FROM  p_InventoryPlanning_t.tyres_install_group_buyer --- select * from p_InventoryPlanning_t.tyres_install_group_buyer where retail_year >=2022 and buyer_id='24318164' and retail_week=17
+---WHERE  categ_lvl3_name ='Vehicle Services & Repairs' 
+where retail_year >=2022 ---and buyer_id='24318164'
+GROUP BY 1,2,3 ) A
+INNER   join ( select * from (select *,  RANK() OVER (    PARTITION BY BUYER_ID      ORDER BY cntct_name  ) RANK_NO  from (SELECT DISTINCT BUYER_ID, BUYER_GROUPING ,BUYER_COHORT, cntct_name , ZIP, CITY_TXT FROM p_InventoryPlanning_t.TYRE_INSTALL_shipping) )where rank_no =1)  B ON A.BUYER_ID=B.BUYER_ID
+ ;
+--SELECT * FROM  p_InventoryPlanning_t.tyres_install_HEATMAP ;
+------ buyer profile:
+
+DROP TABLE IF EXISTS   p_InventoryPlanning_t.tyres_install_BUYER_profile  ;
+CREATE TABLE    p_InventoryPlanning_t.tyres_install_BUYER_profile  AS  (
+select b.cntct_name as Buyer_Name ,  a.* 
+from p_InventoryPlanning_t.tyres_install_BUYER_new as a 
+left join ( select distinct buyer_id, cntct_name from  p_InventoryPlanning_t.tyres_install_HEATMAP ) b on a.buyer_id=b.buyer_id  );
+
+--select * from p_InventoryPlanning_t.tyres_install_BUYER_profile;
+
+ ---------------B.--------------------------------
+ -- listing
+ 
+drop table if exists   p_InventoryPlanning_t.tyres_install_sellers  ; 
+create table  p_InventoryPlanning_t.tyres_install_sellers  as (
+select distinct ck.seller_id ,
+case when  ck.seller_id=w.seller_id_active then 'Y' else 'N' end as active_seller
+from  DW_CHECKOUT_TRANS ck 
+left outer JOIN DW_USERs U ON U.USER_ID= ck.SELLER_ID 
+left join ( select distinct SELLER_ID as seller_id_active from    p_InventoryPlanning_t.tyres_install_active ) w on ck.seller_id=w.seller_id_active
+where site_id =3 
+and USER_SLCTD_ID in ( select distinct seller_name from P_ICHAN_T.tyre_install_upload )
+);
+
+
+   Drop table if exists   p_ichan_t.ll_tyre_installation_a ;
+create table  p_ichan_t.ll_tyre_installation_a as (
+select * from 
+(
+select 
+--MPN,
+--ManufacturerPartNumber,
+--Grade,
+age_for_rtl_week_id,
+active_seller,
+lst.Slr_ID,
+  U.USER_SLCTD_ID,
+cal.retail_year,
+cal.retail_week,
+   CAT.meta_categ_id, 
+	 CAT.CATEG_LVL2_ID, 
+	 CAT.categ_lvl2_name, 
+	  CAT.CATEG_LVL3_ID, 
+	 CAT.categ_lvl3_name, 
+	  CAT.CATEG_LVL4_ID, 
+	 CAT.categ_lvl4_name,
+	 count( distinct lst.item_id) as ll
+	-- site_id
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id 
+---SELECT * FROM DW_LSTG_ITEM lst  where   slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+---inner join ( select distinct  seller_id from  P_ICHAN_T.recyclers_upload)  c on lst.slr_id=c.seller_id-- select * from   P_ICHAN_T.recyclers_upload order by seller_id rank where seller_id =1077516705
+--inner join P_ICHAN_T.certified_ll   c on lst.Slr_ID=c.SLr_ID
+
+		
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and cat.site_id =3 -- select distinct site_id from 
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID AND  COND.CNDTN_ROLLUP_ID =  1  /*THEN 'Used' */  
+--INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL 	ON CAL.CAL_DT =lst.AUCT_START_DT AND retail_year >=2022 and lst.AUCT_START_DT >= '2020-03-01'--  and  age_for_rtl_week_id >= -10
+INNER JOIN (select CAL_DT,RETAIL_YEAR, QTR_OF_YEAR_ID,Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4,5 ) CAL  ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2022
+--INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+--INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON  CAL.CAL_DT = lst.CREATED_DT AND 				RETAIL_YEAR >= 2017
+--INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 
+--				ON Lstg.AUCT_START_DT < CAL.CAL_DT AND Lstg.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2019  and AGE_FOR_RTL_WEEK_ID >= -10
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID and retail_year >=  2020
+--INNER JOIN dw_lstg_item_cold lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--WHERE lst.AUCT_end_dt >= date -- limiit on live listings
+left join ( select distinct seller_id, max(active_seller) active_seller  from   p_InventoryPlanning_t.tyres_install_sellers  group by 1 ) w on lst.slr_id=w.seller_id 
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.ITEM_CNTRY_ID=3
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+--- 	and  CATEG_LVL3_ID in (33743)
+and CATEG_LVL3_ID in (177599,33743)
+---and lst.AUCT_end_dt >= CURRENT_DATE
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13) where  age_for_rtl_week_id <=-1
+ );
+ 
+ -- 
+ select USER_SLCTD_ID, RETAIL_WEEK, SUM(LL)  from p_ichan_t.ll_tyre_installation_a WHERE USER_SLCTD_ID  like '%etoff%' GROUP BY 1 ,2 limit 1000; 
+  ----ROW_NUMBER() OVER (    PARTITION BY ITEM_ID      ORDER BY BRAND, MPN ,ManufacturerPartNumber,EAN DESC) 
+  ---select distinct  CATEG_LVL3_ID from  DW_CATEGORY_GROUPINGS  where   categ_lvl3_name in ('Wheels, Tyres & Parts'  ,'Vehicle Services & Repairs')
+--select * from  p_ichan_t.ll_tyre_installation_a  where  CATEG_LVL3_ID =177599;
+
+select
+retail_year,
+slr_id,
+user_slctd_id,
+retail_week,
+sum(case when  CATEG_LVL3_ID =177599 then ll else 0 end )  as vehicle_service,
+sum(case when  CATEG_LVL4_ID =179680 then ll else 0 end )as tyre_l4,
+sum(ll) ll ,
+sum(case when  CATEG_LVL3_ID =177599 then ll else 0 end ) /sum(ll) as pc_tyre_listing
+from    p_ichan_t.ll_tyre_installation_a 
+where active_seller ='Y'
+group by 1,2,3,4
+;
+
+
+
+----------------------------------------------------------------
+---- identify new tyre lister  --
+-------------------------------------------------------------
+ drop table if exists   P_InventoryPlanning_T.tyre_seller_new_listing ;--- select * from   P_InventoryPlanning_T.tyre_seller_new_listing where USER_SLCTD_ID='mygenuin645645';
+ create table P_InventoryPlanning_T.tyre_seller_new_listing as   (
+ select 
+lst.Slr_ID,
+U.USER_SLCTD_ID,
+CAT.CATEG_LVL4_ID, 
+CAT.categ_lvl4_name,
+case  when cond.cndtn_rollup_id=1 then 'New'
+when cond.cndtn_rollup_id=2 then 'Refurb'   
+when cond.cndtn_rollup_id=3 then 'Used'  else 'Other' end  as item_cond,
+min(AUCT_START_DT) as first_listing_date
+---count( distinct lst.item_id) as LL
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  ----AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL    	ON CAL.CAL_DT =lst.AUCT_START_DT AND retail_year >=2019 and age_for_rtl_week_id <= 0 --  and  age_for_rtl_week_id >= -10
+INNER JOIN DW_USEGM_HIST AS HIST          ON HIST.USER_ID = lst.slr_id         AND HIST.USEGM_GRP_ID = 48          AND HIST.USEGM_ID = 206 --B2C only sellers
+       
+--INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+--INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON  CAL.CAL_DT = lst.CREATED_DT AND 				RETAIL_YEAR >= 2017
+---INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2019 
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID and retail_year >=  2020
+--INNER JOIN dw_lstg_item_cold lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--WHERE lst.AUCT_end_dt >= date -- limiit on live listings
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+--  and categ_lvl2_id in (6030)
+ --and categ_lvl2_name in ('Car Parts')
+and    CATEG_LVL4_ID in (179680 ) -- tyres and tube /* ,124313*/
+--- and lst.AUCT_end_dt >= CURRENT_DATE
+and cond.cndtn_rollup_id=1
+ group by 1,2,3,4,5
+ );
+ 
+ --select min(first_listing_date) , max( first_listing_date)   from P_InventoryPlanning_T.tyre_seller_new_listing limit 100 ;
+--  select *  from P_InventoryPlanning_T.tyre_seller_new_listing limit 100 ;
+  
+  
+ drop table  if exists  P_InventoryPlanning_T.tyre_seller_new_listing_tw ;
+ create table P_InventoryPlanning_T.tyre_seller_new_listing_tw as   ( 
+ select * from (
+  select 
+  CAL.Retail_year,
+CAL.Retail_week,
+Slr_ID,
+USER_SLCTD_ID,
+CATEG_LVL4_ID,
+categ_lvl4_name,
+item_cond,
+first_listing_date,
+CAL.age_for_rtl_week_id
+from  P_InventoryPlanning_T.tyre_seller_new_listing a
+left join   ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT =a.first_listing_date  ) where age_for_rtl_week_id >=-3 /*and item_cond='New' */ );
+
+--select * from  P_InventoryPlanning_T.tyre_seller_new_listing_tw ;
+
+drop table if exists   p_ichan_t.new_tyre_seller_listing ; 
+create table  p_ichan_t.new_tyre_seller_listing as 
+(
+select * from (
+select 
+lst.Slr_ID,
+U.USER_SLCTD_ID,
+first_listing_date,
+Retail_year, 
+Retail_week,
+age_for_rtl_week_id,
+CAT.meta_categ_id, 
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name, 
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name, 
+CAT.CATEG_LVL4_ID, 
+CAT.categ_lvl4_name,
+case  when cond.cndtn_rollup_id=1 then 'New'
+when cond.cndtn_rollup_id=2 then 'Refurb'   
+when cond.cndtn_rollup_id=3 then 'Used'  else 'Other' end  as item_cond,
+count( distinct lst.item_id) as LL
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+	
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  ----AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+----INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL    	ON CAL.CAL_DT =lst.AUCT_START_DT AND retail_year >=2022 and age_for_rtl_week_id <= -1 and lst.AUCT_START_DT >= '2021-03-01'--  and  age_for_rtl_week_id >= -10
+--INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+--INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON  CAL.CAL_DT = lst.CREATED_DT AND 				RETAIL_YEAR >= 2017
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2022
+inner join ( select distinct slr_id, min( first_listing_date) first_listing_date from   P_InventoryPlanning_T.tyre_seller_new_listing_tw  where age_for_rtl_week_id =0 group by 1) w on lst.slr_id=w.slr_id
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID and retail_year >=  2020
+--INNER JOIN dw_lstg_item_cold lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--WHERE lst.AUCT_end_dt >= date -- limiit on live listings
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+--  and categ_lvl2_id in (6030)
+ --and categ_lvl2_name in ('Car Parts')
+and    CATEG_LVL4_ID in (179680 ) -- tyres and tube /* ,124313*/ -- ,124313 Motorcycle tyres
+-- and lst.AUCT_end_dt >= CURRENT_DATE
+ group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14) where age_for_rtl_week_id between -4 and 0
+ );
+ select * from  p_ichan_t.new_tyre_seller_listing  ;
+--- Select * from  p_ichan_t.new_tyre_seller_listing  ;
+ 
+ 
+ 
+--- All locations:
+
+--SELECT LOCATION_ID, NAME, EMAIL, GEOGRAPHIC_LOCATION,ADDRESS1,ADDRESS2,CITY,COUNTRY,HOURS_OF_OPERATION,CREATION_DATE 
+--from VIP_INSTALLER_LOCATION where PROVIDER_NAME='ractyres';
+
+---Active Locations:
+
+--SELECT LOCATION_ID, NAME, EMAIL, GEOGRAPHIC_LOCATION,ADDRESS1,ADDRESS2,CITY,COUNTRY,HOURS_OF_OPERATION,CREATION_DATE 
+--from VIP_INSTALLER_LOCATION
+--where LOCATION_ID IN (SELECT DISTINCT LOCATION_ID from VIP_ADDON_INSTALLATION WHERE PROVIDER_NAME='ractyres') and PROVIDER_NAME='ractyres'
+

@@ -1,0 +1,111 @@
+Drop table if exists P_Plan_PPatel_T.IC_CouponAll;
+
+create table P_Plan_PPatel_T.IC_CouponAll as 
+
+SELECT
+A.INCNTV_CD
+, A.USER_ID as buyer_id
+--, DNA.BUYER_TYPE_DESC
+, acc.ACCT_TRANS_ID as order_id
+, A.REDMD_DATE
+, A.TRANSACTION_ID
+, A.ITEM_ID
+, A.DEVICE
+, A.PLATFORM
+, b.auct_end_dt
+, b.auct_start_dt
+, cat.categ_lvl2_id
+, cat.categ_lvl2_name
+, cat.categ_lvl3_id
+, cat.categ_lvl3_name
+, cat.meta_categ_id
+, cat.meta_categ_name
+,case 
+when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when cat.meta_categ_id in (26395) then 'Lifestyle'
+when cat.CATEG_LVL3_ID in (260325) then 'Lifestyle'
+when cat.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
+when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
+when cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
+else cat.bsns_vrtcl_name end as new_vertical
+
+,coalesce(lstg.inventory_prop,'OTHERS') as inventory_prop
+
+,lstg.FOCUS_FLAG
+
+, b.slr_id
+, u.USER_SLCTD_ID
+, AUCT_TITL
+, case when co_invest_pct is null then 0 else co_invest_pct end as seller_share
+, SUM(A.QTY_BGHT) AS QTY_BGHT
+, SUM(A.GMB_LC) AS GMB_LC
+, SUM(A.CONTRA_LC) AS CONTRA_LC
+, SUM(A.GMB_USD) AS GMB_USD
+, SUM(A.CONTRA_USD) AS CONTRA_USD
+, SUM(A.GMB_USD_PLAN) AS GMB_USD_PLAN
+, SUM(A.CONTRA_USD_PLAN) AS CONTRA_USD_PLAN
+, (1- seller_share ) * SUM(A.CONTRA_USD_PLAN) as COST_TO_EBAY_USD_PLAN
+
+ FROM 
+ (
+   SELECT
+   INCNTV_CD
+   , USER_ID
+   , REDMD_DATE
+   , TRANSACTION_ID
+   , ITEM_ID
+   , DEVICE
+   , PLATFORM
+   , SUM(QTY_BGHT) AS QTY_BGHT
+   , SUM(GMB_LC) AS GMB_LC
+   , SUM(CONTRA_LC) AS CONTRA_LC
+   , SUM(GMB_USD) AS GMB_USD
+   , SUM(CONTRA_USD) AS CONTRA_USD
+   , SUM(GMB_USD_PLAN) AS GMB_USD_PLAN
+   , SUM(CONTRA_USD_PLAN) AS CONTRA_USD_PLAN
+
+    FROM P_Plan_PPatel_T.PP_CouponHist_1_single_redemp
+    GROUP BY 1,2,3,4,5,6,7
+ )
+   AS A
+
+left join ACCESS_VIEWS.dw_lstg_item b
+	on a.item_id = b.item_id
+	and redmd_date <= b.auct_end_dt 
+
+left JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = b.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+
+LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
+	ON a.ITEM_ID = CNDTN.ITEM_ID
+
+left join
+(select item_id,
+ck_trans_id,
+ACCT_TRANS_ID 
+from
+ACCESS_VIEWS.DW_ACCOUNTS AS acct
+        where 1=1
+        AND acct.ACTN_CODE = 5 
+        AND acct.AMT_BLNG_CURNCY < 0
+  group by 1,2,3) acc on a.item_id = acc.item_id   and a.transaction_id = acc.ck_trans_id
+  
+  left join access_views.dw_users u on B.SLR_id  = u.user_id
+  
+  left join (select seller_id, cpn_id, co_invest_pct from  P_MDALL_V.SFDC_HIVE_Coupon_Co_Invest 
+			where cpn_site_mlt in ('ebay.co.uk') AND CPN_STAGE not IN ('Seller Declined')
+			group by 1,2,3) cpn on  cpn.cpn_id = a.INCNTV_CD and cpn.seller_id = B.SLR_id
+			
+left join p_awang_ops_t.item_invent_lstg lstg on a.item_id = lstg.item_id			
+
+where redmd_date between date '2021-01-01' and current_date() -- redemption date
+
+
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23
+
+;

@@ -1,0 +1,436 @@
+
+
+
+-- 2019 and 2020
+
+-- seller tag table
+
+drop table if exists p_macheung_t.seller_tag_2020;
+create table p_macheung_t.seller_tag_2020
+as(
+select a.*, user_slctd_id
+
+from (
+
+select 
+case when b.retail_year IS NULL then a.retail_year else b.retail_year end as retail_year
+,case when b.retail_quarter IS NULL then a.retail_quarter else b.retail_quarter end as retail_quarter
+,case when a.seller_id is NULL then b.seller_id
+	else a.seller_id end as seller_id
+,case when a.seller_id IS NULL then 'Y'
+	else 'N' end as New_sellers
+,case when 2019_cust_sgmntn_desc IS NULL then 'NA' else 2019_cust_sgmntn_desc end as 2019_cust_sgmntn_desc
+,case when 2020_cust_sgmntn_desc IS NULL then 'NA' else 2020_cust_sgmntn_desc end as 2020_cust_sgmntn_desc
+,LY_GMV
+,TY_GMV
+
+from
+
+(
+select RETAIL_YEAR
+,retail_quarter
+,2019_cust_sgmntn_desc
+,EU_B2C_C2C_FLAG
+,seller_id
+,cbt
+,seller_country
+,buyer_country
+,LY_GMV
+,BI
+,BUYERS
+
+
+FROM 
+(
+-- 2021 Seller
+SELECT    
+	cal.retail_year
+   ,rtl_qtr_of_rtl_year_id as retail_quarter
+	,cust_sgmntn_desc as 2019_cust_sgmntn_desc
+   ,eu_b2c_c2c_flag
+   ,seller_id
+   ,case  when  (slr_cntry_id=3 and byr_cntry_id=3) then 'Domestic' when  (slr_cntry_id=3 and byr_cntry_id<>3) then 'Export' when  (slr_cntry_id<>3 and byr_cntry_id=3) then 'Import' else 'Other' end  as cbt
+   ,case  when slr_cntry_id in(45,196,92) then 'Greater China' when slr_cntry_id=3 then 'UK' when slr_cntry_id=77 then 'DE' when slr_cntry_id in(1, -1,0, -999,225,679,1000) then 'US' else 'other' end  as seller_country
+   ,case  when byr_cntry_id=3 then 'UK' else 'other' end  as buyer_country
+   ,sum(cast ( t.GMV20_lc_amt as FLOAT)*cast ( p.curncy_plan_rate as FLOAT)) as LY_GMV
+   ,sum(t.quantity) as BI
+   ,count(distinct(BUYER_ID)) as BUYERS
+
+FROM PRS_RESTRICTED_V.slng_trans_super_fact as t
+--left join p_awang_ops_t.item_invent_lstg i on t.item_id = i.item_id
+inner join ACCESS_VIEWS.ssa_curncy_plan_rate_dim as p on p.curncy_id=t.lstg_curncy_id
+inner join ACCESS_VIEWS.dw_cal_dt as cal on cal.cal_dt=t.GMV_DT
+WHERE  ( ( ( (cal.retail_year in(2019) and t.auct_end_dt>=to_date('2014-01-01')) and lower(t.ck_wacko_yn)=lower('N')) and t.iscore=1) and  (slr_cntry_id=3 ) )
+and cal.AGE_FOR_RTL_WEEK_ID < 0
+	and SLR_CNTRY_ID = 3 and BYR_CNTRY_ID = 3 -- domestic only
+
+GROUP BY 1,2,3,4,5,6,7,8)
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+QUALIFY ROW_NUMBER() OVER (PARTITION BY SELLER_ID ORDER BY LY_GMV DESC) = 1
+	) a
+
+
+FULL OUTER JOIN 
+(
+select RETAIL_YEAR
+,retail_quarter
+,2020_cust_sgmntn_desc
+,EU_B2C_C2C_FLAG
+,seller_id
+,cbt
+,seller_country
+,buyer_country
+,TY_GMV
+,BI
+,BUYERS
+
+
+FROM 
+(
+-- 2022 Seller
+SELECT    
+	cal.retail_year
+   ,rtl_qtr_of_rtl_year_id as retail_quarter
+	,cust_sgmntn_desc as 2020_cust_sgmntn_desc
+   ,eu_b2c_c2c_flag
+   ,seller_id
+   ,case  when  (slr_cntry_id=3 and byr_cntry_id=3) then 'Domestic' when  (slr_cntry_id=3 and byr_cntry_id<>3) then 'Export' when  (slr_cntry_id<>3 and byr_cntry_id=3) then 'Import' else 'Other' end  as cbt
+   ,case  when slr_cntry_id in(45,196,92) then 'Greater China' when slr_cntry_id=3 then 'UK' when slr_cntry_id=77 then 'DE' when slr_cntry_id in(1, -1,0, -999,225,679,1000) then 'US' else 'other' end  as seller_country
+   ,case  when byr_cntry_id=3 then 'UK' else 'other' end  as buyer_country
+   ,sum(cast ( t.GMV20_lc_amt as FLOAT)*cast ( p.curncy_plan_rate as FLOAT)) as TY_GMV
+   ,sum(t.quantity) as BI
+   ,count(distinct(BUYER_ID)) as BUYERS
+
+FROM PRS_RESTRICTED_V.slng_trans_super_fact as t
+--left join p_awang_ops_t.item_invent_lstg i on t.item_id = i.item_id
+inner join ACCESS_VIEWS.ssa_curncy_plan_rate_dim as p on p.curncy_id=t.lstg_curncy_id
+inner join ACCESS_VIEWS.dw_cal_dt as cal on cal.cal_dt=t.GMV_DT
+WHERE  ( ( ( (cal.retail_year in(2020) and t.auct_end_dt>=to_date('2014-01-01')) and lower(t.ck_wacko_yn)=lower('N')) and t.iscore=1) and  (slr_cntry_id=3 ) )
+and cal.AGE_FOR_RTL_WEEK_ID < 0
+	and SLR_CNTRY_ID = 3 and BYR_CNTRY_ID = 3 -- domestic only
+
+GROUP BY 1,2,3,4,5,6,7,8)
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+QUALIFY ROW_NUMBER() OVER (PARTITION BY SELLER_ID ORDER BY TY_GMV DESC) = 1
+
+) b on a.seller_id = b.seller_id 
+
+) a
+INNER JOIN DW_USERS U on a.seller_id = u.user_id
+);
+
+
+
+-- add on GMV based on single seller tag
+
+
+drop table if exists p_macheung_t.seller_tag_2020_GMV;
+create table p_macheung_t.seller_tag_2020_GMV
+as(
+select a.*
+, user_slctd_id
+
+from (
+
+select 
+case when a.seller_id is NULL then b.seller_id
+	else a.seller_id end as seller_id
+,case when b.seller_id IS NULL then 'Y'
+	else 'N' end as New_sellers
+,case when 2019_cust_sgmntn_desc IS NULL then 'NA' else 2019_cust_sgmntn_desc end as 2019_cust_sgmntn_desc
+,case when 2020_cust_sgmntn_desc IS NULL then 'NA' else 2020_cust_sgmntn_desc end as 2020_cust_sgmntn_desc
+,LY_GMV
+,TY_GMV
+
+-- 2022 Seller
+FROM 
+(
+SELECT    
+   2020_cust_sgmntn_desc
+   ,t.seller_id
+   ,sum(cast ( t.GMV20_lc_amt as FLOAT)*cast ( p.curncy_plan_rate as FLOAT)) as TY_GMV
+   ,sum(t.quantity) as BI
+   ,count(distinct(BUYER_ID)) as BUYERS
+
+FROM PRS_RESTRICTED_V.slng_trans_super_fact as t
+LEFT JOIN (select seller_id, 2019_cust_sgmntn_desc, 2020_cust_sgmntn_desc from p_macheung_t.seller_tag_2020 group by 1,2,3) m on t.seller_id = m.seller_id
+inner join ACCESS_VIEWS.ssa_curncy_plan_rate_dim as p on p.curncy_id=t.lstg_curncy_id
+inner join ACCESS_VIEWS.dw_cal_dt as cal on cal.cal_dt=t.GMV_DT
+WHERE  ( ( ( (cal.retail_year in(2020) and t.auct_end_dt>=to_date('2014-01-01')) and lower(t.ck_wacko_yn)=lower('N')) and t.iscore=1) and  (slr_cntry_id=3 ) )
+and eu_b2c_c2c_flag = 'B2C'
+and 2020_cust_sgmntn_desc in ('Large Merchant','Merchant','Entrepreneur','Regular','Occasional')
+
+and cal.AGE_FOR_RTL_WEEK_ID < 0
+	and SLR_CNTRY_ID = 3 and BYR_CNTRY_ID = 3 -- domestic only
+	and rtl_qtr_of_rtl_year_id =3
+GROUP BY 1,2
+	) a
+
+-- 2021 Seller
+FULL OUTER JOIN 
+(
+SELECT    
+    2019_cust_sgmntn_desc
+   ,t.seller_id
+   ,sum(cast ( t.GMV20_lc_amt as FLOAT)*cast ( p.curncy_plan_rate as FLOAT)) as LY_GMV
+   ,sum(t.quantity) as BI
+   ,count(distinct(BUYER_ID)) as BUYERS
+
+FROM PRS_RESTRICTED_V.slng_trans_super_fact as t
+LEFT JOIN (select seller_id, 2019_cust_sgmntn_desc, 2020_cust_sgmntn_desc from p_macheung_t.seller_tag_2020 group by 1,2,3) m on t.seller_id = m.seller_id
+inner join ACCESS_VIEWS.ssa_curncy_plan_rate_dim as p on p.curncy_id=t.lstg_curncy_id
+inner join ACCESS_VIEWS.dw_cal_dt as cal on cal.cal_dt=t.GMV_DT
+WHERE  ( ( ( (cal.retail_year in(2019) and t.auct_end_dt>=to_date('2014-01-01')) and lower(t.ck_wacko_yn)=lower('N')) and t.iscore=1) and  (slr_cntry_id=3 ) )
+and eu_b2c_c2c_flag = 'B2C'
+and 2019_cust_sgmntn_desc in ('Large Merchant','Merchant','Entrepreneur','Regular','Occasional')
+and cal.AGE_FOR_RTL_WEEK_ID < 0
+	and SLR_CNTRY_ID = 3 and BYR_CNTRY_ID = 3 -- domestic only
+	and rtl_qtr_of_rtl_year_id =3
+GROUP BY 1,2
+
+) b on a.seller_id = b.seller_id 
+
+) a
+INNER JOIN DW_USERS U on a.seller_id = u.user_id
+);
+
+
+
+
+-- CODE FOR MOVEMENT OF SELLER
+select 
+
+case when 2019_cust_sgmntn_desc = 'Large Merchant' and 2020_cust_sgmntn_desc = 'Large Merchant' then 'Large Merchant - Large Merchant'
+	when 2019_cust_sgmntn_desc = 'Large Merchant' and 2020_cust_sgmntn_desc = 'Merchant' then 'Large Merchant - Merchant'
+	when 2019_cust_sgmntn_desc = 'Large Merchant' and 2020_cust_sgmntn_desc = 'Entrepreneur' then 'Large Merchant - Entrepreneur'
+	when 2019_cust_sgmntn_desc = 'Large Merchant' and 2020_cust_sgmntn_desc = 'Occasional' then 'Large Merchant - Occasional'
+	when 2019_cust_sgmntn_desc = 'Large Merchant' and 2020_cust_sgmntn_desc = 'Regular' then 'Large Merchant - Regular'
+	when 2019_cust_sgmntn_desc = 'Large Merchant' and 2020_cust_sgmntn_desc = 'NA' then 'Large Merchant - NA'
+	
+	when 2019_cust_sgmntn_desc = 'Merchant' and 2020_cust_sgmntn_desc = 'Large Merchant' then 'Merchant - Large Merchant'
+	when 2019_cust_sgmntn_desc = 'Merchant' and 2020_cust_sgmntn_desc = 'Merchant' then 'Merchant - Merchant'
+	when 2019_cust_sgmntn_desc = 'Merchant' and 2020_cust_sgmntn_desc = 'Entrepreneur' then 'Merchant - Entrepreneur'
+	when 2019_cust_sgmntn_desc = 'Merchant' and 2020_cust_sgmntn_desc = 'Occasional' then 'Merchant - Occasional'
+	when 2019_cust_sgmntn_desc = 'Merchant' and 2020_cust_sgmntn_desc = 'Regular' then 'Merchant - Regular'
+	when 2019_cust_sgmntn_desc = 'Merchant' and 2020_cust_sgmntn_desc = 'NA' then 'Merchant - NA'
+
+	when 2019_cust_sgmntn_desc = 'Entrepreneur' and 2020_cust_sgmntn_desc = 'Large Merchant' then 'Entrepreneur - Large Merchant'
+	when 2019_cust_sgmntn_desc = 'Entrepreneur' and 2020_cust_sgmntn_desc = 'Merchant' then 'Entrepreneur - Merchant'
+	when 2019_cust_sgmntn_desc = 'Entrepreneur' and 2020_cust_sgmntn_desc = 'Entrepreneur' then 'Entrepreneur - Entrepreneur'
+	when 2019_cust_sgmntn_desc = 'Entrepreneur' and 2020_cust_sgmntn_desc = 'Occasional' then 'Entrepreneur - Occasional'
+	when 2019_cust_sgmntn_desc = 'Entrepreneur' and 2020_cust_sgmntn_desc = 'Regular' then 'Entrepreneur - Regular'
+	when 2019_cust_sgmntn_desc = 'Entrepreneur' and 2020_cust_sgmntn_desc = 'NA' then 'Entrepreneur - NA'
+
+	when 2019_cust_sgmntn_desc = 'Occasional' and 2020_cust_sgmntn_desc = 'Large Merchant' then 'Occasional - Large Merchant'
+	when 2019_cust_sgmntn_desc = 'Occasional' and 2020_cust_sgmntn_desc = 'Merchant' then 'Occasional - Merchant'
+	when 2019_cust_sgmntn_desc = 'Occasional' and 2020_cust_sgmntn_desc = 'Occasional' then 'Occasional - Occasional'
+	when 2019_cust_sgmntn_desc = 'Occasional' and 2020_cust_sgmntn_desc = 'Regular' then 'Occasional - Regular'
+	when 2019_cust_sgmntn_desc = 'Occasional' and 2020_cust_sgmntn_desc = 'Entrepreneur' then 'Occasional - Entrepreneur'
+	when 2019_cust_sgmntn_desc = 'Occasional' and 2020_cust_sgmntn_desc = 'NA' then 'Occasional - NA'
+	
+	when 2019_cust_sgmntn_desc = 'Regular' and 2020_cust_sgmntn_desc = 'Large Merchant' then 'Regular - Large Merchant'
+	when 2019_cust_sgmntn_desc = 'Regular' and 2020_cust_sgmntn_desc = 'Merchant' then 'Regular - Merchant'
+	when 2019_cust_sgmntn_desc = 'Regular' and 2020_cust_sgmntn_desc = 'Regular' then 'Regular - Regular'
+	when 2019_cust_sgmntn_desc = 'Regular' and 2020_cust_sgmntn_desc = 'Occasional' then 'Regular - Occasional'
+	when 2019_cust_sgmntn_desc = 'Regular' and 2020_cust_sgmntn_desc = 'Entrepreneur' then 'Regular - Entrepreneur'
+	when 2019_cust_sgmntn_desc = 'Regular' and 2020_cust_sgmntn_desc = 'NA' then 'Regular - NA'
+	
+	when 2019_cust_sgmntn_desc = 'NA' and 2020_cust_sgmntn_desc = 'Large Merchant' then 'NA - Large Merchant'
+	when 2019_cust_sgmntn_desc = 'NA' and 2020_cust_sgmntn_desc = 'Merchant' then 'NA - Merchant'
+	when 2019_cust_sgmntn_desc = 'NA' and 2020_cust_sgmntn_desc = 'Regular' then 'NA - Regular'
+	when 2019_cust_sgmntn_desc = 'NA' and 2020_cust_sgmntn_desc = 'Occasional' then 'NA - Occasional'
+	when 2019_cust_sgmntn_desc = 'NA' and 2020_cust_sgmntn_desc = 'Entrepreneur' then 'NA - Entrepreneur'
+	when 2019_cust_sgmntn_desc = 'NA' and 2020_cust_sgmntn_desc = 'NA' then 'NA - NA'
+
+	else 'Uncategorised' end as Seller_Change_Flag
+
+, New_Sellers
+, count(distinct seller_id) as seller_count
+, sum(LY_GMV) as LY_GMV
+, sum(TY_GMV) as TY_GMV
+
+from p_macheung_t.seller_tag_2020_GMV
+group by 1,2;
+
+--- ADDING VERTICAL VIEW
+
+drop table if exists p_macheung_t.seller_tag_2020_GMV_VERTICAL;
+create table p_macheung_t.seller_tag_2020_GMV_VERTICAL
+as(
+select a.*
+, user_slctd_id
+
+from (
+
+select 
+case when a.seller_id is NULL then b.seller_id
+	else a.seller_id end as seller_id
+,case when b.seller_id IS NULL then 'Y'
+	else 'N' end as New_sellers
+,case when a.new_vertical is NULL then b.new_vertical
+	else a.new_vertical end as new_vertical
+,case when 2019_cust_sgmntn_desc IS NULL then 'NA' else 2019_cust_sgmntn_desc end as 2019_cust_sgmntn_desc
+,case when 2020_cust_sgmntn_desc IS NULL then 'NA' else 2020_cust_sgmntn_desc end as 2020_cust_sgmntn_desc
+,LY_GMV
+,TY_GMV
+
+-- 2022 Seller
+FROM 
+(
+SELECT    
+   2020_cust_sgmntn_desc
+   ,t.seller_id
+   ,new_vertical
+   ,sum(cast ( t.GMV20_lc_amt as FLOAT)*cast ( p.curncy_plan_rate as FLOAT)) as TY_GMV
+   ,sum(t.quantity) as BI
+   ,count(distinct(BUYER_ID)) as BUYERS
+
+FROM PRS_RESTRICTED_V.slng_trans_super_fact as t
+LEFT JOIN (select seller_id, 2019_cust_sgmntn_desc, 2020_cust_sgmntn_desc from p_macheung_t.seller_tag_2020 group by 1,2,3) m on t.seller_id = m.seller_id
+left join p_awang_ops_t.item_invent_lstg i on t.item_id = i.item_id
+inner join ACCESS_VIEWS.ssa_curncy_plan_rate_dim as p on p.curncy_id=t.lstg_curncy_id
+inner join ACCESS_VIEWS.dw_cal_dt as cal on cal.cal_dt=t.GMV_DT
+WHERE  ( ( ( (cal.retail_year in(2020) and t.auct_end_dt>=to_date('2014-01-01')) and lower(t.ck_wacko_yn)=lower('N')) and t.iscore=1) and  (slr_cntry_id=3 ) )
+and eu_b2c_c2c_flag = 'B2C'
+and 2020_cust_sgmntn_desc in ('Large Merchant','Merchant','Entrepreneur','Regular','Occasional')
+
+and cal.AGE_FOR_RTL_WEEK_ID < 0
+	and SLR_CNTRY_ID = 3 and BYR_CNTRY_ID = 3 -- domestic only
+	and rtl_qtr_of_rtl_year_id =3
+GROUP BY 1,2,3
+	) a
+
+-- 2021 Seller
+FULL OUTER JOIN 
+(
+SELECT    
+    2019_cust_sgmntn_desc
+   ,t.seller_id
+   ,new_vertical
+   ,sum(cast ( t.GMV20_lc_amt as FLOAT)*cast ( p.curncy_plan_rate as FLOAT)) as LY_GMV
+   ,sum(t.quantity) as BI
+   ,count(distinct(BUYER_ID)) as BUYERS
+
+FROM PRS_RESTRICTED_V.slng_trans_super_fact as t
+LEFT JOIN (select seller_id, 2019_cust_sgmntn_desc, 2020_cust_sgmntn_desc from p_macheung_t.seller_tag_2020 group by 1,2,3) m on t.seller_id = m.seller_id
+left join p_awang_ops_t.item_invent_lstg i on t.item_id = i.item_id
+inner join ACCESS_VIEWS.ssa_curncy_plan_rate_dim as p on p.curncy_id=t.lstg_curncy_id
+inner join ACCESS_VIEWS.dw_cal_dt as cal on cal.cal_dt=t.GMV_DT
+WHERE  ( ( ( (cal.retail_year in(2019) and t.auct_end_dt>=to_date('2014-01-01')) and lower(t.ck_wacko_yn)=lower('N')) and t.iscore=1) and  (slr_cntry_id=3 ) )
+and eu_b2c_c2c_flag = 'B2C'
+and 2019_cust_sgmntn_desc in ('Large Merchant','Merchant','Entrepreneur','Regular','Occasional')
+and cal.AGE_FOR_RTL_WEEK_ID < 0
+	and SLR_CNTRY_ID = 3 and BYR_CNTRY_ID = 3 -- domestic only
+	and rtl_qtr_of_rtl_year_id =3
+GROUP BY 1,2,3
+
+) b on a.seller_id = b.seller_id and a.new_vertical = b.new_vertical
+
+) a
+INNER JOIN DW_USERS U on a.seller_id = u.user_id
+);
+
+-- add vertical for export
+select 
+
+case when 2019_cust_sgmntn_desc = 'Large Merchant' and 2020_cust_sgmntn_desc = 'Large Merchant' then 'Large Merchant - Large Merchant'
+	when 2019_cust_sgmntn_desc = 'Large Merchant' and 2020_cust_sgmntn_desc = 'Merchant' then 'Large Merchant - Merchant'
+	when 2019_cust_sgmntn_desc = 'Large Merchant' and 2020_cust_sgmntn_desc = 'Entrepreneur' then 'Large Merchant - Entrepreneur'
+	when 2019_cust_sgmntn_desc = 'Large Merchant' and 2020_cust_sgmntn_desc = 'Occasional' then 'Large Merchant - Occasional'
+	when 2019_cust_sgmntn_desc = 'Large Merchant' and 2020_cust_sgmntn_desc = 'Regular' then 'Large Merchant - Regular'
+	when 2019_cust_sgmntn_desc = 'Large Merchant' and 2020_cust_sgmntn_desc = 'NA' then 'Large Merchant - NA'
+	
+	when 2019_cust_sgmntn_desc = 'Merchant' and 2020_cust_sgmntn_desc = 'Large Merchant' then 'Merchant - Large Merchant'
+	when 2019_cust_sgmntn_desc = 'Merchant' and 2020_cust_sgmntn_desc = 'Merchant' then 'Merchant - Merchant'
+	when 2019_cust_sgmntn_desc = 'Merchant' and 2020_cust_sgmntn_desc = 'Entrepreneur' then 'Merchant - Entrepreneur'
+	when 2019_cust_sgmntn_desc = 'Merchant' and 2020_cust_sgmntn_desc = 'Occasional' then 'Merchant - Occasional'
+	when 2019_cust_sgmntn_desc = 'Merchant' and 2020_cust_sgmntn_desc = 'Regular' then 'Merchant - Regular'
+	when 2019_cust_sgmntn_desc = 'Merchant' and 2020_cust_sgmntn_desc = 'NA' then 'Merchant - NA'
+
+	when 2019_cust_sgmntn_desc = 'Entrepreneur' and 2020_cust_sgmntn_desc = 'Large Merchant' then 'Entrepreneur - Large Merchant'
+	when 2019_cust_sgmntn_desc = 'Entrepreneur' and 2020_cust_sgmntn_desc = 'Merchant' then 'Entrepreneur - Merchant'
+	when 2019_cust_sgmntn_desc = 'Entrepreneur' and 2020_cust_sgmntn_desc = 'Entrepreneur' then 'Entrepreneur - Entrepreneur'
+	when 2019_cust_sgmntn_desc = 'Entrepreneur' and 2020_cust_sgmntn_desc = 'Occasional' then 'Entrepreneur - Occasional'
+	when 2019_cust_sgmntn_desc = 'Entrepreneur' and 2020_cust_sgmntn_desc = 'Regular' then 'Entrepreneur - Regular'
+	when 2019_cust_sgmntn_desc = 'Entrepreneur' and 2020_cust_sgmntn_desc = 'NA' then 'Entrepreneur - NA'
+
+	when 2019_cust_sgmntn_desc = 'Occasional' and 2020_cust_sgmntn_desc = 'Large Merchant' then 'Occasional - Large Merchant'
+	when 2019_cust_sgmntn_desc = 'Occasional' and 2020_cust_sgmntn_desc = 'Merchant' then 'Occasional - Merchant'
+	when 2019_cust_sgmntn_desc = 'Occasional' and 2020_cust_sgmntn_desc = 'Occasional' then 'Occasional - Occasional'
+	when 2019_cust_sgmntn_desc = 'Occasional' and 2020_cust_sgmntn_desc = 'Regular' then 'Occasional - Regular'
+	when 2019_cust_sgmntn_desc = 'Occasional' and 2020_cust_sgmntn_desc = 'Entrepreneur' then 'Occasional - Entrepreneur'
+	when 2019_cust_sgmntn_desc = 'Occasional' and 2020_cust_sgmntn_desc = 'NA' then 'Occasional - NA'
+	
+	when 2019_cust_sgmntn_desc = 'Regular' and 2020_cust_sgmntn_desc = 'Large Merchant' then 'Regular - Large Merchant'
+	when 2019_cust_sgmntn_desc = 'Regular' and 2020_cust_sgmntn_desc = 'Merchant' then 'Regular - Merchant'
+	when 2019_cust_sgmntn_desc = 'Regular' and 2020_cust_sgmntn_desc = 'Regular' then 'Regular - Regular'
+	when 2019_cust_sgmntn_desc = 'Regular' and 2020_cust_sgmntn_desc = 'Occasional' then 'Regular - Occasional'
+	when 2019_cust_sgmntn_desc = 'Regular' and 2020_cust_sgmntn_desc = 'Entrepreneur' then 'Regular - Entrepreneur'
+	when 2019_cust_sgmntn_desc = 'Regular' and 2020_cust_sgmntn_desc = 'NA' then 'Regular - NA'
+	
+	when 2019_cust_sgmntn_desc = 'NA' and 2020_cust_sgmntn_desc = 'Large Merchant' then 'NA - Large Merchant'
+	when 2019_cust_sgmntn_desc = 'NA' and 2020_cust_sgmntn_desc = 'Merchant' then 'NA - Merchant'
+	when 2019_cust_sgmntn_desc = 'NA' and 2020_cust_sgmntn_desc = 'Regular' then 'NA - Regular'
+	when 2019_cust_sgmntn_desc = 'NA' and 2020_cust_sgmntn_desc = 'Occasional' then 'NA - Occasional'
+	when 2019_cust_sgmntn_desc = 'NA' and 2020_cust_sgmntn_desc = 'Entrepreneur' then 'NA - Entrepreneur'
+	when 2019_cust_sgmntn_desc = 'NA' and 2020_cust_sgmntn_desc = 'NA' then 'NA - NA'
+
+	else 'Uncategorised' end as Seller_Change_Flag
+,New_Vertical
+, New_Sellers
+, count(distinct seller_id) as seller_count
+, sum(LY_GMV) as LY_GMV
+, sum(TY_GMV) as TY_GMV
+
+from p_macheung_t.seller_tag_2020_GMV_vertical
+group by 1,2,3;
+
+-- primary vertical tag
+select seller_id, new_vertical, LY_GMV,TY_GMV, coalesce(LY_GMV,0) + coalesce(TY_GMV,0) as total_GMV from p_macheung_t.seller_tag_2020_GMV_vertical where seller_id in (19774321,25734079)
+
+drop table if exists p_macheung_t.seller_vertical_tag_2020;
+create table p_macheung_t.seller_vertical_tag_2020 as 
+(select
+seller_id
+, new_vertical
+, total_GMV
+from (
+select seller_id, new_vertical, LY_GMV,TY_GMV, coalesce(LY_GMV,0) + coalesce(TY_GMV,0) as total_GMV from p_macheung_t.seller_tag_2020_GMV_vertical)
+qualify row_number() over (partition by seller_id order by total_GMV desc) =1);
+
+
+-- SELLER LIST CRISTIAN REQUEST 26/10
+
+
+select 
+
+2019_cust_sgmntn_desc 
+,2020_cust_sgmntn_desc 
+, seller_id
+,user_slctd_id
+, sum(LY_GMV) as LY_GMV
+, sum(TY_GMV) as TY_GMV
+
+from p_macheung_t.seller_tag_2020_GMV
+group by 1,2,3,4;
+
+-- add primary vertical
+
+
+select 
+
+2019_cust_sgmntn_desc 
+,2020_cust_sgmntn_desc 
+, a.seller_id
+,user_slctd_id
+,new_vertical as primary_vertical
+, sum(LY_GMV) as LY_GMV
+, sum(TY_GMV) as TY_GMV
+
+from p_macheung_t.seller_tag_2020_GMV a
+left join p_macheung_t.seller_vertical_tag_2020 b on a.seller_id = b.seller_id
+group by 1,2,3,4,5;
+
+
+
+select * from p_macheung_t.seller_tag_2020_GMV limit 10;

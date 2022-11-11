@@ -1,0 +1,590 @@
+/*Aim: Weekly reporting on top line view of Home Outlet Hub (https://www.ebay.co.uk/b/Home-and-Garden-Outlet/bn_7117584313), to be refreshed Monday morning
+
+--Check with Elle Trousdale on 17Sep21 to include all events with "home outlet" embedded but exclude the event, "Up to 10% off home furniture glam home outlet"
+
+--44
+select distinct event_name,rpp_event_grp_id from access_views.rpp_event
+where lower(event_name) like '%home outlet%' and site_id=3
+order by 1
+
+--1602 events returned and not all with "home outlet" embedded. Cannot rely on rpp_event_grp_id to identify HO events
+select count(*) from
+(
+select distinct event_name from access_views.rpp_event
+where rpp_event_grp_id="5c802e4a10e5d05c5ba66497" and site_id=3
+)
+
+----Useful info from Elle on 05Oct2021
+--Currently manual process involving Tashy sending Elle a list of listing ID >> Elle creates URLs like https://www.ebay.co.uk/e/home-garden/home-outlet-swoon >> adding listings to events
+--Not all events on the HO hub will be tracked by my report, there are flash sales events on the page which change bi-weekly (e.g. https://www.ebay.co.uk/e/home-garden/up-to-50-off-swoon-and-cox-cox) << no "home outlet" embedded in the url. These events show up on Tableau reporting so won't need to be accounted for in my report
+--If listing is out of stock, it remains in the event until event ends. There is no tag to the listing that allows Elle/Tashy to take listings off events effortlessly
+--OOO listing will not shown as part of the result on the page
+*/
+
+/*Create base for home outlet events of 2020 and 2021*/
+
+drop table if exists P_InventoryPlanning_T.home_outlet_base;
+
+create table p_inventoryplanning_t.home_outlet_base as (
+select
+ri.item_id
+,brand.aspct_vlu_nm as brand
+,lstg.slr_id
+,lstg.auct_titl
+,lstg.auct_start_dt
+,lstg.auct_end_dt
+,reg.event_grp_name as event_grp
+,re.event_name
+--,re.url_txt
+--,re.rpp_event_id
+,min(cast(re.start_ts as date)) as event_start_dt
+,max(cast(re.end_ts as date)) as event_end_dt 
+
+from access_views.rpp_event re
+
+inner join access_views.rpp_item ri 
+on ri.rpp_crtn_id = re.rpp_crtn_id--foreign key to get the corresponding item id for an event
+
+inner join access_views.rpp_event_group reg 
+on re.rpp_event_grp_id = reg.rpp_event_grp_id
+
+left join access_views.dw_lstg_item lstg 
+on lstg.item_id = ri.item_id
+
+left join
+(select 
+item_id
+,auct_end_dt
+,aspct_vlu_nm
+from access_views.item_aspct_clssfctn
+where lower(prdct_aspct_nm) = 'brand' 
+and 
+(ns_type_cd='df'--default flag, always use this for attributes table. Dynamic Finding. Indicates that this aspect was indexed for Finding. Impact search
+or
+ns_type_cd='nf'--include "Not Finding" so brand of OOO items can still be populated
+)
+qualify (row_number() over (partition by item_id,prdct_aspct_nm order by prdct_aspct_nm))=1--acquire just one row for brand
+)brand
+on lstg.item_id = brand.item_id and lstg.auct_end_dt = brand.auct_end_dt
+
+
+where re.dlt_ind = 0 and ri.dlt_ind = 0 and reg.dlt_ind = 0--Deleted indicator, deleted before the event begins
+and re.site_id = 3--Site the event is active on
+and re.event_name like ('%home outlet%')
+and re.event_name <> 'Up to 10% off home furniture glam home outlet'
+--and a.retail_year in(2020,2021)--HO events only started in 2021
+
+group by 1,2,3,4,5,6,7,8);
+
+/*Explore data
+
+--17928
+select count(*) from p_inventoryplanning_t.home_outlet_base
+--Check event name
+select distinct event_name from p_inventoryplanning_t.home_outlet_base order by 1
+
+--Example
+select * from p_inventoryplanning_t.home_outlet_base 
+where item_id=154168489683
+
+-->4000 items currently in Home Outlet events (ran at 16:07 05Oct2021)
+select count(distinct item_id),count(*) from
+(select 
+item_id
+,brand
+,slr_id
+,auct_titl
+,min(event_start_dt) as event_start_dt
+,max(event_end_dt) as event_end_dt 
+,max(auct_end_dt) as auct_end_dt
+from p_inventoryplanning_t.home_outlet_base
+group by 1,2,3,4
+order by event_start_dt,item_id)a
+where auct_end_dt>=current_date and event_start_dt<=current_date and event_end_dt>=current_date
+
+--OOO listings remain in HO events, they are not regularly removed
+select * from P_InventoryPlanning_T.home_outlet_report
+where item_id=154270306092--OOO Swoon bedside unit
+where item_id=124701902883--OOO Slumbertown duvet
+
+--8, 8. Listing table shows a snapshot of now, can't tell when item is OOO
+select qty_avail,qty_sold from dw_lstg_item where item_id=154270306092
+*/
+
+
+/*Create table for Excel reporting [Only converted HO LL]*/
+drop table if exists P_InventoryPlanning_T.home_outlet_report;
+
+create table p_inventoryplanning_t.home_outlet_report as (
+select
+cal.rtl_qtr_of_rtl_year_id as retail_quarter
+,cal.retail_year
+,cal.retail_week
+,cal.age_for_rtl_week_id 
+,cal.age_for_rtl_qtr_id
+,cal.age_for_rtl_year_id
+,cat.vertical_name
+,cat.meta_categ_name
+,cat.categ_lvl2_name
+,cat.categ_lvl2_id
+,ck.seller_id
+,u.user_slctd_id
+,coalesce(base.brand,"N/A") as brand
+,base.auct_titl
+,base.item_id
+,base.auct_end_dt
+,base.event_start_dt
+,base.event_end_dt 
+,sum(ck.quantity) as BI
+,sum(cast(ck.quantity as decimal(18,2))* cast(ck.item_price as decimal(18,2))*cast(ssa.curncy_plan_rate as decimal(18,2))) as GMV
+,count(distinct(ck.item_id)) as converted_ll
+
+from
+
+(select 
+item_id
+,brand
+,slr_id
+,auct_titl
+,min(event_start_dt) as event_start_dt
+,max(event_end_dt) as event_end_dt 
+,max(auct_end_dt) as auct_end_dt
+from p_inventoryplanning_t.home_outlet_base
+group by 1,2,3,4) base
+
+inner join access_views.dw_checkout_trans ck
+on base.item_id=ck.item_id and ck.created_dt between base.event_start_dt and base.event_end_dt
+ 
+inner join (select curncy_plan_rate,curncy_id from access_views.ssa_curncy_plan_rate_dim group by 1,2)as ssa 
+on ck.lstg_curncy_id = ssa.curncy_id 
+
+inner join access_views.dw_cal_dt as cal
+on cal.cal_dt = ck.created_dt and cal.age_for_rtl_week_id <=-1
+
+inner join dw_users u
+on base.slr_id = u.user_id
+
+--Merchandising team should only select B2C sellers for HO event anyways
+inner join 
+	(select user_id,usegm_grp_id,usegm_id,beg_date,end_date 
+	from dw_usegm_hist
+	where usegm_grp_id=48 and usegm_id=206--B2C seller
+	and end_date>='2015-12-30') hist--Date when the sellers will be removed from the segment
+on ck.seller_id=hist.user_id and ck.created_dt between hist.beg_date and hist.end_date
+
+inner join
+(
+select distinct meta_categ_id,meta_categ_name,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,leaf_categ_id,leaf_categ_name,site_id
+,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+else bsns_vrtcl_name end as vertical_name
+from access_views.dw_category_groupings
+where site_id=3 and sap_category_id not in (5,7,23,41,-999)
+) cat
+on ck.leaf_categ_id = cat.leaf_categ_id and ck.site_id = cat.site_id and ck.site_id = 3 
+
+where ck.site_id=3--UK site
+and ck.slr_cntry_id = 3 --UK sellers	
+and ck.byr_cntry_id = 3--UK buyers
+and ck.slr_cntry_id=ck.byr_cntry_id--Domestic
+and ck.rprtd_wacko_yn = 'N'																										
+and ck.auct_end_dt >= '2018-01-01'
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18);
+
+/*Experience*/
+
+---Need to create a LL count for all listings for SRP metrics
+drop table if exists p_inventoryplanning_t.home_outlet_LL;
+
+create table p_inventoryplanning_t.home_outlet_LL as(
+select
+cal.rtl_qtr_of_rtl_year_id as retail_quarter
+,cal.retail_year
+,cal.retail_week
+,cal.age_for_rtl_week_id 
+,cal.age_for_rtl_qtr_id
+,cal.age_for_rtl_year_id
+,count(distinct lstg.item_id) as LL
+,count(distinct base.slr_id) as seller_no
+,count(distinct base.brand) as brand_no
+
+from dw_lstg_item lstg
+
+inner join
+
+(select 
+item_id
+,brand
+,slr_id
+,min(event_start_dt) as event_start_dt
+,max(event_end_dt) as event_end_dt 
+,max(auct_end_dt) as auct_end_dt
+from p_inventoryplanning_t.home_outlet_base
+group by 1,2,3) base
+
+on lstg.item_id = base.item_id and lstg.auct_end_dt = base.auct_end_dt 
+
+inner join dw_cal_dt cal 
+on lstg.auct_start_dt < cal.cal_dt and lstg.auct_end_dt >= cal.cal_dt
+and base.event_start_dt < cal.cal_dt and base.event_end_dt >= cal.cal_dt --Live listing during the time when listing participated in HO events
+and (cal.age_for_rtl_year_id between -2 and 0)  and cal.age_for_rtl_week_id <= -1 
+
+where lstg.wacko_yn = 'N'                      
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+and lstg.auct_end_dt >= '2020-01-01'--optimise code, HO didn't start till end of 2020
+group by 1,2,3,4,5,6);
+
+
+--Measure traffic of all HO listings
+drop table if exists p_inventoryplanning_t.home_outlet_imp;
+
+create table p_inventoryplanning_t.home_outlet_imp as (
+select 
+cal.rtl_qtr_of_rtl_year_id as retail_quarter
+,cal.retail_year
+,cal.retail_week
+,cal.age_for_rtl_week_id 
+,cal.age_for_rtl_qtr_id
+,cal.age_for_rtl_year_id
+,base.item_id
+,sum(trf.srp_imprsn_cnt) as srp_imp--Daily Impression count from search result page
+,sum(trf.srp_vi_cnt) as srp_vi--Daily View item count drive from search result page
+,sum(trf.other_src_vi_cnt) as othervi--Daily View item count from other sources
+,sum(trf.watch_cnt) as watches--Daily WATCH count
+
+from prs_restricted_v.slng_trfc_super_fact trf
+	
+inner join dw_cal_dt cal 
+on trf.cal_dt = cal.cal_dt and (cal.age_for_rtl_year_id between -2 and 0) and cal.age_for_rtl_week_id <=-1
+
+inner join 
+(select 
+item_id
+,min(event_start_dt) as event_start_dt
+,max(event_end_dt) as event_end_dt 
+,max(auct_end_dt) as auct_end_dt
+from p_inventoryplanning_t.home_outlet_base
+group by 1) base
+
+on trf.item_id=base.item_id 
+and trf.cal_dt between base.event_start_dt and base.event_end_dt and trf.cal_dt<=base.auct_end_dt--only counting traffic when listing is in the HO event
+
+where trf.site_id = 3 
+
+group by 1,2,3,4,5,6,7);
+
+--Summary
+drop table if exists p_inventoryplanning_t.home_outlet_report_summary;
+
+create table p_inventoryplanning_t.home_outlet_report_summary as (
+select 
+a.age_for_rtl_week_id 
+,a.age_for_rtl_qtr_id
+,a.age_for_rtl_year_id
+,a.retail_quarter
+,a.retail_year
+,a.retail_week
+,a.ll
+,a.seller_no
+,a.brand_no
+,c.GMV
+,c.BI
+,c.converted_ll
+,c.converted_seller_no
+,c.converted_brand_no
+,b.srp_imp
+,b.srp_vi
+,b.othervi
+,b.watches  
+,b.srp_vi + b.othervi as total_vi
+,(b.srp_vi + b.othervi) / b.srp_imp as vi_imp--CTR (total view / impression)
+,c.BI / (b.srp_vi + b.othervi) as bi_vi--bought item  / total view (conversion)
+,(b.srp_vi + b.othervi) / a.ll as view_per_lstg--no of view per listing
+
+--Get all LL
+from p_inventoryplanning_t.home_outlet_LL a
+
+--Get Impression
+left join 
+(select
+retail_year
+,retail_week
+,sum(srp_imp) as srp_imp
+,sum(srp_vi) as srp_vi
+,sum(othervi) as othervi
+,sum(watches) as watches
+from p_inventoryplanning_t.home_outlet_imp
+group by 1,2)b
+
+on a.retail_year=b.retail_year and a.retail_week=b.retail_week 
+
+--Get converted metrics
+left join
+(select 
+retail_year
+,retail_week
+,sum(GMV) as GMV
+,sum(BI) as BI
+,sum(converted_ll) as converted_ll
+,count(distinct seller_id) as converted_seller_no
+,count(distinct brand) as converted_brand_no
+from P_InventoryPlanning_T.home_outlet_report
+group by 1,2)c
+
+on a.retail_year=c.retail_year and a.retail_week=c.retail_week);
+
+/*
+--Add caluclated fields to Excel
+,sum(srp_vi_cnt)+sum(other_src_vi_cnt) as total_vi
+,(sum(srp_vi_cnt)+sum(other_src_vi_cnt)) / sum(srp_imprsn_cnt) as vi_imp--CTR (total view / impression)
+,sum(bi)/ (sum(srp_vi_cnt)+sum(other_src_vi_cnt)) as bi_vi--bought item  / total view (conversion)
+,(sum(srp_vi_cnt)+sum(other_src_vi_cnt)) / sum(ll)--no of view per listing
+*/
+
+/**************************************************
+--Caveat in measuring experience of HO events:
+For example, Item 154270306092 has been in events since 23Oct2020, ending end of 31Dec2021. Currently shown as OOO.
+Last day with impression is 16Aug2020
+If out of stock, customer cannot view in search result or HO hub so there will be no impression or view. The view per listing will be very small 
+
+select * from prs_restricted_v.slng_trfc_super_fact where item_id=154270306092 order by cal_dt desc 
+
+select * from p_inventoryplanning_t.home_outlet_base where item_id=154270306092
+**************************************************/
+--% of listing that is OOO in the latest week << include this metric to explain the large difference between no of LL and converted LL
+--2798/4125*100=67.83%
+
+drop table if exists p_inventoryplanning_t.home_outlet_report_ooo;
+
+create table p_inventoryplanning_t.home_outlet_report_ooo as (
+select OOO,count(*) as LL
+from
+(select 
+base.item_id
+,lstg.qty_avail
+,lstg.qty_sold
+,case when lstg.qty_avail=lstg.qty_sold then 1 else 0 end as OOO
+
+from dw_lstg_item lstg
+
+inner join
+
+(select 
+item_id
+,min(event_start_dt) as event_start_dt
+,max(event_end_dt) as event_end_dt 
+,max(auct_end_dt) as auct_end_dt
+from p_inventoryplanning_t.home_outlet_base
+group by 1) base
+
+on lstg.item_id = base.item_id and lstg.auct_end_dt = base.auct_end_dt 
+
+inner join dw_cal_dt cal 
+on lstg.auct_start_dt < cal.cal_dt and lstg.auct_end_dt >= cal.cal_dt
+and base.event_start_dt < cal.cal_dt and base.event_end_dt >= cal.cal_dt --Live listing during the time when listing participated in HO events
+and age_for_rtl_week_id = -1 
+
+where lstg.wacko_yn = 'N'                      
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+and lstg.auct_end_dt >= '2020-01-01'--optimise code, HO didn't start till end of 2020
+qualify (row_number() over (partition by item_id order by cal_dt desc))=1)
+group by 1);
+
+
+/* Data Connection for Excel report:
+
+--Top Brand
+select
+a.*
+,b.GMV_LW
+,b.BI_LW
+,b.LL_LW
+
+from 
+
+(select 
+brand
+,retail_year
+,retail_week
+,age_for_rtl_week_id
+,sum(GMV) as GMV
+,sum(BI) as BI
+,count(distinct(item_id)) as LL
+from 
+P_InventoryPlanning_T.home_outlet_report
+group by 1,2,3,4
+) a
+
+--Last week
+left join (
+select
+brand
+,retail_year
+,retail_week
+,age_for_rtl_week_id
+,sum(GMV) as GMV_LW
+,sum(BI) as BI_LW
+,count(distinct(item_id)) as LL_LW
+from 
+P_InventoryPlanning_T.home_outlet_report
+group by 1,2,3,4) b
+on a.brand = b.brand
+and a.age_for_rtl_week_id = b.age_for_rtl_week_id +1;
+
+
+
+--Top Seller
+select
+a.*
+,b.GMV_LW
+,b.BI_LW
+,b.LL_LW
+
+from 
+
+(select 
+user_slctd_id
+,seller_id
+,retail_year
+,retail_week
+,age_for_rtl_week_id
+,sum(GMV) as GMV
+,sum(BI) as BI
+,count(distinct(item_id)) as LL
+from 
+P_InventoryPlanning_T.home_outlet_report
+group by 1,2,3,4,5
+) a
+
+--Last week
+left join (
+select
+user_slctd_id
+,seller_id
+,retail_year
+,retail_week
+,age_for_rtl_week_id
+,sum(GMV) as GMV_LW
+,sum(BI) as BI_LW
+,count(distinct(item_id)) as LL_LW
+from 
+P_InventoryPlanning_T.home_outlet_report
+group by 1,2,3,4,5) b
+on a.seller_id = b.seller_id
+and a.age_for_rtl_week_id = b.age_for_rtl_week_id +1;
+
+--Top 50 SKU
+select
+a.*
+,b.GMV_LW
+,b.BI_LW
+
+from 
+
+(select 
+item_id
+,auct_titl
+,retail_year
+,retail_week
+,age_for_rtl_week_id
+,sum(GMV) as GMV
+,sum(BI) as BI
+from 
+P_InventoryPlanning_T.home_outlet_report
+group by 1,2,3,4,5
+qualify (row_number() over (partition by age_for_rtl_week_id order by BI desc))<=50
+--qualify (row_number() over (partition by age_for_rtl_week_id order by GMV desc))<=50
+) a
+
+--Last week
+left join (
+select
+item_id
+,auct_titl
+,retail_year
+,retail_week
+,age_for_rtl_week_id
+,sum(GMV) as GMV_LW
+,sum(BI) as BI_LW
+from 
+P_InventoryPlanning_T.home_outlet_report
+group by 1,2,3,4,5) b
+on a.item_id = b.item_id
+and a.age_for_rtl_week_id = b.age_for_rtl_week_id +1;
+*/
+
+/*Miscellaneous
+
+--Useful code
+
+--Free shipping
+select b.free_shpng_yn_ind as free_ship_flag
+left join  ssa_shpmt_lstg_fact b
+on ck.item_id = b.lstg_id and ck.auct_end_dt = b.lstg_end_dt
+
+--Discount
+https://zeta.dss.vip.ebay.com/zeta/share/#/notebook?notebookId=8baca180-cb53-4772-b5fc-0c5a6563dd0c
+--CTLG_ITEM_PRICE_TRACK_HST << tracks item inital price and sequential price change (https://wiki.vip.corp.ebay.com/display/DW/CTLG_ITEM_PRICE_TRACK_HST)
+--DW_ATTR_LSTG_DTL << 4126 = Original retail price (https://wiki.vip.corp.ebay.com/display/DW/DW_ATTR_LSTG_DTL)
+--LSTG_ITEM_VRTN << contains all information about the variations in the listing (https://wiki.vip.corp.ebay.com/display/DW/LSTG_ITEM_VRTN)
+
+
+--Alex's code for caluclating LW-1 and QTD
+select
+aaa.*
+,bbb.GMV_LW
+--,ccc.GMV_QTD
+
+from 
+
+(select seller_id,
+user_slctd_id,
+retail_year,
+retail_week,
+age_for_rtl_week_id,
+sum(GMV) as GMV,
+sum(BI) as BI,
+count(distinct(item_id)) as LL
+from 
+P_InventoryPlanning_T.home_outlet_report
+where retail_year = 2021
+group by 1,2,3,4,5
+qualify (row_number() over (partition by age_for_rtl_week_id order by GMV desc))<=20
+) aaa
+
+--Last week
+left join  (select seller_id,
+user_slctd_id,
+retail_year,
+retail_week,
+AGE_FOR_RTL_WEEK_ID,
+sum(GMV) as GMV_LW,
+sum(BI) as BI_LW,
+count(distinct(item_id)) as LL_LW
+from 
+P_InventoryPlanning_T.home_outlet_report
+group by 1,2,3,4,5) bbb 
+on aaa.seller_id = bbb.seller_id
+and aaa.age_for_rtl_week_id = bbb.age_for_rtl_week_id +1
+
+inner join
+(select seller_id,
+user_slctd_id,
+sum(GMV) as GMV_QTD,
+sum(BI) as BI,
+count(distinct(item_id)) as LL
+from 
+P_InventoryPlanning_T.home_outlet_report aa
+inner join (select retail_year, retail_week from  access_views.dw_cal_dt where age_for_rtl_qtr_id = 0 group by 1,2) bb
+on aa.retail_year = bb.retail_year and aa.retail_week = bb.retail_week
+group by 1,2) ccc
+on aaa.seller_id = ccc.seller_id;
+*/

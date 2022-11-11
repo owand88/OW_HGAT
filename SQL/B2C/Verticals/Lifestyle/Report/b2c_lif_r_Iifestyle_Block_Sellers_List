@@ -1,0 +1,78 @@
+-- select * from  p_hroon_t.lifestyle_sellers where user_slctd_id = 'beauty-scent'
+
+drop table  p_hroon_t.lifestyle_sellers;
+
+create table p_hroon_t.lifestyle_sellers as (SELect
+
+seller_id as slr_id,
+u.user_slctd_id,
+case when categ_lvl2_id in (20710, 69197) then 'Electronics'
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074) then 'Home & Garden'
+when categ_lvl3_id in (35000) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+else bsns_vrtcl_name end as new_vertical, 
+categ_lvl2_name,
+meta_Categ_name,
+SUM(CAST(CK.QUANTITY AS DECIMAL(18,2))* CAST(CK.ITEM_PRICE AS DECIMAL(18,2))*CAST(SSA.CURNCY_PLAN_RATE AS DECIMAL(18,2))) AS GMV
+
+FROM   DW_CHECKOUT_TRANS ck
+        
+INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS SSA 
+    ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID LEFT OUTER JOIN dw_users u on ck.seller_Id = u.user_id     
+
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.CREATED_DT   and retail_year in (2020) --change here for time period if needed 
+
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+
+
+WHERE 1=1
+	and CK.SALE_TYPE NOT IN (10,15) 
+	and new_vertical = 'Lifestyle'
+	and ck.site_id = 3
+	and slr_cntry_id = 3
+	and user_dsgntn_id =  2
+/*	AND BYR_CNTRY_ID = 3 --UK buyers -- help table  DW_CHECKOUT_TRANS
+	AND SLR_CNTRY_ID = BYR_CNTRY_ID --DOM*/  
+
+/*AND CK.SITE_ID = 3*/
+	
+ GROUP BY 1,2,3,4,5) with data primary index (slr_id, categ_lvl2_name);
+ 
+ ---------------
+ drop table p_hroon_t.lifestyle_issue_seller;
+create table p_hroon_t.lifestyle_issue_seller as (
+
+select 
+i.user_id
+, user_slctd_id
+,case when  i.user_id  = fss.seller_id then 'Focus' else 'Non-focus' end as focus_flag
+, case when i.user_id  = fss.seller_id then am_name else ' - ' end as CM_flag
+, case when  i.user_id  = fss.seller_id then initiative_name else ' - ' end as inventory_prop
+, i.SRC_CRE_DT as issue_date
+, scenario_desc
+, i.scenario_id
+, status_desc
+, sum(gmv) as gmv
+
+from access_views.DW_USER_ISSUE I
+
+left join access_views.DW_USER_ISSUE_LKP_SCENARIO lkp
+       on i.SCENARIO_ID=lkp.SCENARIO_ID
+left join ACCESS_VIEWS.DW_USER_ISSUE_LKP_STATUS st on st.status_id = i.status_id
+LEFT JOIN P_awang_ops_T.moz_seller_ops_83 fss on i.user_id = fss.seller_id
+inner join dw_cal_dt cal on cal.cal_dt = i.src_cre_dt and age_for_rtl_week_id = -1
+left join (select slr_id, user_slctd_id, sum(gmv) as gmv from p_hroon_t.lifestyle_sellers group by 1,2) s on s.slr_id = i.user_id
+
+where i.user_id in (select slr_id from p_hroon_t.lifestyle_sellers s) and scenario_desc not in ('UNKNOWN') 
+
+group by 1,2,3,4,5   ,6,7,8,9) with data primary index (user_id);
+
+select * FROM DW_USER_STATE_HISTORY sh
+ INNER JOIN p_hroon_t.lifestyle_sellers lf on sh.id = lf.slr_id
+LEFT JOIN P_awang_ops_T.moz_seller_ops_83 fss on sh.id = fss.seller_id
+inner join dw_cal_dt cal on cal.cal_dt = sh.change_time and age_for_rtl_week_id = -1
+
+
+
