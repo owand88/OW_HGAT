@@ -1,0 +1,343 @@
+/*
+Creator: Sanjukta Sen
+Current Owner: Gabriella Austin
+Purpose:Track Performance of the largest Collectibles Card Games franchise
+Schedule: Updated every Sunday at 9pm MST 
+Notes: Code and report built by Sanjukta based on query supplied by the US team
+*/
+drop table if exists p_sansen_t.ccg_listings;
+create table p_sansen_t.ccg_listings AS
+(
+select 
+	f.ITEM_ID,
+	f.TRANSACTION_ID,
+	f.GMV_DT,
+	l.AUCT_TITL,
+	CASE 
+		  	    WHEN cat.categ_lvl2_id in (2536) THEN
+					CASE
+						WHEN 
+							 UPPER(auct_titl) LIKE ANY ('%POKÉMON%','%POKEMON%', '%POKEMON%', '%POKEMOM%', '%POKEMAN%' , '%POKMEON%') OR
+							 cat.categ_lvl3_id in (183466)
+							 THEN 'POKEMON TCG'
+
+						WHEN 
+							 UPPER(auct_titl) LIKE ALL ('%MAGIC%','%THE%', '%GATHERING%') OR UPPER(auct_titl) LIKE ( '%MTG%' )  OR
+							cat.categ_lvl3_id in (19107)
+							 THEN 'MAGIC: THE GATHERING'
+
+						WHEN UPPER(auct_titl) LIKE ANY ('%YUGIOH%','%YU-GI-OH%','%YU GI OH%') OR
+							cat.categ_lvl3_id in (31393)
+							 THEN 'YUGIOH' 
+
+						WHEN  UPPER(auct_titl) LIKE ALL ('%FLESH%','%AND%', '%BLOOD%') OR
+							 UPPER(auct_titl) LIKE ALL ('%FLESH%','%&%', '%BLOOD%')  
+						THEN 'FLESH AND BLOOD'
+
+						WHEN  UPPER(auct_titl) LIKE ALL ('%DRAGONBALL%','%SUPER%')  THEN 'Dragonball Super'
+						WHEN  UPPER(auct_titl) LIKE ALL ('%CARDFIGHT%')  THEN 'Cardfight'
+						WHEN  UPPER(auct_titl) LIKE ALL ('%DIGIMON%') THEN 'Digimon'
+						WHEN  UPPER(auct_titl) LIKE ALL ('%WEISS%', '%SCHWARZ%')THEN 'Weiss Schwarz'
+					 ELSE 'OTHERS' 
+					END  
+				
+	           WHEN cat.CATEG_LVL2_ID in(182982) THEN
+				CASE
+					WHEN 
+						   lower(auct_titl) LIKE ALL ('%captain%','%marvel%')  
+					     OR lower(auct_titl) LIKE ALL ('%captain%','%america%') 
+				         OR lower(auct_titl) LIKE ALL ('%iron%','%man%') 
+					     OR lower(auct_titl) LIKE ALL ('%spider%','%man%')
+					  	 OR lower(auct_titl) LIKE ALL ('%hulk%')  
+					     OR lower(auct_titl) LIKE ALL ('%marvel%') 
+						 OR  UPPER(cat.categ_lvl3_name) = "MARVEL MOVIE TRADING CARDS"
+					THEN 'Marvel'
+					WHEN  UPPER(cat.categ_lvl3_name) = "GARBAGE PAIL KIDS" THEN 'Garbage Pail Kids'
+					WHEN  lower(auct_titl) LIKE ALL('%star%','%wars%') OR UPPER(cat.categ_lvl3_name) = "STAR WARS TRADING CARDS"  THEN 'Star Wars'
+					WHEN lower(auct_titl) LIKE ALL('%star%','%trek%') OR UPPER(cat.categ_lvl3_name) = "STAR TREK TRADING CARDS"  THEN 'Star Trek'
+					WHEN lower(auct_titl) LIKE ALL('%game%','%of%','%thrones%') OR UPPER(cat.categ_lvl3_name) = "GAME OF THRONES TRADING CARDS"  THEN 'Game of Thrones'
+					WHEN  lower(auct_titl) LIKE ALL('%benchwarmer%') OR UPPER(cat.categ_lvl3_name) = "BENCHWARMER"   THEN 'Benchwarmer'
+					WHEN  lower(auct_titl) LIKE ALL ('%x%','%men%') OR UPPER(cat.categ_lvl3_name) = "X-MEN TRADING CARDS" THEN 'X-Men' 			
+					WHEN  lower(auct_titl) LIKE ALL ('%harry%','%potter%') OR UPPER(cat.categ_lvl3_name) = "HARRY POTTER MOVIE CARDS" THEN 'Harry Potter' 
+					WHEN  lower(auct_titl) LIKE ALL ('%james%','%bond%') OR UPPER(cat.categ_lvl3_name) = "JAMES BOND TRADING CARDS" THEN 'James Bond' 	
+					WHEN  lower(auct_titl) LIKE ALL ('%batman%') OR UPPER(cat.categ_lvl3_name) = "BATMAN TRADING CARDS" THEN 'Batman' 				
+					WHEN lower(auct_titl) LIKE ALL ('%fortnite%')  THEN 'Fortnite' 	
+				ELSE 'others' END  
+			END AS ASPECT_TITLE_MAPPING,
+	CAT.CATEG_LVL4_NAME,
+	f.ITEM_PRICE,
+	CASE 
+			WHEN ITEM_PRICE <25 THEN     'A. <25' 
+			WHEN ITEM_PRICE <50 THEN     'B. >=25 to <50' 
+			WHEN ITEM_PRICE <100 THEN    'C. >=50 to <100' 
+			WHEN ITEM_PRICE <250 THEN    'D. >=100 to <250' 
+			WHEN ITEM_PRICE <500 THEN    'E. >=250 to <500' 
+			WHEN ITEM_PRICE <1000 THEN   'F. >=500 to <1000'
+			WHEN ITEM_PRICE <2500 THEN   'G. >=1000 to <2500'
+			WHEN ITEM_PRICE <5000 THEN   'H. >=2500 to <5000'
+			WHEN ITEM_PRICE <10000 THEN  'I. >=5000 to <10000'
+			WHEN ITEM_PRICE >=10000 THEN 'J. >=10000' 
+    	 END AS PRICE_TRANCHE
+	--sum(f.QUANTITY) as qty_sold,
+	--sum(f.GMV20) as gmv
+	
+,sum(f.GMV20_plan) as GMV
+,sum(f.GMV20_sold_quantity) AS qty_sold
+ 
+from PRS_RESTRICTED_V.slng_trans_super_fact f
+
+inner join ACCESS_VIEWS.DW_LSTG_ITEM l ON l.item_id = f.ITEM_ID and l.slr_id = f.SLR_ID
+                                                                 	
+join access_views.dw_cal_dt cal 
+     on cal.cal_dt = f.gmv_dt 
+	 AND cal.AGE_FOR_RTL_WEEK_ID < 0
+	 AND cal.RETAIL_YEAR in (2021, 2022)
+	 
+JOIN access_views.DW_CATEGORY_GROUPINGS CAT 
+     ON CAT.LEAF_CATEG_ID = f.LEAF_CATEG_ID 
+	 AND CAT.SITE_ID=f.LSTG_SITE_ID	
+	 AND cat.sap_category_id NOT IN (5,7,23,41,-999)
+	 and cat.META_CATEG_ID in (1)
+	 and cat.CATEG_LVL2_ID in (182982, 2536)
+	
+where  f.gmv_dt BETWEEN '2020-12-22' and current_date
+	and f.auct_end_dt >= '2020-12-22'                                                      	
+	AND f.CK_WACKO_YN='N'                                                                                                                          	
+	AND f.ISCORE = 1	
+	and f.slr_cntry_id in (3)
+	AND f.BYR_CNTRY_ID in (3)
+	AND f.SITE_ID IN (3)	
+                                                                            	
+group by 1,2,3,4,5,6,7,8);
+
+drop table if exists p_sansen_t.ccg_refresh_games;
+create table p_sansen_t.ccg_refresh_games AS
+(SELECT 
+	CAL.RETAIL_YEAR,
+	--case when retail_year in (2019, 2020, 2021) then retail_week-1 else retail_week END AS retail_week_2,
+	retail_week as retail_week_2,--no week offset for 2021
+	CATEG_LVL4_NAME,
+	ASPECT_TITLE_MAPPING,
+	PRICE_TRANCHE,
+	sum(qty_sold) as SI,
+	sum(gmv) as gmv
+	
+	FROM p_sansen_t.ccg_listings c
+	
+	INNER JOIN access_views.dw_cal_dt cal 
+     on cal.cal_dt = c.gmv_dt 
+	 AND cal.RETAIL_YEAR in (2021, 2022)
+	 group by 1,2,3,4,5
+	);
+
+
+
+
+
+-- Below code from US
+/*DROP TABLE IF EXISTS P_CSI_TBS_T.TC_LL_FNL_2020_April2021_uk;
+CREATE TABLE P_CSI_TBS_T.TC_LL_FNL_2020_April2021_uk AS
+SELECT   L.ITEM_ID
+		,L.AUCT_START_DT 
+		,L.AUCT_END_DT
+		,CMP.CATEG_LVL2_NAME
+		,CMP.CATEG_LVL3_NAME
+		,auct_titl
+		,RELIST_UP_FLAG
+		,CASE 
+			WHEN START_PRICE_USD <25 THEN     'A. <25' 
+			WHEN START_PRICE_USD <50 THEN     'B. >=25 to <50' 
+			WHEN START_PRICE_USD <100 THEN    'C. >=50 to <100' 
+			WHEN START_PRICE_USD <250 THEN    'D. >=100 to <250' 
+			WHEN START_PRICE_USD <500 THEN    'E. >=250 to <500' 
+			WHEN START_PRICE_USD <1000 THEN   'F. >=500 to <1000'
+			WHEN START_PRICE_USD <2500 THEN   'G. >=1000 to <2500'
+			WHEN START_PRICE_USD <5000 THEN   'H. >=2500 to <5000'
+			WHEN START_PRICE_USD <10000 THEN  'I. >=5000 to <10000'
+			WHEN START_PRICE_USD >=10000 THEN 'J. >=10000' 
+    	 END AS PRICE_TRANCHE
+	   ,CASE 
+		  	    WHEN UPPER(cmp.categ_lvl2_name) = 'COLLECTIBLE CARD GAMES' THEN
+					CASE
+						WHEN UPPER(GAME) LIKE ANY ('%POKÉMON%','%POKEMON%', '%POKEMON%', '%POKEMOM%', '%POKEMAN%' , '%POKMEON%') OR 
+							 UPPER(auct_titl) LIKE ANY ('%POKÉMON%','%POKEMON%', '%POKEMON%', '%POKEMOM%', '%POKEMAN%' , '%POKMEON%') OR
+							 UPPER(cmp.categ_lvl3_name) = "POKÉMON TRADING CARD GAME"
+							 THEN 'POKEMON TCG'
+
+						WHEN UPPER(GAME) LIKE ALL ('%MAGIC%','%THE%', '%GATHERING%') OR  UPPER(GAME) LIKE ( '%MTG%' ) OR 
+							 UPPER(auct_titl) LIKE ALL ('%MAGIC%','%THE%', '%GATHERING%') OR UPPER(auct_titl) LIKE ( '%MTG%' )  OR
+							 UPPER(cmp.categ_lvl3_name) = "MAGIC: THE GATHERING"
+							 THEN 'MAGIC: THE GATHERING'
+
+						WHEN UPPER(GAME) LIKE ANY ('%YUGIOH%','%YU-GI-OH%','%YU GI OH%') OR UPPER(auct_titl) LIKE ANY ('%YUGIOH%','%YU-GI-OH%','%YU GI OH%') OR
+							 UPPER(cmp.categ_lvl3_name) = "YU-GI-OH! TRADING CARD GAME"
+							 THEN 'YUGIOH' 
+
+						WHEN UPPER(GAME) LIKE ALL ('%FLESH%','%AND%', '%BLOOD%') OR  UPPER(auct_titl) LIKE ALL ('%FLESH%','%AND%', '%BLOOD%') OR
+							 UPPER(GAME) LIKE ALL ('%FLESH%','%&%', '%BLOOD%') OR  UPPER(auct_titl) LIKE ALL ('%FLESH%','%&%', '%BLOOD%')  
+						THEN 'FLESH AND BLOOD'
+
+						WHEN UPPER(GAME) LIKE ALL ('%DRAGONBALL%','%SUPER%') OR  UPPER(auct_titl) LIKE ALL ('%DRAGONBALL%','%SUPER%')  THEN 'Dragonball Super'
+						WHEN UPPER(GAME) LIKE ALL ('%CARDFIGHT%')  OR  UPPER(auct_titl) LIKE ALL ('%CARDFIGHT%')  THEN 'Cardfight'
+						WHEN UPPER(GAME) LIKE ALL ('%DIGIMON%') OR  UPPER(auct_titl) LIKE ALL ('%DIGIMON%') THEN 'Digimon'
+						WHEN UPPER(GAME) LIKE ALL ('%WEISS%', '%SCHWARZ%')  OR  UPPER(auct_titl) LIKE ALL ('%WEISS%', '%SCHWARZ%')THEN 'Weiss Schwarz'
+						WHEN UPPER(GAME) IS NULL THEN 'NO DATA' ELSE 'OTHERS' 
+					END  
+				
+	           WHEN UPPER(cmp.categ_lvl2_name) = UPPER('NON-SPORT TRADING CARDS') THEN
+				CASE
+					WHEN 
+						    lower(Franchise) LIKE ALL ('%captain%','%marvel%')   OR lower(auct_titl) LIKE ALL ('%captain%','%marvel%')  
+					    OR  lower(Franchise) LIKE ALL ('%captain%','%america%')  OR lower(auct_titl) LIKE ALL ('%captain%','%america%') 
+				        OR  lower(Franchise) LIKE ALL ('%iron%','%man%') 		 OR lower(auct_titl) LIKE ALL ('%iron%','%man%') 
+					    OR  lower(Franchise) LIKE ALL ('%spider%','%man%') 	     OR lower(auct_titl) LIKE ALL ('%spider%','%man%')
+					    OR  lower(Franchise) LIKE ALL ('%hulk%') 				 OR lower(auct_titl) LIKE ALL ('%hulk%')  
+					    OR  lower(Franchise) LIKE ALL ('%marvel%') 			 	 OR lower(auct_titl) LIKE ALL ('%marvel%') 
+						OR  UPPER(cmp.categ_lvl3_name) = "MARVEL MOVIE TRADING CARDS"
+					THEN 'Marvel'
+					WHEN lower(Franchise) LIKE ALL ('%garbage%','%pail%','%kids%')  OR lower(auct_titl) LIKE ALL ('%garbage%','%pail%','%kids%')  OR UPPER(cmp.categ_lvl3_name) = "GARBAGE PAIL KIDS" THEN 'Garbage Pail Kids'
+					WHEN lower(Franchise) LIKE ALL ('%star%','%wars%')  OR lower(auct_titl) LIKE ALL('%star%','%wars%') OR UPPER(cmp.categ_lvl3_name) = "STAR WARS TRADING CARDS"  THEN 'Star Wars'
+					WHEN lower(Franchise) LIKE ALL ('%star%','%trek%')  OR lower(auct_titl) LIKE ALL('%star%','%trek%') OR UPPER(cmp.categ_lvl3_name) = "STAR TREK TRADING CARDS"  THEN 'Star Trek'
+					WHEN lower(Franchise) LIKE ALL ('%game%','%of%','%thrones%')  OR lower(auct_titl) LIKE ALL('%game%','%of%','%thrones%') OR UPPER(cmp.categ_lvl3_name) = "GAME OF THRONES TRADING CARDS"  THEN 'Game of Thrones'
+					WHEN lower(Franchise) LIKE ALL ('%benchwarmer%')  OR lower(auct_titl) LIKE ALL('%benchwarmer%') OR UPPER(cmp.categ_lvl3_name) = "BENCHWARMER"   THEN 'Benchwarmer'
+					WHEN lower(Franchise) LIKE ALL ('%x%','%men%') OR lower(auct_titl) LIKE ALL ('%x%','%men%') OR UPPER(cmp.categ_lvl3_name) = "X-MEN TRADING CARDS" THEN 'X-Men' 			
+					WHEN lower(Franchise) LIKE ALL ('%harry%','%potter%') OR lower(auct_titl) LIKE ALL ('%harry%','%potter%') OR UPPER(cmp.categ_lvl3_name) = "HARRY POTTER MOVIE CARDS" THEN 'Harry Potter' 
+					WHEN lower(Franchise) LIKE ALL ('%james%','%bond%') OR lower(auct_titl) LIKE ALL ('%james%','%bond%') OR UPPER(cmp.categ_lvl3_name) = "JAMES BOND TRADING CARDS" THEN 'James Bond' 	
+					WHEN lower(Franchise) LIKE ALL ('%batman%') OR lower(auct_titl) LIKE ALL ('%batman%') OR UPPER(cmp.categ_lvl3_name) = "BATMAN TRADING CARDS" THEN 'Batman' 				
+					WHEN lower(Franchise) LIKE ALL ('%fortnite%') OR lower(auct_titl) LIKE ALL ('%fortnite%')  THEN 'Fortnite' 	
+					WHEN lower(Franchise)  IS NULL THEN 'no data' ELSE 'others' END  
+			END AS ASPECT_TITLE_MAPPING
+	,COUNT(*) AS LL
+FROM ACCESS_VIEWS.DW_LSTG_ITEM L
+JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = L.AUCT_START_DT 
+JOIN ACCESS_VIEWS.DW_COUNTRIES CNTRY_S ON CNTRY_S.CNTRY_ID = L.SLR_CNTRY_ID
+INNER JOIN access_views.DW_CATEGORY_GROUPINGS cmp 
+     ON cmp.LEAF_CATEG_ID = l.LEAF_CATEG_ID 
+	 AND cmp.SITE_ID=l.LSTG_SITE_ID	
+	 AND cmp.sap_category_id NOT IN (5,7,23,41,-999)
+	 and cat.META_CATEG_ID in (1)
+
+LEFT JOIN  P_CSI_TBS_T.attr_Game_Franchise attr on attr.item_id = L.item_id
+WHERE 1 = 1 
+		AND L.AUCT_END_DT >= ('2019-12-26') 
+		AND L.AUCT_TYPE_CODE  NOT IN (10,15)  
+		AND L.ITEM_SITE_ID  IN (3 )
+		AND UPPER(CNTRY_S.REV_ROLLUP) IN ('UK') 
+		AND cmp.categ_lvl2_id in (2536, 
+GROUP BY 1,2,3,4,5,6,7,8,9;
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP TABLE if exists P_CSI_TBS_T.TC_LL_FNL_2020_April2021_LL_final_UK;
+CREATE TABLE P_CSI_TBS_T.TC_LL_FNL_2020_April2021_LL_final_UK
+SELECT  RETAIL_YEAR
+		,RETAIL_WEEK
+		,CASE
+			WHEN AGE_FOR_RTL_WEEK_ID IN (-1)   THEN 'RW_TY'  
+			WHEN AGE_FOR_RTL_WEEK_ID IN (-53)  THEN 'RW_LY' 
+			ELSE 'OTHERS'
+		  END RW_YoY_IND
+		 ,CASE
+			WHEN AGE_FOR_RTL_WEEK_ID IN (-1)   THEN 'RW_TW'  
+			WHEN AGE_FOR_RTL_WEEK_ID IN (-2)  THEN 'RW_LW' 
+			ELSE 'OTHERS'
+		  END RW_WoW_IND
+		,PRICE_TRANCHE
+		,CATEG_LVL2_NAME
+		,ASPECT_TITLE_MAPPING
+		,SUM(LL) AS LL_SUM
+FROM
+	 (SELECT CAL_DT
+			,PRICE_TRANCHE
+	
+			,CATEG_LVL2_NAME
+		
+			,ASPECT_TITLE_MAPPING
+			,SUM(LL) AS LL
+			,COUNT(*) AS LL_count
+	   FROM P_CSI_TBS_T.TC_LL_FNL_2020_April2021_uk L
+	   INNER JOIN (
+					SELECT CAL_DT
+					FROM ACCESS_VIEWS.DW_CAL_DT CAL  WHERE CAL_DT >=  '2021-12-20' AND CAL.AGE_FOR_RTL_WEEK_ID <= -1
+					GROUP BY 1
+		          ) CAL ON CAL_DT BETWEEN L.AUCT_START_DT AND L.AUCT_END_DT AND CAL_DT<>L.AUCT_END_DT
+		WHERE L.AUCT_END_DT >= '2019-12-20'  
+		GROUP BY 1,2,3,4
+	  ) A
+
+JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON A.CAL_DT = CAL.CAL_DT
+
+GROUP BY 1,2,3,4,5,6,7;*/
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+/*
+DROP TABLE if exists P_CSI_TBS_T.TC_LL_FNL_2020_April2021_FNL_final;
+CREATE  TABLE P_CSI_TBS_T.TC_LL_FNL_2020_April2021_FNL_final AS
+SELECT  RETAIL_YEAR
+		,RETAIL_WEEK
+		,CASE
+			WHEN AGE_FOR_RTL_WEEK_ID IN (-1)   THEN 'RW_TY'  
+			WHEN AGE_FOR_RTL_WEEK_ID IN (-53)  THEN 'RW_LY' 
+			ELSE 'OTHERS'
+		  END RW_YoY_IND
+		 ,CASE
+			WHEN AGE_FOR_RTL_WEEK_ID IN (-1)   THEN 'RW_TW'  
+			WHEN AGE_FOR_RTL_WEEK_ID IN (-2)  THEN 'RW_LW' 
+			ELSE 'OTHERS'
+		  END RW_WoW_IND
+		,PRICE_TRANCHE
+		,WACKO_YN 
+		,CATEG_LVL2_NAME
+		,Sale_Type
+		,SLR_SEG
+		,ASPECT_TITLE_MAPPING
+		,SUM(FNL) AS FNL
+		
+FROM  P_CSI_TBS_T.TC_LL_FNL_2020_April2021 A 
+INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON A.AUCT_START_DT = CAL.CAL_DT 
+GROUP BY 1,2,3,4,5,6,7,8,9,10; */
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+/*DROP TABLE if exists P_CSI_TBS_T.TC_LL_FNL_2020_April2021_GMV_SI_ASP_final_uk;
+CREATE  TABLE P_CSI_TBS_T.TC_LL_FNL_2020_April2021_GMV_SI_ASP_final_uk AS
+ SELECT  RETAIL_YEAR
+		,RETAIL_WEEK
+		,CASE
+			WHEN AGE_FOR_RTL_WEEK_ID IN (-1)   THEN 'RW_TY'  
+			WHEN AGE_FOR_RTL_WEEK_ID IN (-53)  THEN 'RW_LY' 
+			ELSE 'OTHERS'
+		  END RW_YoY_IND
+		 ,CASE
+			WHEN AGE_FOR_RTL_WEEK_ID IN (-1)   THEN 'RW_TW'  
+			WHEN AGE_FOR_RTL_WEEK_ID IN (-2)  THEN 'RW_LW' 
+			ELSE 'OTHERS'
+		  END RW_WoW_IND
+		,PRICE_TRANCHE
+		
+		,CATEG_LVL2_NAME
+	
+		,ASPECT_TITLE_MAPPING
+		,AVG(GEM.ITEM_PRICE*P.CURNCY_PLAN_RATE) AS ASP
+		,SUM(GEM.ITEM_PRICE*GEM.QTY*P.CURNCY_PLAN_RATE) AS GMV
+		,SUM(GEM.QTY) AS SI
+		
+FROM ACCESS_VIEWS.DW_GEM2_CMN_CK_I GEM
+JOIN      ACCESS_VIEWS.DW_CAL_DT CAL                    ON GEM.CK_DATE = CAL.CAL_DT 
+JOIN      ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM P       ON GEM.LSTG_CURNCY_ID = P.CURNCY_ID
+JOIN      P_CSI_TBS_T.TC_LL_FNL_2020_April2021_uk A ON A.ITEM_ID = GEM.LSTG_ID
+WHERE   1=1 
+		AND GEM.LSTG_END_DT >= '2019-12-30'
+		AND CAL.CAL_DT >= '2019-12-30'
+		AND CAL.RETAIL_YEAR >= 2021
+	    AND GEM.LSTG_TYPE_CODE NOT IN (10, 15)
+	    AND GEM.INCLD_CK_YN_ID = 1 
+	    AND GEM.ADJ_TYPE_ID NOT IN (-7,-1,5,3,27,29) 
+	    AND GEM.SLR_CNTRY_ID IN (3)   
+		AND GEM.BYR_CNTRY_ID in (3)
+GROUP BY 1,2,3,4,5,6,7;
+
+select * from P_CSI_TBS_T.TC_LL_FNL_2020_April2021_GMV_SI_ASP_final_uk*/
