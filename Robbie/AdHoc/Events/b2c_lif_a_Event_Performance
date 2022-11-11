@@ -1,0 +1,212 @@
+SELECT *
+FROM P_SLR_TRACKER_T.seller_union_all_hist
+WHERE promotion_name LIKE '%CBD wellness%'
+AND retail_year = '2022'
+;
+
+
+
+
+With event_lstgs AS
+(select i.ITEM_ID, lstg.AUCT_TITLE as auct_title, lstg.SLR_ID, e.START_TS, e.END_TS
+From ACCESS_VIEWS.RPP_EVENT e
+INNER JOIN ACCESS_VIEWS.RPP_ITEM i on e.RPP_CRTN_ID = i.RPP_CRTN_ID
+LEFT JOIN PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+	on i.ITEM_ID = lstg.ITEM_ID
+	and lstg.LSTG_SITE_ID = 3
+	and lstg.AUCT_START_DT >= '2022-01-01'
+Where URL_TXT = 'https://www.ebay.co.uk/e/health-beauty/up-to-50-off-cbd-wellness-products'
+and site_id = 3
+Group by 1,2,3,4,5)
+,
+event_shoppers AS
+(select ck.BUYER_ID, min(ck.CREATED_DT) as event_purchase
+From DW_CHECKOUT_TRANS ck
+Inner Join DW_CAL_DT cal
+	on ck.GMV_DT = cal.CAL_DT
+	and cal.CAL_DT between '2022-08-26' and '2022-09-02'
+INNER JOIN event_lstgs lstg
+	on ck.ITEM_ID = lstg.item_id
+Where 1=1
+and ck.SITE_ID = 3
+and ck.BYR_CNTRY_ID = 3
+Group by 1
+)
+
+-- 	select e.buyer_id
+-- 	,first_ebay_purchase
+-- 	,first_cbd_purchase
+-- 	,event_purchase
+-- 	,last_ebay_purchase
+-- 	,last_cbd_purchase
+-- 	,case when first_ebay_purchase = event_purchase then 'New to eBay'
+-- 	when first_cbd_purchase = event_purchase then 'New to CBD'
+-- 	else 'Consistent' End as classification
+-- From event_shoppers e
+-- INNER JOIN	
+-- 	(Select ck.BUYER_ID, min(ck.gmv_dt) as first_ebay_purchase
+-- 		From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+-- 		Inner Join DW_CAL_DT cal
+-- 			on ck.GMV_DT = cal.CAL_DT
+-- 			and cal.RETAIL_YEAR >= 2021
+-- 		INNER JOIN DW_CATEGORY_GROUPINGS CAT
+-- 			ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+-- 			AND cat.site_id = 3
+-- 			AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+-- 		INNER JOIN event_shoppers e on ck.buyer_id = e.buyer_id
+-- 		Where 1=1
+-- 		and ck.SITE_ID = 3
+-- 		and ck.BYR_CNTRY_ID = 3
+-- 		and ck.CK_WACKO_YN = 'N'
+-- 		Group by 1) a on a.buyer_id = e.buyer_id
+-- INNER JOIN
+-- 		(Select ck.BUYER_ID, min(ck.gmv_dt) as first_cbd_purchase
+-- 		From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+-- 		Inner Join DW_CAL_DT cal
+-- 			on ck.GMV_DT = cal.CAL_DT
+-- 			and cal.RETAIL_YEAR >= 2021
+-- 		INNER JOIN DW_CATEGORY_GROUPINGS CAT
+-- 			ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+-- 			AND cat.site_id = 3
+-- 			AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+-- 		INNER JOIN event_shoppers e on ck.buyer_id = e.buyer_id
+-- 		Where 1=1
+-- 		and cat.CATEG_LVL3_ID = 262436
+-- 		and ck.SITE_ID = 3
+-- 		and ck.BYR_CNTRY_ID = 3
+-- 		and ck.CK_WACKO_YN = 'N'
+-- 		Group by 1) b on e.buyer_id = b.buyer_id
+-- LEFT JOIN	
+-- 	(Select ck.BUYER_ID, max(ck.gmv_dt) as last_ebay_purchase
+-- 		From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+-- 		Inner Join DW_CAL_DT cal
+-- 			on ck.GMV_DT = cal.CAL_DT
+-- 			and cal.RETAIL_YEAR >= 2021 and cal.cal_dt < '2022-08-26' 
+-- 		INNER JOIN DW_CATEGORY_GROUPINGS CAT
+-- 			ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+-- 			AND cat.site_id = 3
+-- 			AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+-- 		INNER JOIN event_shoppers e on ck.buyer_id = e.buyer_id
+-- 		Where 1=1
+-- 		and ck.SITE_ID = 3
+-- 		and ck.BYR_CNTRY_ID = 3
+-- 		and ck.CK_WACKO_YN = 'N'
+-- 		Group by 1) c on e.buyer_id = c.buyer_id
+-- LEFT JOIN
+-- 		(Select ck.BUYER_ID, max(ck.gmv_dt) as last_cbd_purchase
+-- 		From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+-- 		Inner Join DW_CAL_DT cal
+-- 			on ck.GMV_DT = cal.CAL_DT
+-- 			and cal.RETAIL_YEAR >= 2021 and cal.cal_dt < '2022-08-26'
+-- 		INNER JOIN DW_CATEGORY_GROUPINGS CAT
+-- 			ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+-- 			AND cat.site_id = 3
+-- 			AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+-- 		INNER JOIN event_shoppers e on ck.buyer_id = e.buyer_id
+-- 		Where 1=1
+-- 		and cat.CATEG_LVL3_ID = 262436
+-- 		and ck.SITE_ID = 3
+-- 		and ck.BYR_CNTRY_ID = 3
+-- 		and ck.CK_WACKO_YN = 'N'
+-- 		Group by 1) d on e.buyer_id = d.buyer_id		
+
+
+Select 
+ck.CREATED_DT
+,ck.SELLER_ID
+,ck.ITEM_ID
+,cat.CATEG_LVL3_NAME
+,cat.CATEG_LVL4_NAME
+,e.auct_title
+,bbase.dosage
+,bbase1.Unit_Type
+,ck.BUYER_ID
+,u.DATE_OF_BIRTH
+,ck.ITEM_PRICE
+,sum(ck.gmv20_plan) as gmv
+,sum(ck.gmv20_sold_quantity) as si
+
+FROM PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+INNER JOIN DW_CAL_DT cal
+	on ck.gmv_dt = cal.CAL_DT
+	and cal.CAL_DT between '2022-08-26' and '2022-09-02'
+INNER JOIN event_lstgs e
+	on ck.ITEM_ID = e.item_id
+INNER JOIN DW_CATEGORY_GROUPINGS CAT
+			ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+			AND cat.site_id = 3
+			AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+LEFT JOIN PRS_SECURE_V.DW_USERS u
+	on ck.BUYER_ID = u.USER_ID
+LEFT JOIN (Select
+					item_id,
+					Auct_end_dt,
+					coalesce(max(case  when lower(aspect)=lower('DOSAGE') then aspct_vlu_nm else NULL end ),'Unknown') as DOSAGE
+				FROM
+					(select
+						item_id,
+						auct_end_dt,
+						ns_type_cd,
+						1 as priority,
+						'DOSAGE' as aspect,
+						cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+					from
+						item_aspct_clssfctn
+					where
+						AUCT_END_DT>='2016-06-01'
+						AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('DOSAGE')
+					UNION ALL
+					select
+						item_id,
+						auct_end_dt,
+						ns_type_cd,
+						2 as priority,
+						'DOSAGE' as aspect,
+						cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+					from
+						item_aspct_clssfctn_cold
+					WHERE
+						AUCT_END_DT>='2016-06-01'
+						AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('DOSAGE')
+					)SB
+				GROUP BY 1,2) bbase ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+LEFT JOIN (Select
+					item_id,
+					Auct_end_dt,
+					coalesce(max(case  when lower(aspect)=lower('UNIT TYPE') then aspct_vlu_nm else NULL end ),'Unknown') as Unit_Type
+				FROM
+					(select
+						item_id,
+						auct_end_dt,
+						ns_type_cd,
+						1 as priority,
+						'UNIT TYPE' as aspect,
+						cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+					from
+						item_aspct_clssfctn
+					where
+						AUCT_END_DT>='2016-06-01'
+						AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('UNIT TYPE')
+					UNION ALL
+					select
+						item_id,
+						auct_end_dt,
+						ns_type_cd,
+						2 as priority,
+						'UNIT TYPE' as aspect,
+						cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+					from
+						item_aspct_clssfctn_cold
+					WHERE
+						AUCT_END_DT>='2016-06-01'
+						AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('UNIT TYPE')
+					)SB
+				GROUP BY 1,2) bbase1 ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+Where 1=1
+and ck.SITE_ID = 3
+and ck.BYR_CNTRY_ID = 3
+and ck.CK_WACKO_YN = 'N'
+
+Group by 1,2,3,4,5,6,7,8,9,10,11
+;
+
