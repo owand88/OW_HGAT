@@ -1,0 +1,642 @@
+
+
+
+--select categ_lvl5_name, max(ftmnt_adopted_rate_grp) ftmnt_adopted_rate_grp from P_ICHAN_T.focus_fitment_upload	where  lower(categ_lvl5_name) in ('wires, cables & connectors','wires & cabling','wiring kits','body mouldings & trims','wiring harnesses, cables & connectors')group by 1;
+
+
+----1.  fitment of focused categories 
+drop table if exists   P_ICHAN_T.fitment_focus_cat_L5  ; 
+create table P_ICHAN_T.fitment_focus_cat_L5 as 
+
+select 
+BSNS_VRTCL_NAME,
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name,
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name,
+CAT.CATEG_LVL4_ID, 
+CAT.CATEG_LVL4_NAME,
+CAT.CATEG_LVL5_ID, 
+CAT.CATEG_LVL5_NAME,
+ftmnt_adopted_rate_grp,
+--slr_id,
+--case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  'Other'  end as Condition,
+
+CASE WHEN(CAST (CASE WHEN CAST (lst.flags10 as INT) < 0  THEN
+CAST (lst.flags10 as INT) + cast (2147483648  as int)
+ELSE CAST (lst.flags10 AS INT  )  END AS   INT  ) & 64 ) >= 1 THEN 'Y' ELSE 'N' END 
+AS FITMENT_ADOPTD_Flag,
+count(distinct lst.item_id) LL
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+INNER JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_new WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   ON lst.ITEM_SITE_ID=F.SITE_ID AND lst.LEAF_CATEG_ID=F.LEAF_CATEG_ID 
+--inner join ( select distinct  seller_id from  P_ICHAN_T.recyclers_upload)  c on lst.slr_id=c.seller_id-- select * from   P_ICHAN_T.recyclers_upload order by seller_id rank where seller_id =1077516705
+--inner join P_ICHAN_T.certified_ll   c on lst.Slr_ID=c.SLr_ID
+INNER  JOIN 	DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 --and cASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and cat.site_id =3
+----INNER JOIN (select distinct  categ_lvl4_id from categ_l4  ) c on CAT.categ_lvl4_id=c.categ_lvl4_id
+INNER JOIN (select categ_lvl5_name, max(ftmnt_adopted_rate_grp) ftmnt_adopted_rate_grp from P_ICHAN_T.focus_fitment_upload			group by 1 )  c on CAT.categ_lvl5_name=c.categ_lvl5_name
+--INNER JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_NEW WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   				ON lst.SLR_SITE_ID=F.SITE_ID AND lst.LEAF_CATEG_ID=F.LEAF_CATEG_ID 
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  --AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and lst.SLR_CNTRY_ID =3
+and lst.AUCT_END_DATE>=CURRENT_DATE
+ group by 1,2,3,4 ,5,6,7,8  ,9,10,11;
+ --  select * from  P_ICHAN_T.fitment_focus_cat_L5 
+---select categ_lvl5_name, max(ftmnt_adopted_rate_grp) ftmnt_adopted_rate_grp from P_ICHAN_T.focus_fitment_upload   group by 1 
+
+----2. output to excel 
+drop table if exists   P_ICHAN_T.fitment_focus_cat_L5_base  ; 
+create table P_ICHAN_T.fitment_focus_cat_L5_base as 
+
+ select BSNS_VRTCL_NAME,
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name,
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name,
+CAT.CATEG_LVL4_ID, 
+CAT.CATEG_LVL4_NAME,
+CAT.CATEG_LVL5_ID, 
+CAT.CATEG_LVL5_NAME,
+ftmnt_adopted_rate_grp,
+sum(case when fitment_adoptd_flag ='Y' then ll else 0 end ) as fitment_ll,
+sum( ll) total_enabled_lL
+from  P_ICHAN_T.fitment_focus_cat_L5  cat
+ group by 1,2,3,4 ,5,6,7,8  ,9,10 ; 
+ 
+ --select * from  P_ICHAN_T.fitment_focus_cat_L5_base  limit 100; 
+ 
+ ---3. Target at seller level 
+ --drop table if exists  P_ICHAN_T.fitment_focus_sub  ; 
+-- create table P_ICHAN_T.fitment_focus_sub as 
+
+--select 
+--BSNS_VRTCL_NAME,
+--CAT.CATEG_LVL2_ID, 
+--CAT.categ_lvl2_name,
+--CAT.CATEG_LVL3_ID, 
+--CAT.categ_lvl3_name,
+--CAT.CATEG_LVL4_ID, 
+--CAT.CATEG_LVL4_NAME,
+--CAT.CATEG_LVL5_ID, 
+--CAT.CATEG_LVL5_NAME,
+--ftmnt_adopted_rate_grp,
+--slr_id,
+
+--CASE WHEN(CAST (CASE WHEN CAST (lst.flags10 as INT) < 0  THEN
+--CAST (lst.flags10 as INT) + cast (2147483648  as int)
+--ELSE CAST (lst.flags10 AS INT  )  END AS   INT  ) & 64 ) >= 1 THEN 'Y' ELSE 'N' END 
+--AS FITMENT_ADOPTD_Flag,
+--count(distinct lst.item_id) LL
+--from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+
+--INNER  JOIN 	DW_USEGM_HIST HIST ON 
+--				HIST.USER_ID=lst.Slr_ID AND 
+--				HIST.USEGM_GRP_ID  = 48 AND
+--				HIST.USEGM_ID = 206 --and cASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+--INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+----INNER JOIN (select distinct  categ_lvl4_id from categ_l4  ) c on CAT.categ_lvl4_id=c.categ_lvl4_id
+--INNER JOIN (select categ_lvl5_name, max(ftmnt_adopted_rate_grp) ftmnt_adopted_rate_grp from P_ICHAN_T.focus_fitment_upload  group by 1 )  c on CAT.categ_lvl5_name=c.categ_lvl5_name
+-------INNER JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_NEW WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   				ON lst.SLR_SITE_ID=F.SITE_ID AND lst.LEAF_CATEG_ID=F.LEAF_CATEG_ID 
+--INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  --AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+--left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+--where lst.WACKO_YN = 'N'                      
+--AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+--and lst.SLR_site_ID = 3 -- change country site id if needed 
+--and lst.SLR_CNTRY_ID =3
+--and lst.AUCT_END_DATE>=CURRENT_DATE
+-- group by 1,2,3,4 ,5,6,7,8  ,9,10,11,12;
+ 
+ 
+ ---select * from  P_ICHAN_T.fitment_focus_sub; ----  select sum(total_enabled_lL) from  P_ICHAN_T.fitment_focus_sub_cat  where slr_id =82983844
+/*
+ drop table if exists  P_ICHAN_T.fitment_focus_sub_cat ; 
+ create table  P_ICHAN_T.fitment_focus_sub_cat as 
+ select  slr_id, BSNS_VRTCL_NAME,
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name,
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name,
+CAT.CATEG_LVL4_ID, 
+CAT.CATEG_LVL4_NAME,
+CAT.CATEG_LVL5_ID, 
+CAT.CATEG_LVL5_NAME,
+ftmnt_adopted_rate_grp,
+sum(case when fitment_adoptd_flag ='Y' then ll else 0 end ) as fitment_ll,
+sum( ll) total_enabled_lL
+from  P_ICHAN_T.fitment_focus_sub  cat
+ group by 1,2,3,4 ,5,6,7,8 ,9,10,11 ; */
+ /*
+ drop table if exists  P_ICHAN_T.fitment_focus_sub_seller  ; 
+ create table  P_ICHAN_T.fitment_focus_sub_seller as 
+ select *, rank () over ( partition by ftmnt_adopted_rate_grp order by fitment_gap desc ) as rank_order
+ 					from (  select  slr_id,ftmnt_adopted_rate_grp,
+							sum(case when fitment_adoptd_flag ='Y' then ll else 0 end ) as fitment_ll,
+							sum( ll) total_enabled_lL,
+							sum(case when fitment_adoptd_flag ='Y' then ll else 0 end )/sum( ll) fitment_rate,
+							sum( ll)-sum(case when fitment_adoptd_flag ='Y' then ll else 0 end ) as fitment_gap
+							from  P_ICHAN_T.fitment_focus_sub  cat
+							 group by 1,2 ) ;
+---- select * from  P_ICHAN_T.fitment_focus_sub_seller where slr_id =1008203182 order by slr_id ,  ftmnt_adopted_rate_grp ,  rank_order ; 
+ */
+ /* drop table if exists  P_ICHAN_T.fitment_focus_sub_output  ; 
+ create table  P_ICHAN_T.fitment_focus_sub_output as 
+ select 
+u.USER_SLCTD_ID, a.* , b.rank_order
+  
+  from   P_ICHAN_T.fitment_focus_sub_cat a 
+  left join P_ICHAN_T.fitment_focus_sub_seller b on a.Slr_ID=b.Slr_ID and a.ftmnt_adopted_rate_grp=b.ftmnt_adopted_rate_grp
+  left outer JOIN DW_USERs U ON U.USER_ID= a.Slr_ID 
+  where rank_order <=300;
+  */
+ -- select count(*) from  P_ICHAN_T.fitment_focus_sub_output  ; 
+ -- select * from   P_ICHAN_T.fitment_focus_sub_output  r where slr_id =1008203182; 
+---------------------- -------- -------- -------- -------- -------- -------- -------- -------- -------- -------- -------- 
+DROP TABLE IF EXISTS P_ICHAN_T.focus_fitment_UK_LL ; -- SELECT * FROM P_ICHAN_T.focus_fitment_UK_LL ;
+CREATE  TABLE P_ICHAN_T.focus_fitment_UK_LL 
+      SELECT
+	  Focus_cat,
+	  USER_ID,
+      ct_mtrcycle,
+      DomesticCBT,
+      SELLER_SEGMENT,
+      FA,
+                ITEM_COND,
+      SUM(LL_f)/7 AS LL
+      FROM (
+            SELECT
+			case when F.LEAF_CATEG_ID=c.LEAF_CATEG_ID then 'Y' else 'N' end as Focus_cat,
+                I.SLR_ID AS USER_ID,
+                I.AUCT_START_DT,
+                I.AUCT_END_DT,
+				CASE WHEN COND.CNDTN_ROLLUP_ID =  1 THEN 'New' else 'Others' END AS ITEM_COND,
+            CASE WHEN(CAST (CASE WHEN CAST (I.flags10 as INT) < 0  THEN
+CAST (I.flags10 as INT) + 2147483648 
+ELSE CAST (I.flags10 AS INT  )  END AS   INT  ) & 64 )  >= 1 THEN 'Y' ELSE 'N' END 
+AS FA,
+                ct_mtrcycle,
+                CASE WHEN U.USER_DSGNTN_ID = 2 THEN 'B2C' ELSE 'C2C' END AS SELLER_SEGMENT,
+                CASE WHEN I.SLR_CNTRY_ID = 3 AND I.item_site_id = 3  THEN 'Domestic'
+                     WHEN I.SLR_CNTRY_ID <> 3 AND I.item_site_id = 3 THEN 'Import Active'
+                     WHEN I.SLR_CNTRY_ID = 3 AND I.item_site_id <> 3 THEN 'Export Active' END AS DomesticCBT,
+                COUNT(DISTINCT I.ITEM_ID) AS LL_f
+            FROM DW_LSTG_ITEM I
+                                           LEFT JOIN LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = I.AUCT_END_DT AND COND.ITEM_ID = I.ITEM_ID
+                INNER JOIN      p_csi_tbs_t.SH_UKDE_FITMENT_CATEG_new  AS F ON I.ITEM_SITE_ID = F.SITE_ID AND I.LEAF_CATEG_ID=F.LEAF_CATEG_ID AND fmt_enabled = 'Y' -- SELECT * FROM    p_csi_tbs_t.SH_UKDE_FITMENT_CATEG_new 
+		left JOIN (   select DISTINCT  X.categ_lvl5_name,
+						 CAT.LEAF_CATEG_ID ,  CAT.categ_lvl4_name,  CAT.categ_lvl3_name
+				
+					from P_ICHAN_T.focus_fitment_upload	X
+					INNER JOIN DW_CATEGORY_GROUPINGS CAT ON X.CATEG_LVL5_NAME=CAT.CATEG_LVL5_NAME
+					---CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and cat.site_id =3
+					WHERE cat.site_id =3					)  c on F.LEAF_CATEG_ID=c.LEAF_CATEG_ID -- SELECT * FROM  P_ICHAN_T.focus_fitment_upload		
+--                 INNER JOIN DW_LSTG_ITEM_COLD AS COLD ON I.ITEM_ID = COLD.ITEM_ID AND I.AUCT_END_DT = COLD.AUCT_END_DT
+                                          AND I.AUCT_END_DT >= (SELECT RTL_WEEK_BEG_DT FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID = -1 GROUP BY 1)
+                INNER JOIN DW_USERS U ON U.USER_ID = I.SLR_ID
+            WHERE I.AUCT_END_DT >= (SELECT RTL_WEEK_BEG_DT FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID = -1 GROUP BY 1)
+              AND I.AUCT_TYPE_CODE NOT IN (10,12,15)
+              AND I.wacko_yn = 'N'
+              AND (I.slr_cntry_id = 3 or I.item_site_id = 3)
+            GROUP BY 1,2,3,4,5,6,7,8,9
+            ) A
+      INNER JOIN DW_CAL_DT CAL ON A.AUCT_START_DT < CAL.CAL_DT AND A.AUCT_END_DT >= CAL.CAL_DT AND AGE_FOR_RTL_WEEK_ID = -1
+	  where DomesticCBT ='Domestic'
+	  and SELLER_SEGMENT ='B2C'
+	  AND ct_mtrcycle IN (	'Mtrcycle','C&T') 
+      GROUP BY 1,2,3,4,5,6,7;
+	  	 -- select * from   P_ICHAN_T.focus_fitment_UK_LL  ORDER by 1
+		 
+DROP TABLE IF EXISTS P_ICHAN_T.focus_fitment_UK_split ; -- SELECT * FROM P_ICHAN_T.focus_fitment_UK_split  ;
+CREATE  TABLE P_ICHAN_T.focus_fitment_UK_split as  		
+select 
+  Focus_cat,
+	      ct_mtrcycle,
+      DomesticCBT,
+      SELLER_SEGMENT,
+	sum (  case when fa='Y' then ll else 0 end)/sum(ll) as FA_adoption,
+	sum(ll) ll from (
+		 select 
+		  Focus_cat,
+	      ct_mtrcycle,
+      DomesticCBT,
+      SELLER_SEGMENT,
+      FA,
+      ITEM_COND,
+	  sum(LL) ll
+	  from  P_ICHAN_T.focus_fitment_UK_LL 
+	  group by 1,2,3,4,5,6) sub
+	  group by 1,2,3,4;
+				
+	  --select fa, sum(ll) from  P_InventoryPlanning_T.Fitment_LL_UK_user  group by 1
+
+--DROP TABLE IF EXISTS   P_InventoryPlanning_T.Fitment_LL_UK_MOTO_REPORT ; 
+--CREATE TABLE  P_InventoryPlanning_T.Fitment_LL_UK_MOTO_REPORT AS 
+/*	SELECT 
+	USER_ID,
+	USER_SLCTD_ID,ct_mtrcycle,ITEM_COND,
+	SUM(ENABLED_LL )  ENABLED_LL,
+	SUM( ADOPTED_LL)  ADOPTED_LL,
+	SUM(ADOPTED_LL/ENABLED_LL) FA_AOPTION
+FROM (
+	  select A.USER_ID, 
+	  user_slctd_id,
+	  ct_mtrcycle,
+	  ITEM_COND,
+	  SUM(case when FA ='Y' THEN LL ELSE 0  END ) AS ADOPTED_LL,
+	   SUM( LL  )  AS ENABLED_LL
+	   FROM  P_InventoryPlanning_T.Fitment_LL_UK_user  A
+	   LEFT JOIN  DW_USERs U ON U.USER_ID= A.USER_ID 
+	   GROUP BY 1,2,3,4
+	   ) GROUP BY 1,2 ,3,4; */
+
+----------------------------------------------------------------------------------------------------------------------------------------
+-----------------------AREST REPORT STARTS HERE-----------------
+  --- 4. weekly tracker
+drop table if exists   P_ICHAN_T.fitment_focus_cat_L5_weekly  ; 
+create table P_ICHAN_T.fitment_focus_cat_L5_weekly as 
+
+select 
+retail_year, 
+retail_week,
+
+BSNS_VRTCL_NAME,
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name,
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name,
+CAT.CATEG_LVL4_ID, 
+CAT.CATEG_LVL4_NAME,
+CAT.CATEG_LVL5_ID, 
+CAT.CATEG_LVL5_NAME,
+ftmnt_adopted_rate_grp,
+--slr_id,
+--case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  'Other'  end as Condition,
+
+CASE WHEN(CAST (CASE WHEN CAST (lst.flags10 as INT) < 0  THEN
+CAST (lst.flags10 as INT) + cast (2147483648  as int)
+ELSE CAST (lst.flags10 AS INT  )  END AS   INT  ) & 64 ) >= 1 THEN 'Y' ELSE 'N' END 
+AS FITMENT_ADOPTD_Flag,
+count(distinct lst.item_id) LL
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+INNER JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_new WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   ON lst.ITEM_SITE_ID=F.SITE_ID AND lst.LEAF_CATEG_ID=F.LEAF_CATEG_ID 
+--inner join ( select distinct  seller_id from  P_ICHAN_T.recyclers_upload)  c on lst.slr_id=c.seller_id-- select * from   P_ICHAN_T.recyclers_upload order by seller_id rank where seller_id =1077516705
+INNER JOIN (select CAL_DT,RETAIL_YEAR, QTR_OF_YEAR_ID,Retail_week, AGE_FOR_RTL_WEEK_ID,age_for_rtl_year_id,age_for_qtr_id  from DW_CAL_DT group by 1,2, 3, 4,5,6,7 ) CAL  ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT and AGE_FOR_RTL_WEEK_ID =-1
+-- select* from  DW_CAL_DT cal  where retail_week =22  and cal.age_for_rtl_year_id in (0) 
+--inner join P_ICHAN_T.certified_ll   c on lst.Slr_ID=c.SLr_ID
+INNER  JOIN 	DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 --and cASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and cat.site_id =3
+----INNER JOIN (select distinct  categ_lvl4_id from categ_l4  ) c on CAT.categ_lvl4_id=c.categ_lvl4_id
+INNER JOIN (select categ_lvl5_name, max(ftmnt_adopted_rate_grp) ftmnt_adopted_rate_grp from P_ICHAN_T.focus_fitment_upload  group by 1 )  c on CAT.categ_lvl5_name=c.categ_lvl5_name
+--INNER JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_NEW WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   				ON lst.SLR_SITE_ID=F.SITE_ID AND lst.LEAF_CATEG_ID=F.LEAF_CATEG_ID 
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  --AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and lst.SLR_CNTRY_ID =3
+--and lst.AUCT_END_DATE>=CURRENT_DATE
+ group by 1,2,3,4 ,5,6,7,8  ,9,10,11,12,13;
+ --  select * from  P_ICHAN_T.fitment_focus_cat_L5_weekly  ;  
+ 
+ -- weekly output 
+ drop table if exists   P_ICHAN_T.fitment_focus_cat_L5_base_weekly  ; 
+create table P_ICHAN_T.fitment_focus_cat_L5_base_weekly as 
+
+ select
+ Retail_year,
+ Retail_Week,
+ BSNS_VRTCL_NAME,
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name,
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name,
+CAT.CATEG_LVL4_ID, 
+CAT.CATEG_LVL4_NAME,
+CAT.CATEG_LVL5_ID, 
+CAT.CATEG_LVL5_NAME,
+ftmnt_adopted_rate_grp,
+sum(case when fitment_adoptd_flag ='Y' then ll else 0 end ) as fitment_ll,
+sum( ll) total_enabled_lL
+from  P_ICHAN_T.fitment_focus_cat_L5_weekly  cat
+ group by 1,2,3,4 ,5,6,7,8  ,9,10 ,11,12; 
+ 
+-- select * from  P_ICHAN_T.fitment_focus_cat_L5_base_weekly ;
+
+ ----- create history table 
+ --create table    P_ICHAN_T.fitment_focus_cat_L5_base_history  as select * from   P_ICHAN_T.fitment_focus_cat_L5_base_weekly ;
+
+-- Select * from  P_ICHAN_T.fitment_focus_cat_L5_base_history  ;
+ 
+CONVERT TO DELTA   P_ICHAN_T.fitment_focus_cat_L5_base_history  ;
+DELETE FROM   P_ICHAN_T.fitment_focus_cat_L5_base_history   
+WHERE
+(RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+
+) ; 
+
+INSERT INTO     P_ICHAN_T.fitment_focus_cat_L5_base_history
+SELECT * FROM    P_ICHAN_T.fitment_focus_cat_L5_base_weekly ;
+
+-- Select * from P_ICHAN_T.fitment_focus_cat_L5_base_weekly ; 
+ ------------------------------------------------------------------
+ -----------------------------------------
+ -----------------------------------------
+ -----------------------------------------
+ -- 5. seller weekly track
+  drop table if exists   P_ICHAN_T.fitment_focus_sub_seller_1  ; 
+ create table P_ICHAN_T.fitment_focus_sub_seller_1 as 
+
+select 
+Retail_year,
+Retail_week, 
+BSNS_VRTCL_NAME,
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name,
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name,
+CAT.CATEG_LVL4_ID, 
+CAT.CATEG_LVL4_NAME,
+CAT.CATEG_LVL5_ID, 
+CAT.CATEG_LVL5_NAME,
+ftmnt_adopted_rate_grp,
+slr_id,
+--case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  'Other'  end as Condition,
+
+CASE WHEN(CAST (CASE WHEN CAST (lst.flags10 as INT) < 0  THEN
+CAST (lst.flags10 as INT) + cast (2147483648  as int)
+ELSE CAST (lst.flags10 AS INT  )  END AS   INT  ) & 64 ) >= 1 THEN 'Y' ELSE 'N' END 
+AS FITMENT_ADOPTD_Flag,
+count(distinct lst.item_id) LL
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+
+--inner join ( select distinct  seller_id from  P_ICHAN_T.recyclers_upload)  c on lst.slr_id=c.seller_id-- select * from   P_ICHAN_T.recyclers_upload order by seller_id rank where seller_id =1077516705
+--inner join P_ICHAN_T.certified_ll   c on lst.Slr_ID=c.SLr_ID
+INNER JOIN (select CAL_DT,RETAIL_YEAR, QTR_OF_YEAR_ID,Retail_week, AGE_FOR_RTL_WEEK_ID,age_for_rtl_year_id,age_for_qtr_id  from DW_CAL_DT group by 1,2, 3, 4,5,6,7 ) CAL 
+ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT and cal.age_for_rtl_year_id in (0) and age_for_qtr_id =0   and AGE_FOR_RTL_WEEK_ID =-1
+INNER  JOIN 	DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 --and cASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+----INNER JOIN (select distinct  categ_lvl4_id from categ_l4  ) c on CAT.categ_lvl4_id=c.categ_lvl4_id
+INNER JOIN (select categ_lvl5_name, max(ftmnt_adopted_rate_grp) ftmnt_adopted_rate_grp from P_ICHAN_T.focus_fitment_upload  group by 1 )  c on CAT.categ_lvl5_name=c.categ_lvl5_name
+--INNER JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_NEW WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   				ON lst.SLR_SITE_ID=F.SITE_ID AND lst.LEAF_CATEG_ID=F.LEAF_CATEG_ID 
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  --AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and lst.SLR_CNTRY_ID =3
+and SLR_ID in ( select distinct slr_id from P_ICHAN_T.fitment_focus_sub_seller  where ftmnt_adopted_rate_grp ='01.< 30%' and rank_order <=300) 
+--and lst.AUCT_END_DATE>=CURRENT_DATE
+ group by 1,2,3,4 ,5,6,7,8  ,9,10,11,12,13,14;
+ 
+-- Select * from P_ICHAN_T.fitment_focus_sub_seller_1  ; 
+ 
+ ---select * from  P_ICHAN_T.fitment_focus_sub; ----  select sum(total_enabled_lL) from  P_ICHAN_T.fitment_focus_sub_cat  where slr_id =82983844
+
+ drop table if exists  P_ICHAN_T.fitment_focus_sub_seller_2 ; 
+ create table  P_ICHAN_T.fitment_focus_sub_seller_2 as 
+ select  slr_id,USER_SLCTD_ID ,
+ Retail_year,
+ Retail_week,
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name,
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name,
+CAT.CATEG_LVL4_ID, 
+CAT.CATEG_LVL4_NAME,
+CAT.CATEG_LVL5_ID, 
+CAT.CATEG_LVL5_NAME,
+ftmnt_adopted_rate_grp,
+sum(case when fitment_adoptd_flag ='Y' then ll else 0 end ) as fitment_ll,
+sum( ll) total_enabled_lL
+from  P_ICHAN_T.fitment_focus_sub_seller_1  cat
+left outer JOIN DW_USERs U ON U.USER_ID= cat.Slr_ID 
+where retail_week in (  Select distinct retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID in (0,-1,-2,-3) )
+and SLR_ID in ( select distinct slr_id from P_ICHAN_T.fitment_focus_sub_seller  where ftmnt_adopted_rate_grp ='01.< 30%' and rank_order <=300) 
+ group by 1,2,3,4 ,5,6,7,8 ,9,10,11,12,13 ; 
+ 
+ 
+--- create table  P_ICHAN_T.fitment_focus_sub_seller_history as select * from  P_ICHAN_T.fitment_focus_sub_seller_2  ;
+ 
+--  Select * from P_ICHAN_T.fitment_focus_sub_seller_history  ;
+ 
+CONVERT TO DELTA  P_ICHAN_T.fitment_focus_sub_seller_history ;
+DELETE FROM  P_ICHAN_T.fitment_focus_sub_seller_history  
+WHERE
+(RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+
+) ; 
+
+-- select distinct retail_year,  retail_week from   P_ICHAN_T.fitment_focus_sub_seller_history 
+
+INSERT INTO    P_ICHAN_T.fitment_focus_sub_seller_history
+SELECT * FROM    P_ICHAN_T.fitment_focus_sub_seller_2  ;
+
+--DELETE FROM  P_ICHAN_T.fitment_focus_sub_seller_history where retail_year =2022 and retail_week in (36,37,38) --- between 26 to 39 ;
+
+--select distinct retail_week from  P_ICHAN_T.fitment_focus_sub_seller_history  ;
+
+-- select* from  P_ICHAN_T.fitment_focus_sub_seller_2 where USER_SLCTD_ID ='brentwoodautospares1969'  and retail_week =21  and categ_lvl5_name ='ECUs & Computer Modules'; 
+ /*
+ --- CONVERT TO DELTA   P_ICHAN_T.focus_fitment_upload ;
+ -----DELETE FROM P_ICHAN_T.focus_fitment_upload  where  lower(CATEG_LVL5_NAME) ='sales brochures' 
+ ---Select * from  P_ICHAN_T.focus_fitment_upload ;
+ Sales Brochures
+---DELETE FROM P_ICHAN_T.focus_fitment_upload  -- where  CustomerName='Alfreds Futterkiste';
+----elect * from  P_ICHAN_T.focus_fitment_upload
+-- where  CATEG_LVL5_NAME in  (
+ 
+ 'Other Belt Parts',
+'Parking Cameras',
+'Parking Sensors',
+'Visible Cameras',
+'Carburettor Parts',
+'Carburettors',
+'Fuel Tank Caps',
+'Gaskets, Seals & O-Rings',
+'A/C Hoses & Fittings',
+'A/C Receiver Dryers & Accumulators',
+'Other Air Conditioning & Heating',
+'Hoses, Ducts & Fittings',
+'Nitrous Oxide',
+'Performance Airboxes',
+'Aerials',
+'Badges, Decals & Emblems',
+'Other Exterior Styling',
+'Sun Strips',
+'Brake Hoses, Lines & Fittings',
+'Brake Relays',
+'Master Cylinders',
+'Reservoirs & Caps',
+'Wires, Cables & Connectors',
+'Angel Eyes',
+'Brake Lights',
+'Daytime Running Lights',
+'Headlights',
+'Lenses, Shades & Tints',
+'Spot, Fog & Driving Lights',
+'Underbody & Puddle Lighting',
+'Batteries',
+'Battery & BMS Units',
+'Battery Management Systems (BMS)',
+'Charging Cables',
+'Wires & Cabling',
+'Other Engine Tuning',
+'Performance Cylinder Heads',
+'Performance ECUs',
+'Wiring Kits',
+'Engine Bearings',
+'Gaskets & Seals',
+'Push Rods',
+'Rocker Arms & Parts',
+'Clamps, Flanges, Hangers & Hardware',
+'Exhaust Gaskets',
+'Manifolds & Headers',
+'Body Mouldings & Trims',
+'Car Covers',
+'Window Seals, Gaskets & Trims',
+'Window Tinting',
+'Other Exterior Parts & Accessories',
+'Hinges, Latches & Additional Components',
+'Pickup Truck Beds & Repair Sections',
+'Additional Parts',
+'Convertible Tops & Parts',
+'Hardtops, Roof Panels & Parts',
+'Spare Tyre Carriers & Covers',
+'Additional Wiper & Washer Components',
+'Fuel Cells',
+'Performance Carburettors',
+'Performance Fuel Filters',
+'Performance Fuel Pumps',
+'Performance Fuel Valves',
+'Distributors',
+'Ignition Kits',
+'Ignition Points',
+'Ignition Wires & Coil Boots',
+'Spark Plugs',
+'Interior Locks & Lock Hardware',
+'Airbag Parts',
+'Airbags',
+'Other Interior Safety',
+'Seat Belts & Parts',
+'Other Interior Parts & Accessories',
+'Rear View Mirrors',
+'Additional Seat Parts',
+'Headrests',
+'Seat Covers',
+'Seats',
+'Steering Wheels & Horn Buttons',
+'Cargo Nets, Guards & Boot Organisers',
+'Cup Holders',
+'Sun & Privacy Shades',
+'Door Sills & Surrounds',
+'Gauges & Dial Kits',
+'Light Bars',
+'Headlight Ballasts & Ignitors',
+'Light Bulbs & LEDs',
+'Light Mounts & Brackets',
+'Other Lighting & Bulbs',
+'Side Marker Light Assemblies',
+'Sockets, Connectors & Wiring',
+'Other Car Manuals',
+'Other Car Parts & Accessories',
+'Other Car Tuning & Styling',
+'Owner & Operator Manuals',
+'Parts Catalogues',
+'Ducts & Fittings',
+'Clamps, Flanges & Hangers',
+'Other Performance Exhausts',
+'Other Performance Ignition',
+'Performance Distributors',
+'Performance Ignition Kits',
+'Performance Ignition Leads',
+'Performance Spark Plugs',
+'Performance Axles & Parts',
+'Bike Racks',
+'Service & Repair Manuals',
+'Battery Accessories',
+'ECUs & Computer Modules',
+'Fuses & Fuse Boxes',
+'Relays',
+'Wiring Harnesses, Cables & Connectors',
+'Steering Stabilizers',
+'Trailer Brake Controllers',
+'Automatic Transmission Parts',
+'Other Wheel & Tyre Parts',
+'Valve Stems & Caps',
+'Snow Chains, Anti-Skid & Snow Socks',
+'Wheel Centre Caps',
+'Wheel Trims & Trim Rings')
+ 
+ 
+ 
+ 
+ 'Tail Lifts',
+'Lift Supports & Prop Rods',
+'Handbrake & Gear Stick Gaiters',
+'Performance Tie Rods & Ends',
+'Wheels with Tyres',
+'Rims',
+'Number Plate Light Assemblies',
+'Alternators & Generators',
+'Performance Chips',
+'Heater Control Valve',
+'Heat Shields, Wraps & Sleeves',
+'Self-Levelling Suspension Parts',
+'Flywheels & Flexplates',
+'Windscreen Wiper Arms',
+'Wiper Arms',
+'Seals & Gaskets',
+'Cargo & Sliding Doors',
+'Transmission Gaskets & Seals',
+'Additional Fuel Injection Parts',
+'Oil Sumps',
+'Floor Mats, Carpets & Boot Liners',
+'Lift Supports, Latches, Hinges & Additional Parts',
+'Interior Hardware & Clips',
+'Other Exhaust & Emission Parts',
+'Window Winders',
+'Performance Water Pumps',
+'Tyre Pressure Monitoring Sensors',
+'HVAC Blower Module & Resistor',
+'Starter Motors',
+'Steering Knuckles',
+'Transmission Sensors',
+'Ignition Coils',
+'Pedals, Footrests & Plates',
+'Air Bypass Valves',
+'A/C Condensers',
+'EGR Parts & Valves',
+'Driveshafts',
+'Transmission Rebuild Kits',
+'Automatic Transmission',
+'Power Steering Hoses',
+'Fuel Vapour Canisters',
+'Service Log Books',
+'Power Steering Pump Parts',
+'Power Outlets & Lighters',
+'Wheel Spacers, Adapters & Spigot Rings',
+'Steering Wheel Covers',
+'Valves, Valve Springs & Kits',
+'Rim Protectors'
+)
+*/
