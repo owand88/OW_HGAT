@@ -1,0 +1,706 @@
+/********************************************************************************************************************************************************************************
+Requestor - Vaibhav Verma & Frances Monro
+Developer - Gabriella Austin
+Description - Request received to understand the Collectibles buyer cohort with focus on the Buyers Who Sell (BWS), breakdown by segment and category etc.
+********************************************************************************************************************************************************************************/
+
+----------------------------------------------------------------------------------------------------------- 
+-- Create base tables to extract and combine seller and buyer data on a monthly basis
+-----------------------------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS P_gaaustin_T.COL02_Seller_Base_Pop;
+CREATE TABLE P_gaaustin_T.COL02_Seller_Base_Pop AS (
+SELECT
+	cal.RETAIL_YEAR
+	,cal.RTL_MONTH_BEG_DT
+	,tran.SLR_ID
+	,cat.meta_categ_name
+	,tran.EU_B2C_C2C_FLAG
+	,SUM(GMV20_PLAN) as Tot_GMV
+	,sum(GMV20_SOLD_QUANTITY) as Tot_BI
+	,Tot_GMV/Tot_BI as Avg_ASP
+
+FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+
+INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+ON 			lstg.ITEM_ID = tran.ITEM_ID
+
+LEFT JOIN 	ACCESS_VIEWS.DW_CAL_DT cal
+ON 			tran.GMV_DT = cal.CAL_DT
+
+INNER JOIN 	(	SELECT *
+				FROM access_views.dw_category_groupings 
+				WHERE sap_category_id NOT IN (5,7,41,23,-999)
+			) as cat																
+ON 			lstg.LEAF_CATEG_ID = cat.leaf_categ_id 
+AND 		cat.site_id = 3 
+
+LEFT JOIN	(	SELECT 
+					item_id
+					,new_vertical
+					,inventory_prop
+					,focus_flag 
+				FROM p_awang_ops_t.item_invent_lstg 
+			) inv
+ON 			lstg.item_id = inv.item_id
+
+INNER JOIN 	dw_users user
+ON 			tran.slr_id = user.user_id
+
+WHERE 		1=1
+AND 		inv.new_vertical = 'Collectibles'
+AND 		tran.ISCORE = 1
+AND 		tran.RPRTD_WACKO_YN = 'N'
+AND 		tran.SITE_ID = 3
+AND 		tran.auct_end_dt >= '2018-12-30' 
+AND 		tran.SLR_CNTRY_ID = 3
+AND 		cal.RETAIL_YEAR = 2022
+-- AND			tran.SLR_ID = '114579' -- testing ID
+
+GROUP BY 	1,2,3,4,5
+)
+;
+
+DROP TABLE IF EXISTS P_gaaustin_T.COL02_Buyer_Base_Pop;
+CREATE TABLE P_gaaustin_T.COL02_Buyer_Base_Pop AS (
+SELECT
+	cal.RETAIL_YEAR
+	,cal.RTL_MONTH_BEG_DT
+	,tran.BUYER_ID
+	,tran.EU_B2C_C2C_FLAG
+	,cat.meta_categ_name
+	,CASE 
+		WHEN seg.BUYER_TYPE_DESC IS NULL THEN 'N/A'
+		ELSE seg.BUYER_TYPE_DESC END AS BUYER_TYPE_DESC
+	,CASE
+		WHEN sell.slr_id IS NOT NULL THEN 1 ELSE 0 
+		END as Sell_CY_Flag
+	,CASE
+		WHEN sell_month.slr_id IS NOT NULL THEN 1 ELSE 0 
+		END as Sell_CM_Flag 
+	,SUM(GMV20_PLAN) as Tot_GMV
+	,sum(GMV20_SOLD_QUANTITY) as Tot_BI
+	,Tot_GMV/Tot_BI as Avg_ASP
+
+FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+
+INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+ON 			lstg.ITEM_ID = tran.ITEM_ID
+
+LEFT JOIN 	ACCESS_VIEWS.DW_CAL_DT cal
+ON 			tran.GMV_DT = cal.CAL_DT
+
+INNER JOIN 	(	SELECT *
+				FROM access_views.dw_category_groupings 
+				WHERE sap_category_id NOT IN (5,7,41,23,-999)
+			) as cat																
+ON 			lstg.LEAF_CATEG_ID = cat.leaf_categ_id 
+AND 		cat.site_id = 3 
+
+LEFT JOIN	(	SELECT 
+					item_id
+					,new_vertical
+					,inventory_prop
+					,focus_flag 
+				FROM p_awang_ops_t.item_invent_lstg 
+			) inv
+ON 			lstg.item_id = inv.item_id
+
+INNER JOIN 	dw_users user
+ON 			tran.BUYER_ID = user.user_id
+
+LEFT JOIN 	PRS_RESTRICTED_V.USER_DNA_FM_SGMNT SEG
+ON  		SEG.USER_ID = tran.BUYER_ID
+AND 		cal.RTL_MONTH_BEG_DT BETWEEN START_DATE AND END_DATE -- get the buyer segment as at the beginning of each month
+AND 		seg.USER_ID >= 0
+
+LEFT JOIN 	( 	SELECT DISTINCT
+				SLR_ID
+				FROM P_gaaustin_T.COL02_Seller_Base_Pop
+			) sell 
+ON 			tran.buyer_id = sell.slr_id -- Flag any buyer that has made a sale YTD
+
+LEFT JOIN 	( 	SELECT DISTINCT
+				SLR_ID
+				,RTL_MONTH_BEG_DT
+				FROM P_gaaustin_T.COL02_Seller_Base_Pop
+			) sell_month 
+ON 			tran.buyer_id = sell_month.slr_id
+AND 		cal.RTL_MONTH_BEG_DT = sell_month.RTL_MONTH_BEG_DT -- Flag any buyer that has made a sale in the same month
+
+WHERE 		1=1
+AND 		inv.new_vertical = 'Collectibles'
+AND 		tran.ISCORE = 1
+AND 		tran.RPRTD_WACKO_YN = 'N'
+AND 		tran.SITE_ID = 3
+AND 		tran.auct_end_dt >= '2018-12-30' 
+AND 		tran.SLR_CNTRY_ID = 3
+AND 		cal.RETAIL_YEAR = 2022
+-- AND 		tran.BUYER_ID = '1477904451' -- testing grouping 
+
+GROUP BY 	1,2,3,4,5,6,7,8,9
+
+);
+
+
+/*********************************************************************************************************
+Section 1 - Buyer Analysis
+**********************************************************************************************************/
+
+-----------------------------------------------------------------------------------------------------------
+-- Q1 - What is the monthly percentage of buyers who have made a sale this year in collectibles/ what is the YTD percentage of buyers who have made a sale this year in collectibles
+-----------------------------------------------------------------------------------------------------------
+SELECT
+	RETAIL_YEAR
+	,RTL_MONTH_BEG_DT
+	,coalesce(EU_B2C_C2C_FLAG,'Total') as EU_B2C_C2C_FLAG
+	,coalesce(META_CATEG_NAME,'ALL') AS META_CATEG_NAME
+	,coalesce(BUYER_TYPE_DESC,'ALL') AS BUYER_TYPE_DESC
+	,sum(Tot_GMV) AS Total_GMV
+	,count(distinct case when Sell_CY_Flag >= 1 then buyer_id else NULL end) AS sell_flag
+	,count(distinct BUYER_ID) 
+	,count(distinct case when Sell_CY_Flag >= 1 then buyer_id else NULL end) /count(distinct BUYER_ID) as perc_that_sell_month -- % buyers that have made a sale in the same month
+	,count(distinct case when Sell_CY_Flag >= 1 then buyer_id else NULL end) /count(distinct BUYER_ID) as perc_that_sell_ytd -- % buyers that have made a sale this year
+
+FROM 		P_gaaustin_T.COL02_Buyer_Base_Pop
+
+WHERE 		FOCUS_FLAG = 'Focused'
+
+GROUP BY 	RETAIL_YEAR
+			,RTL_MONTH_BEG_DT
+			,CUBE(META_CATEG_NAME,BUYER_TYPE_DESC,EU_B2C_C2C_FLAG)
+			
+ORDER BY 1,2,3
+;
+
+-----------------------------------------------------------------------------------------------------------
+-- Q2 - What is the avg ASP & avg GMB of buyers? Are they higher for buyers who sell?
+-----------------------------------------------------------------------------------------------------------
+SELECT 
+	RETAIL_YEAR
+	,RTL_MONTH_BEG_DT
+	,coalesce(META_CATEG_NAME,'ALL') as META_CATEG_NAME
+	,coalesce(EU_B2C_C2C_FLAG,'ALL') as EU_B2C_C2C_FLAG
+	,coalesce(Sell_CY_Flag,'ALL') as Sell_CY_Flag
+	,count(distinct buyer_id) as tot_num_buyers 
+	,avg(tot_GMV) as Avg_GMB
+	,avg(Avg_ASP) as Avg_ASP
+
+FROM 		P_gaaustin_T.COL02_Buyer_Base_Pop
+
+GROUP BY 	RETAIL_YEAR
+			,RTL_MONTH_BEG_DT
+			,CUBE(META_CATEG_NAME,Sell_CY_Flag,EU_B2C_C2C_FLAG)
+			
+;
+
+-----------------------------------------------------------------------------------------------------------
+-- Q3 - how much % of total GMB & SI do buyers who sell contribute
+-----------------------------------------------------------------------------------------------------------
+SELECT 
+	*
+	,SUM(tot_BI_split) OVER (PARTITION BY RETAIL_YEAR, RTL_MONTH_BEG_DT, META_CATEG_NAME, EU_B2C_C2C_FLAG) AS TOTAL_BI
+	,tot_BI_split / SUM(tot_BI_split) OVER (PARTITION BY RETAIL_YEAR, RTL_MONTH_BEG_DT, META_CATEG_NAME, EU_B2C_C2C_FLAG) AS BI_PERCENT
+	,SUM(Tot_GMB_split) OVER (PARTITION BY RETAIL_YEAR, RTL_MONTH_BEG_DT, META_CATEG_NAME, EU_B2C_C2C_FLAG) AS TOTAL_GMB
+	,Tot_GMB_split / SUM(Tot_GMB_split) OVER (PARTITION BY RETAIL_YEAR, RTL_MONTH_BEG_DT, META_CATEG_NAME, EU_B2C_C2C_FLAG) AS GMB_PERCENT
+
+FROM (
+		SELECT 
+			RETAIL_YEAR
+			,RTL_MONTH_BEG_DT
+			,coalesce(META_CATEG_NAME,'ALL') as META_CATEG_NAME
+			,coalesce(EU_B2C_C2C_FLAG,'ALL') as EU_B2C_C2C_FLAG
+			,coalesce(Sell_CY_Flag,'ALL') as Sell_CY_Flag
+			,sum(tot_bi) as tot_BI_split
+			,sum(tot_GMV) as Tot_GMB_split
+			,count(distinct buyer_id) as tot_num_buyers 
+
+		FROM 		P_gaaustin_T.COL02_Buyer_Base_Pop
+
+		GROUP BY 	RETAIL_YEAR
+					,RTL_MONTH_BEG_DT
+					,CUBE(META_CATEG_NAME,Sell_CY_Flag,EU_B2C_C2C_FLAG)		
+	)
+
+WHERE 	1=1
+AND		SELL_CY_FLAG <> 'ALL' -- analysis to see how much BWS contribute to the total GMV/BI. Therefore dont need ALL category (also causes sums to be wrong when included)
+;
+
+
+/********************************************************************************************************************************************************
+Section 2 - Detailed Buyer View (lower category levels)
+********************************************************************************************************************************************************/
+
+DROP TABLE IF EXISTS P_gaaustin_T.COL02_Detailed_Buyer_Base;
+CREATE TABLE P_gaaustin_T.COL02_Detailed_Buyer_Base as (
+SELECT
+	cal.RETAIL_YEAR
+	,cal.RTL_MONTH_BEG_DT
+	,tran.BUYER_ID
+	,case when tran.TRANSACTION_ID > 0 then tran.TRANSACTION_ID else tran.ITEM_ID end as transaction_key
+	,TRAN.EU_B2C_C2C_FLAG
+	,seg.BUYER_TYPE_DESC
+	,CASE
+		WHEN sell.slr_id IS NOT NULL THEN 1 ELSE 0 
+		END as Sell_CY_Flag
+	,cat.meta_categ_name
+	,cat.categ_lvl2_name
+	,cat.categ_lvl3_name
+	,SUM(GMV20_PLAN) AS GMV
+	,SUM(GMV20_SOLD_QUANTITY) AS BI
+
+FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+
+INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+ON 			lstg.ITEM_ID = tran.ITEM_ID
+
+LEFT JOIN 	ACCESS_VIEWS.DW_CAL_DT cal
+ON 			tran.GMV_DT = cal.CAL_DT
+
+INNER JOIN 	(	SELECT *
+				FROM access_views.dw_category_groupings 
+				WHERE sap_category_id NOT IN (5,7,41,23,-999)
+			) as cat																
+ON 			lstg.LEAF_CATEG_ID = cat.leaf_categ_id 
+AND 		cat.site_id = 3 
+
+LEFT JOIN	(	SELECT 
+					item_id
+					,new_vertical
+					,inventory_prop
+					,focus_flag 
+				FROM p_awang_ops_t.item_invent_lstg 
+			) inv
+ON 			lstg.item_id = inv.item_id
+
+INNER JOIN 	dw_users user
+ON 			tran.BUYER_ID = user.user_id
+
+LEFT JOIN 	( 	SELECT DISTINCT
+				SLR_ID
+				FROM P_gaaustin_T.COL02_Seller_Base_Pop
+			) sell 
+ON 			tran.buyer_id = sell.slr_id -- Flag any buyer that has made a sale YTD
+
+LEFT JOIN 	PRS_RESTRICTED_V.USER_DNA_FM_SGMNT SEG
+ON  		SEG.USER_ID = tran.BUYER_ID
+AND 		cal.RTL_MONTH_BEG_DT BETWEEN START_DATE AND END_DATE -- get the buyer segment as at the beginning of each month
+AND 		seg.USER_ID >= 0
+
+WHERE 		1=1
+AND 		inv.new_vertical = 'Collectibles'
+AND 		tran.ISCORE = 1
+AND 		tran.RPRTD_WACKO_YN = 'N'
+AND 		tran.SITE_ID = 3
+AND 		tran.auct_end_dt >= '2018-12-30' 
+AND 		tran.SLR_CNTRY_ID = 3
+AND 		cal.RETAIL_YEAR = 2022
+-- AND 		tran.BUYER_ID = '1477904451' -- testing grouping 
+	
+GROUP BY 1,2,3,4,5,6,7,8,9,10	
+)
+;	
+
+
+----------------------------------------------------------------------------------------------------------- 
+-- Create table for frequency analysis (BWS)
+-----------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_gaaustin_T.COL02_BWS_Pop_detailed;
+CREATE TABLE P_gaaustin_T.COL02_BWS_Pop_detailed AS (
+
+SELECT
+	*
+	,CASE
+		WHEN Tot_BI BETWEEN 0 AND 5 THEN '0 to 5'
+		WHEN Tot_BI BETWEEN 6 AND 10 THEN '6 to 10'
+		WHEN Tot_BI BETWEEN 11 AND 15 THEN '11 to 15'
+		WHEN Tot_BI BETWEEN 16 AND 25 THEN '16 to 25'
+		WHEN Tot_BI BETWEEN 26 AND 50 THEN '26 to 50'
+		WHEN Tot_BI BETWEEN 51 AND 100 THEN '51 to 100'
+		WHEN Tot_BI > 100 THEN '100+'
+		ELSE NULL END AS Freq
+	,CASE
+		WHEN tran_count BETWEEN 0 AND 5 THEN '0 to 5'
+		WHEN tran_count BETWEEN 6 AND 10 THEN '6 to 10'
+		WHEN tran_count BETWEEN 11 AND 15 THEN '11 to 15'
+		WHEN tran_count BETWEEN 16 AND 25 THEN '16 to 25'
+		WHEN tran_count BETWEEN 26 AND 50 THEN '26 to 50'
+		WHEN tran_count BETWEEN 51 AND 100 THEN '51 to 100'
+		WHEN tran_count > 100 THEN '100+'
+		ELSE NULL END AS Freq_new
+
+FROM  	(
+			SELECT
+				RETAIL_YEAR
+				,RTL_MONTH_BEG_DT
+				,BUYER_ID
+				,coalesce(BUYER_TYPE_DESC,'ALL') AS BUYER_TYPE_DESC
+				,coalesce(Sell_CY_Flag,'ALL') AS Sell_CY_Flag
+				,coalesce(EU_B2C_C2C_FLAG,'ALL') AS EU_B2C_C2C_FLAG
+				,coalesce(META_CATEG_NAME,'ALL') AS META_CATEG_NAME
+				,coalesce(categ_lvl2_name,'ALL') AS categ_lvl2_name
+				,SUM(GMV) AS Total_GMV
+				,SUM(BI) AS Tot_BI
+				,count(distinct transaction_key) as tran_count
+
+			FROM 		P_gaaustin_T.COL02_Detailed_Buyer_Base 
+			
+			GROUP BY 	RETAIL_YEAR
+						,RTL_MONTH_BEG_DT
+						,BUYER_ID
+						,CUBE(EU_B2C_C2C_FLAG,Sell_CY_Flag,BUYER_TYPE_DESC)
+						,ROLLUP(meta_categ_name,categ_lvl2_name)
+		) A 
+
+ORDER BY 1,2,3
+);
+
+select * from P_gaaustin_T.COL02_Detailed_Buyer_Base  order by 1,2,3
+-----------------------------------------------------------------------------------------------------------
+-- Detailed view of buyer populations by lvl 2 category
+-----------------------------------------------------------------------------------------------------------
+SELECT 
+	RETAIL_YEAR
+	,RTL_MONTH_BEG_DT
+	,META_CATEG_NAME
+	,categ_lvl2_name
+	,Sell_CY_Flag
+	,EU_B2C_C2C_FLAG 
+	,BUYER_TYPE_DESC
+	,count(DISTINCT BUYER_ID) buyer_count
+	,sum(Total_GMV) as Total_GMV
+	,sum(Tot_BI) as Total_BI
+
+FROM 		P_gaaustin_T.COL02_BWS_Pop_detailed
+
+GROUP BY 	RETAIL_YEAR
+			,RTL_MONTH_BEG_DT
+			,META_CATEG_NAME
+			,categ_lvl2_name
+			,Sell_CY_Flag
+			,EU_B2C_C2C_FLAG
+			,BUYER_TYPE_DESC
+
+-----------------------------------------------------------------------------------------------------------
+-- Analyse frequency at a lower category level
+-----------------------------------------------------------------------------------------------------------
+SELECT 
+	RETAIL_YEAR
+	,RTL_MONTH_BEG_DT
+	,META_CATEG_NAME
+	,categ_lvl2_name
+	,Sell_CY_Flag
+	,EU_B2C_C2C_FLAG 
+	,BUYER_TYPE_DESC
+	,freq_new
+	,count(DISTINCT BUYER_ID) buyer_count
+	,count(DISTINCT BUYER_ID)/SUM(COUNT(DISTINCT BUYER_ID)) over (PARTITION BY RETAIL_YEAR, RTL_MONTH_BEG_DT, META_CATEG_NAME, categ_lvl2_name, Sell_CY_Flag, EU_B2C_C2C_FLAG, BUYER_TYPE_DESC) as percentage
+	,sum(Total_GMV) as Total_GMV
+
+FROM 		P_gaaustin_T.COL02_BWS_Pop_detailed
+
+GROUP BY 	RETAIL_YEAR
+			,RTL_MONTH_BEG_DT
+			,META_CATEG_NAME
+			,categ_lvl2_name
+			,Sell_CY_Flag
+			,EU_B2C_C2C_FLAG
+			,freq_new
+			,BUYER_TYPE_DESC
+			
+ORDER BY 1,2,3,4,5,6
+;
+
+-----------------------------------------------------------------------------------------------------------
+-- Create table for further analysis on buyer behaviour between verticals
+-----------------------------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS P_gaaustin_T.COL02_Vertical_Analysis;
+CREATE TABLE P_gaaustin_T.COL02_Vertical_Analysis as (
+
+WITH buyer_overview as (
+SELECT 
+	a.*
+	,sum(transaction_key) OVER (PARTITION BY RETAIL_YEAR, RTL_MONTH_BEG_DT, BUYER_ID, new_vertical) as vert_sum
+	,RANK() OVER (PARTITION BY RETAIL_YEAR, RTL_MONTH_BEG_DT, BUYER_ID ORDER BY vert_sum DESC) as vertical_rank
+
+FROM (
+		SELECT
+			cal.RETAIL_YEAR
+			,cal.RTL_MONTH_BEG_DT
+			,tran.BUYER_ID
+			,tran.EU_B2C_C2C_FLAG
+			,inv.new_vertical
+			,cat.META_CATEG_NAME
+			,cat.categ_lvl2_name
+			,case when tran.TRANSACTION_ID > 0 then tran.TRANSACTION_ID else tran.ITEM_ID end as transaction_key
+			,CASE
+				WHEN sell.slr_id IS NOT NULL THEN 1 ELSE 0 
+				END as Sell_CY_Flag
+			,SUM(GMV20_PLAN) as Tot_GMV
+			,sum(GMV20_SOLD_QUANTITY) as Tot_BI
+
+		FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+		
+		INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+		ON 			lstg.ITEM_ID = tran.ITEM_ID
+
+		LEFT JOIN 	ACCESS_VIEWS.DW_CAL_DT cal
+		ON 			tran.GMV_DT = cal.CAL_DT
+		
+		INNER JOIN 	(	SELECT *
+						FROM access_views.dw_category_groupings 
+						WHERE sap_category_id NOT IN (5,7,41,23,-999)
+					) as cat																
+		ON 			lstg.LEAF_CATEG_ID = cat.leaf_categ_id 
+		AND 		cat.site_id = 3 
+		
+		LEFT JOIN	(	SELECT 
+							item_id
+							,new_vertical
+							,inventory_prop
+							,focus_flag 
+						FROM p_awang_ops_t.item_invent_lstg 
+					) inv
+		ON 			lstg.item_id = inv.item_id
+
+		INNER JOIN 	dw_users user
+		ON 			tran.BUYER_ID = user.user_id
+
+		LEFT JOIN 	( SELECT DISTINCT SLR_ID
+					  FROM P_gaaustin_T.COL02_Seller_Base_Pop
+					) sell 
+		ON 			tran.buyer_id = sell.slr_id -- Flag any buyer that has made a sale YTD
+		
+		INNER JOIN 	(SELECT DISTINCT -- inner join the buyer base pop to ensure we only look at buyers that have made at least one purchase from collectibles within the month
+						RETAIL_YEAR
+						,RTL_MONTH_BEG_DT
+						,BUYER_ID  
+					 FROM P_gaaustin_T.COL02_Buyer_Base_Pop
+					) filter
+		ON 			FILTER.BUYER_ID = tran.BUYER_ID
+		AND 		FILTER.RTL_MONTH_BEG_DT = cal.RTL_MONTH_BEG_DT
+
+		WHERE 		1=1
+		AND 		tran.ISCORE = 1
+		AND 		tran.RPRTD_WACKO_YN = 'N'
+		AND 		tran.SITE_ID = 3
+		AND 		tran.auct_end_dt >= '2018-12-30' 
+		AND 		tran.SLR_CNTRY_ID = 3
+		AND 		cal.RETAIL_YEAR = 2022
+-- 		AND 		CAT.META_CATEG_NAME = 'Collectables'
+-- 		AND 		tran.BUYER_ID = '1298035' -- testing grouping 
+/* 		and 		cal.RTL_MONTH_BEG_DT = '2022-01-02' */
+
+		GROUP BY 	1,2,3,4,5,6,7,8,9
+
+	) A 	
+
+ORDER BY 	1,2,3
+)
+
+SELECT 
+	A.*
+	,CASE
+		WHEN new_vertical = 'Collectibles' AND vertical_rank = 1 THEN 1
+		ELSE 0 END AS main_category_flag
+	,B.VERTICAL_COUNT
+
+FROM 		buyer_overview A
+
+CROSS JOIN 	(SELECT RETAIL_YEAR, RTL_MONTH_BEG_DT, BUYER_ID, count(distinct new_vertical) as vertical_count from buyer_overview group by 1,2,3) B 
+ON 			A.RETAIL_YEAR = B.RETAIL_YEAR
+AND 		A.RTL_MONTH_BEG_DT = B.RTL_MONTH_BEG_DT
+AND 		A.BUYER_ID = B.BUYER_ID
+);
+
+
+
+
+
+-- ======================================================== Testing ======================================================== --
+
+-- select count(distinct buyer_id) from P_gaaustin_T.COL02_Vertical_Analysis --order by vert_sum
+-- where 		1=1
+-- -- AND 		META_CATEG_NAME = 'Collectables'
+-- and 		RTL_MONTH_BEG_DT = '2022-01-02'
+-- and 		META_CATEG_NAME = 'Stamps'
+-- -- and  new_vertical = 'Collectibles'
+-- and vertical_count = 1 
+-- select * from P_gaaustin_T.COL02_Vertical_Analysis where rETAIL_YEAR = 2022 and RTL_MONTH_BEG_DT = '2022-01-02' and main_category_flag = 1 ORDER BY BUYER_ID
+-- and main_category_flag = 1 and vertical_count <> 1 ORDER BY BUYER_ID
+
+-- select * from P_gaaustin_T.COL02_Vertical_Analysis where rETAIL_YEAR = 2022 and RTL_MONTH_BEG_DT = '2022-01-02' and buyer_id in (
+-- '1089486'
+-- ,'1094650'
+-- ,'1099876'
+-- ,'1102534'
+-- ,'1104706'
+-- ,'1110999'
+-- ,'1113015'
+-- ,'1114548'
+-- ,'1126637'
+-- ,'1132154'
+-- ,'1133858'
+-- ,'1136639'
+-- ,'1136940'
+-- ,'1137856'
+-- ,'1147543'
+-- ,'1152338'
+-- ,'1154871'
+-- ,'1155790'
+-- ,'1159427'
+-- ,'1159695'
+-- ,'1162144'
+-- ,'1162188'
+-- ,'1164284'
+-- ,'1164431'
+-- ,'1166596'
+-- )
+-- order by buyer_id
+-- select count(distinct buyer_id) from P_gaaustin_T.COL02_Vertical_Analysis where main_category_flag = 1 and rETAIL_YEAR = 2022 and RTL_MONTH_BEG_DT = '2022-01-02'
+-- select count(*) from (select distinct RETAIL_YEAR,RTL_MONTH_BEG_DT,BUYER_ID from P_gaaustin_T.COL02_Vertical_Analysis where RTL_MONTH_BEG_DT = '2022-01-02'
+-- )
+-- select count(*) from (select distinct RETAIL_YEAR,RTL_MONTH_BEG_DT,BUYER_ID from P_gaaustin_T.COL02_Buyer_Base_Pop where RTL_MONTH_BEG_DT = '2022-01-02'
+-- )
+
+
+
+-----------------------------------------------------------------------------------------------------------
+-- Q5 - How many of buyers buy in other verticals as well as Collecitbles
+-----------------------------------------------------------------------------------------------------------
+
+SELECT 
+	*
+	,Num_main_buyers/TOT_buyers AS Main_percent
+	,NUM_ONLY_COLL/TOT_buyers AS Only_Col_percent
+
+FROM (
+		SELECT
+			A.RETAIL_YEAR
+			,A.RTL_MONTH_BEG_DT
+			,coalesce(SELL_CY_FLAG,'ALL') AS SELL_CY_FLAG
+			,coalesce(EU_B2C_C2C_FLAG,'ALL') AS EU_B2C_C2C_FLAG
+			,coalesce(META_CATEG_NAME,'ALL') AS META_CATEG_NAME
+			,coalesce(categ_lvl2_name,'ALL') AS categ_lvl2_name
+			,count(distinct case when main_category_flag >= 1 then buyer_id else NULL end) AS Num_main_buyers
+			,count(DISTINCT buyer_id) AS TOT_buyers
+			,COUNT(DISTINCT CASE WHEN vertical_count = 1 THEN buyer_id ELSE NULL END ) AS NUM_ONLY_COLL
+
+		FROM 		P_gaaustin_T.COL02_Vertical_Analysis A
+		
+		WHERE 		new_vertical = 'Collectibles'
+		
+		GROUP BY 	A.RETAIL_YEAR
+					,A.RTL_MONTH_BEG_DT
+					,CUBE(EU_B2C_C2C_FLAG,SELL_CY_FLAG)
+					,ROLLUP(META_CATEG_NAME,categ_lvl2_name)
+	)
+
+-----------------------------------------------------------------------------------------------------------
+-- Q6 - What is the average number of verticals buyers transact in?
+-----------------------------------------------------------------------------------------------------------
+SELECT
+	RETAIL_YEAR
+	,RTL_MONTH_BEG_DT
+	,coalesce(SELL_CY_FLAG,'ALL') AS SELL_CY_FLAG
+	,coalesce(EU_B2C_C2C_FLAG,'ALL') AS EU_B2C_C2C_FLAG
+	,coalesce(META_CATEG_NAME,'ALL') AS META_CATEG_NAME
+	,round(AVG(Tot_Monthly_Verticals),0) AS AVG_NUM_VERT
+	
+FROM 		P_gaaustin_T.COL02_Vertical_Analysis
+
+GROUP BY 	RETAIL_YEAR
+			,RTL_MONTH_BEG_DT
+			,CUBE(META_CATEG_NAME,EU_B2C_C2C_FLAG,SELL_CY_FLAG)
+
+
+-----------------------------------------------------------------------------------------------------------
+-- Q7 - What are the main categories other than Collectibles that buyer buy in?
+-----------------------------------------------------------------------------------------------------------
+
+SELECT  
+	RETAIL_YEAR
+	,RTL_MONTH_BEG_DT
+	,New_Vertical
+	,coalesce(SELL_CY_FLAG,'ALL') AS SELL_CY_FLAG
+	,coalesce(EU_B2C_C2C_FLAG,'ALL') AS EU_B2C_C2C_FLAG
+	,coalesce(META_CATEG_NAME,'ALL') AS META_CATEG_NAME
+	,coalesce(categ_lvl2_name,'ALL') AS categ_lvl2_name
+	,count(DISTINCT buyer_id) AS TOT_buyers
+
+FROM 		P_gaaustin_T.COL02_Vertical_Analysis
+
+GROUP BY 	RETAIL_YEAR
+			,RTL_MONTH_BEG_DT
+			,new_vertical
+			,CUBE(EU_B2C_C2C_FLAG,SELL_CY_FLAG)
+			,ROLLUP(META_CATEG_NAME,categ_lvl2_name)
+;
+
+
+
+
+-- ======================================================== Testing ======================================================== --
+
+-- drop table if exists trial2;
+-- create TEMPORARY table trial2 as 
+-- select distinct buyer_id from P_gaaustin_T.COL02_Vertical_Analysis where rtl_month_beg_dt = '2022-01-02' and META_CATEG_NAME = 'Stamps' and new_vertical = 'Collectibles' 
+
+-- drop table if exists trial3;
+-- create TEMPORARY table trial3 as 
+-- select distinct buyer_id from P_gaaustin_T.COL02_Vertical_Analysis where rtl_month_beg_dt = '2022-01-02' and META_CATEG_NAME <> 'Stamps' and new_vertical <> 'Collectibles' 
+
+-- select * from trial2 where buyer_id not in (select buyer_id from trial3)
+
+-- ;
+
+-- select count(distinct buyer_id) from trial2
+-- ;
+-- select count(distinct buyer_id) from (
+-- select * from P_gaaustin_T.COL02_Vertical_Analysis where rtl_month_beg_dt = '2022-01-02' and new_vertical = 'Electronics' and buyer_id in (select buyer_id from trial2))
+
+
+
+-- select * from P_gaaustin_T.COL02_Vertical_Analysis_Flag_Test where new_vertical = 'Collectibles' and META_CATEG_NAME <> 'Collectables' and rtl_month_beg_dt = '2022-01-02' AND Collectables_flag = 1
+-- and META_CATEG_NAME = 'Collectables'
+-- select count(*),sum(Collectables_flag) from P_gaaustin_T.COL02_Vertical_Analysis_Flag_Test where Collectables_flag = 1 and rtl_month_beg_dt = '2022-01-02' and META_CATEG_NAME = 'Collectables' order by buyer_id
+-- select count(distinct buyer_id) FROM P_gaaustin_T.COL02_Vertical_Analysis where rtl_month_beg_dt = '2022-01-02' and META_CATEG_NAME = 'Collectables'
+-- select count(distinct buyer_id) FROM P_gaaustin_T.COL02_Buyer_Base_Pop where rtl_month_beg_dt = '2022-01-02' and META_CATEG_NAME = 'Collectables'
+-- select * from P_gaaustin_T.COL02_Vertical_Analysis_Flag_Test where META_CATEG_NAME = 'Collectables' and new_vertical <> 'Collectibles'  ;
+-- select * from P_gaaustin_T.COL02_Vertical_Analysis_Flag_Test where META_CATEG_NAME <> 'Collectables' and Collectables_flag = 1 and new_vertical = 'Collectibles' and rtl_month_beg_dt = '2022-01-02'
+-- select count(*) from P_gaaustin_T.COL02_Vertical_Analysis_Flag_Test where Collectables_flag = 1 and new_vertical = 'Collectibles' and rtl_month_beg_dt = '2022-01-02' -- META_CATEG_NAME = 'Collectables' and 
+
+
+/****************************************************************************************************************************
+Section 2 - Vertical Analysis
+*****************************************************************************************************************************/
+
+SELECT  
+	RTL_MONTH_BEG_DT
+	,META_CATEG_NAME
+	,NEW_VERTICAL
+	,COUNT(DISTINCT BID_A) AS COUNT
+
+FROM (
+		SELECT
+			A.RTL_MONTH_BEG_DT
+			,A.BUYER_ID AS BID_A
+			,A.META_CATEG_NAME
+			,B.BUYER_ID AS BID_B
+			,B.NEW_VERTICAL
+		FROM (SELECT DISTINCT RTL_MONTH_BEG_DT, BUYER_ID, META_CATEG_NAME FROM P_gaaustin_T.COL02_Buyer_Base_Pop) A 
+		
+		INNER JOIN P_gaaustin_T.COL02_Vertical_Analysis B
+		ON A.RTL_MONTH_BEG_DT = B.RTL_MONTH_BEG_DT
+		AND A.BUYER_ID = B.BUYER_ID
+		AND B.NEW_VERTICAL <> 'Collectibles'
+	)
+
+GROUP BY 1,2,3
+
+
+
+
+
+
