@@ -1,0 +1,132 @@
+/*
+Requestor: Amy Kent
+Request: Pull top subjects for a 12 month rolling period
+Code Developer: Gabriella Austin
+*/
+
+With BASE_DATA as (
+select distinct 
+	item_id
+	,retail_year
+	,RETAIL_WEEK
+	,SLR_ID
+	,us.USER_SLCTD_ID as User_Name
+-- 	,MONTH_OF_YEAR_ID
+	,case 	when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+	 		when cat.meta_categ_id in (26395) then 'Lifestyle'
+			when cat.CATEG_LVL3_ID in (260325) then 'Lifestyle'
+			when cat.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else cat.bsns_vrtcl_name 
+		end as new_vertical
+	,cat.meta_categ_name
+	,cat.meta_categ_id
+	,EU_B2C_C2C_FLAG
+                
+FROM        prs_restricted_v.slng_lstg_super_fact lstg  
+
+INNER JOIN 	( select * from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS ) CAT
+ON 			lstg.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+AND 		lstg.LSTG_SITE_ID = CAT.SITE_ID
+AND 		CAT.SITE_ID = 3 
+
+INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT CAL
+ON 			CAL.CAL_DT = lstg.AUCT_START_DT
+AND 		CAL.RETAIL_YEAR in (2022) 
+and 		age_for_rtl_week_id <= -1
+
+INNER JOIN 	ACCESS_VIEWS.DW_USERS Us
+ON			US.USER_ID = lstg.SLR_ID
+
+WHERE       1=1
+and         lstg.SLR_CNTRY_ID = 3 
+AND			lstg.ISCORE = 1       
+AND         AUCT_END_DT >= '2018-12-20'
+AND         retail_year in (2022)
+-- AND 		AGE_FOR_RTL_WEEK_ID = -1
+AND			us.USER_SLCTD_ID IN ('leightonfinearts')
+) 
+
+
+,ASPECT_BASE as (
+select 
+	bd.*
+    ,lower(PRDCT_ASPCT_NM) as attribute
+    ,upper(ASPCT_VLU_NM) as attribute_type
+    ,ROW_NUMBER() over (partition by retail_year, aspct.item_id, attribute_type order by attribute_type) as RNum_Filter -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute
+		
+FROM		BASE_DATA bd
+
+LEFT JOIN   ( SELECT  PRDCT_ASPCT_NM, item_id, ASPCT_VLU_NM 
+              FROM    ITEM_ASPCT_CLSSFCTN 
+              WHERE   auct_end_dt >= '2018-12-15'
+              AND     lower(PRDCT_ASPCT_NM) in ('subject','style') 
+			  AND     NS_TYPE_CD in ('df','nf')
+            ) ASPCT 
+ON          ASPCT.item_id = BD.item_id
+						
+WHERE 		1=1
+AND			new_vertical = 'Collectibles'
+AND			upper(ASPCT_VLU_NM) is not NULL
+)
+
+
+select 
+	*
+	,row_number() over (partition by retail_year, retail_week, SLR_ID, User_Name, meta_categ_name, attribute  order by subject_count desc) as rn
+
+from 	(
+		select 
+			retail_year
+			,retail_week
+			,SLR_ID
+			,User_Name
+			, meta_categ_name
+			, attribute
+			, attribute_type
+-- 			, meta_categ_id
+			, count(distinct ITEM_ID) as subject_count
+		from 	( SELECT * FROM ASPECT_BASE WHERE RNum_Filter = 1 ) a      -- this means select only the first row of the attribute value
+		group by    1,2,3,4,5,6,7--,8,9--,10,11
+		) a
+	
+qualify(row_number() over (partition by retail_year, retail_week, SLR_ID, User_Name, meta_categ_name, attribute  order by subject_count desc) ) <= 10
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
