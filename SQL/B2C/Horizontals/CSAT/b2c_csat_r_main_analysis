@@ -1,0 +1,1043 @@
+/*Aim: Monthly CSAT report
+
+CSAT report process transferred from Sanjukta in 2022 May (https://zeta.dss.vip.ebay.com/zeta/share/#/notebook?notebookId=86ae8887-ef7f-4188-87f1-07ac04693011)
+
+Reference: https://wiki.vip.corp.ebay.com/display/DW/Consumer+Seller+Segmentation
+
+go/cxm dashboard: https://insights.qa.ebay.com/#/home
+new version of Consumer Insights Dashboard: https://cid-qa.corp.ebay.com/Home
+
+CSAT: (Extremely satisfied + Somewhat satisfied) / Total response
+NSAT: Net Satisfication Score, more harsh - Satisfied minus Not Satisfied
+
+--2 questions:
+select * from IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN
+where QSTN_ID in ( 36001, 37000)
+
+36001: How satisfied are you with your recent buying experience on eBay?
+37000: Please explain your satisfaction rating in as much detail as possible.
+
+--Main dataset
+select * from idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE where lstg_site_id=3 and user_cntry_id=3 and user_site_id=3;
+
+--Latest survey data available
+select max(user_srvy_cmpltd_dt) from idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE where lstg_site_id=3 and user_cntry_id=3 and user_site_id=3;
+
+--focused vertical
+select case when user_cntry_id in (0,1) then 'US' else upper(user_cntry_cd) end as user_cntry_cd,tchpnt_desc
+from idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE
+where tchpnt_id=92
+and user_cntry_id in (0,1,3,77,15) --0,1-US, 3-UK, 77-DE, 15-AU
+group by 1,2;
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Base table
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_RAW;
+CREATE TABLE P_SANSEN_T.CSAT_RAW AS
+(
+SELECT
+	s.EU_B2C_C2C_FLAG as b2c_c2c_flag,
+	t.USER_ID, -- join to buyer id
+	t.USER_SRVY_CMPLTD_DT,
+	t.LSTG_TITLE_TXT as Listing,
+	t.LSTG_ID, -- join to item_id
+	s.SLR_ID as slr_id,
+	--USER_SLCTD_ID as seller_name,
+	t.TCHPNT_ID,
+	t.TCHPNT_DESC,
+	q.QSTN_ID,
+	CASE WHEN q.QSTN_ID in (36001) THEN rsp.QSTN_RSPNS_VALUE_TXT ELSE NULL END AS Satisfied_with_eBay, --satisfaction rating
+	vr.VRBTM_RSPNS_TXT as verbatim --verbatim free form text from user
+
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t -- CSAT table for focus categories
+
+JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q -- user responses to the questions
+ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID -- join to get responses by survey ID
+
+INNER JOIN (
+			SELECT SLR_ID, BUYER_ID, SLR_CNTRY_ID, BYR_CNTRY_ID, ITEM_ID, TRANSACTION_ID, CREATED_DT, CK_TRANS_DT, EU_B2C_C2C_FLAG
+			FROM PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT 
+			WHERE SLR_CNTRY_ID in (3) 
+			AND BYR_CNTRY_ID in (3)
+			and SLR_CNTRY_ID=BYR_CNTRY_ID
+			AND CK_TRANS_DT >= '2021-01-01'
+			)s -- transaction table
+ON s.BUYER_ID = t.USER_ID
+AND s.item_id = t.LSTG_ID
+
+JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp -- all possible questions and responses
+ON rsp.QSTN_ID = q.QSTN_ID -- getting the question ID to join to response table
+AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN qs -- all questions and question IDs
+ON qs.QSTN_ID = q.QSTN_ID
+
+LEFT JOIN (
+           SELECT USER_SRVY_RSPNS_ID,QSTN_ID,VRBTM_RSPNS_TXT FROM IDM_NPS_V.NPS_TCHPNT_SRVY_VRBTM_RSPNS
+          ) VR
+ON t.USER_SRVY_RSPNS_ID= VR.USER_SRVY_RSPNS_ID 
+AND vr.qstn_id = 37000
+
+WHERE 1=1 
+	AND USER_SRVY_CMPLTD_DT IS NOT NULL
+	AND LSTG_ID not in (-99)
+	AND t.TCHPNT_ID in (92) --92 is the latest touchpoint ID for buyers 
+	AND q.QSTN_ID in ( 36001, 37000) --Numeric Value assigned to each of the questions
+	AND t.USER_SRVY_CMPLTD_DT >= '2021-01-01'
+	and t.USER_CNTRY_ID=3
+group by 1,2,3,4,5,6,7,8,9,10,11
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Sneakers (B2C & C2C)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS  P_SANSEN_T.sneakers_CSAT;
+CREATE TABLE  P_SANSEN_T.sneakers_CsaT AS
+(
+SELECT 
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.b2c_c2c_flag,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW raw
+
+INNER JOIN DW_USERS u
+	ON u.USER_ID = raw.slr_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10) 
+	AND AGE_FOR_MONTH_ID <0
+	
+--where raw.TCHPNT_DESC = 'Sneakers>140'--retired Sneakers>140 from mid-April 2022
+
+where raw.TCHPNT_DESC in ('Sneakers>100','Sneakers>140')
+group by 1,2,3,4,5,6,7,8,9
+); 
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Watches (B2C & C2C)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_SANSEN_T.watches_csat;
+CREATE TABLE  P_SANSEN_T.watches_csat AS
+(
+SELECT 
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.b2c_c2c_flag,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW raw
+
+INNER JOIN DW_USERS u
+	ON u.USER_ID = raw.slr_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10) 
+	AND AGE_FOR_MONTH_ID <0
+	
+--where raw.TCHPNT_DESC = 'Watches>2000'--retired watches >2000 from mid-April 2022
+
+where raw.TCHPNT_DESC in ('Watches>=1000','Watches>2000')
+group by 1,2,3,4,5,6,7,8,9
+); 
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Handbags (B2C & C2C)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_SANSEN_T.handbags_csat;
+CREATE TABLE  P_SANSEN_T.handbags_csat AS
+(
+SELECT 
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.b2c_c2c_flag,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW raw
+
+INNER JOIN DW_USERS u
+	ON u.USER_ID = raw.slr_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10) 
+	AND AGE_FOR_MONTH_ID <0
+	
+where raw.TCHPNT_DESC in ('Handbags')
+group by 1,2,3,4,5,6,7,8,9
+); 
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Sneakers, Watches, Handbags (B2C & C2C - US, DE, AU) Check with Manoj Kullampalayam Vadivel
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*
+--select * from access_views.dw_sites order by site_id;
+select 
+user_cntry_id
+,case when user_cntry_id in (0,1) then 'US' else upper(user_cntry_cd) end as user_cntry
+,tchpnt_desc
+from idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE
+where tchpnt_id=92
+and user_cntry_id in (0,1,3,77,15) --0,1-US, 3-UK, 77-DE, 15-AU
+group by 1,2,3
+order by 1,2;
+*/
+
+---------------
+--US
+---------------
+
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_RAW_US;
+CREATE TABLE P_SANSEN_T.CSAT_RAW_US AS
+(
+SELECT
+	case when user_cntry_id in (0,1) then 'US' else upper(user_cntry_cd) end as user_cntry,
+	s.EU_B2C_C2C_FLAG as b2c_c2c_flag,
+	t.USER_ID, -- join to buyer id
+	t.USER_SRVY_CMPLTD_DT,
+	t.LSTG_TITLE_TXT as Listing,
+	t.LSTG_ID, -- join to item_id
+	s.SLR_ID as slr_id,
+	t.TCHPNT_DESC,
+	CASE WHEN q.QSTN_ID in (36001) THEN rsp.QSTN_RSPNS_VALUE_TXT ELSE NULL END AS Satisfied_with_eBay, --satisfaction rating
+	vr.VRBTM_RSPNS_TXT as verbatim --verbatim free form text from user
+	
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t -- CSAT table
+
+JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q -- user responses to the questions
+ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID -- join to get responses by survey ID
+
+INNER JOIN (
+			SELECT SLR_ID, BUYER_ID, SLR_CNTRY_ID, BYR_CNTRY_ID, ITEM_ID, TRANSACTION_ID, CREATED_DT, CK_TRANS_DT, EU_B2C_C2C_FLAG
+			FROM PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT 
+			WHERE 
+			SLR_CNTRY_ID in (0,1) and BYR_CNTRY_ID in (0,1) 
+			AND CK_TRANS_DT >= '2021-01-01'
+			)s -- transaction table
+ON s.BUYER_ID = t.USER_ID
+AND s.item_id = t.LSTG_ID
+
+JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp -- all possible questions and responses
+ON rsp.QSTN_ID = q.QSTN_ID -- getting the question ID to join to response table
+AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN qs -- all questions and question IDs
+ON qs.QSTN_ID = q.QSTN_ID
+
+LEFT JOIN (
+           SELECT USER_SRVY_RSPNS_ID,QSTN_ID,VRBTM_RSPNS_TXT FROM IDM_NPS_V.NPS_TCHPNT_SRVY_VRBTM_RSPNS
+          ) VR
+ON t.USER_SRVY_RSPNS_ID= VR.USER_SRVY_RSPNS_ID 
+AND vr.qstn_id = 37000
+
+WHERE 1=1 
+	AND USER_SRVY_CMPLTD_DT IS NOT NULL
+	AND LSTG_ID not in (-99)
+	AND t.TCHPNT_ID in (92) --92 is the latest touchpoint ID for buyers 
+	AND q.QSTN_ID in ( 36001, 37000) --Numeric Value assigned to each of the questions
+	AND t.USER_SRVY_CMPLTD_DT >= '2021-01-01'
+	and t.TCHPNT_DESC in (
+	"PSA Sneakers"
+	,"Sneakers<=100"
+	,"Sneakers>100"
+	,"ESCROW Watches"
+	,"PSA & ESCROW Watches"
+	,"PSA Watches"
+	,"Watches<500"
+	,"Watches>=2000"
+	,"Watches>=500&<2000"
+	,"Handbags"
+	,"PSA Handbags"
+	)
+	and t.USER_CNTRY_ID in (0,1)
+group by 1,2,3,4,5,6,7,8,9,10);
+
+--US Sneakers
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_US_Sneakers;
+CREATE TABLE P_SANSEN_T.CSAT_US_Sneakers AS (
+SELECT 
+	user_cntry,
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.b2c_c2c_flag,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW_US raw
+
+INNER JOIN DW_USERS u
+	ON u.USER_ID = raw.slr_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10) 
+	AND AGE_FOR_MONTH_ID <0
+
+where raw.TCHPNT_DESC in (
+	"PSA Sneakers"
+	,"Sneakers<=100"
+	,"Sneakers>100")
+group by 1,2,3,4,5,6,7,8,9,10);
+
+--US Watches
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_US_Watches;
+CREATE TABLE P_SANSEN_T.CSAT_US_Watches AS (
+SELECT 
+	user_cntry,
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.b2c_c2c_flag,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW_US raw
+
+INNER JOIN DW_USERS u
+	ON u.USER_ID = raw.slr_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10) 
+	AND AGE_FOR_MONTH_ID <0
+
+where raw.TCHPNT_DESC in (
+	"ESCROW Watches"
+	,"PSA & ESCROW Watches"
+	,"PSA Watches"
+	,"Watches<500"
+	,"Watches>=2000"
+	,"Watches>=500&<2000")
+group by 1,2,3,4,5,6,7,8,9,10);
+
+--US Handbags
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_US_Handbags;
+CREATE TABLE P_SANSEN_T.CSAT_US_Handbags AS (
+SELECT 
+	user_cntry,
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.b2c_c2c_flag,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW_US raw
+
+INNER JOIN DW_USERS u
+	ON u.USER_ID = raw.slr_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10) 
+	AND AGE_FOR_MONTH_ID <0
+
+where raw.TCHPNT_DESC in (
+	"Handbags"
+	,"PSA Handbags")
+group by 1,2,3,4,5,6,7,8,9,10);
+
+
+---------------
+--DE
+---------------
+
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_RAW_DE;
+CREATE TABLE P_SANSEN_T.CSAT_RAW_DE AS
+(
+SELECT
+	case when user_cntry_id in (0,1) then 'US' else upper(user_cntry_cd) end as user_cntry,
+	s.EU_B2C_C2C_FLAG as b2c_c2c_flag,
+	t.USER_ID, -- join to buyer id
+	t.USER_SRVY_CMPLTD_DT,
+	t.LSTG_TITLE_TXT as Listing,
+	t.LSTG_ID, -- join to item_id
+	s.SLR_ID as slr_id,
+	t.TCHPNT_DESC,
+	CASE WHEN q.QSTN_ID in (36001) THEN rsp.QSTN_RSPNS_VALUE_TXT ELSE NULL END AS Satisfied_with_eBay, --satisfaction rating
+	vr.VRBTM_RSPNS_TXT as verbatim --verbatim free form text from user
+	
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t -- CSAT table
+
+JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q -- user responses to the questions
+ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID -- join to get responses by survey ID
+
+INNER JOIN (
+			SELECT SLR_ID, BUYER_ID, SLR_CNTRY_ID, BYR_CNTRY_ID, ITEM_ID, TRANSACTION_ID, CREATED_DT, CK_TRANS_DT, EU_B2C_C2C_FLAG
+			FROM PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT 
+			WHERE 
+			SLR_CNTRY_ID in (77) and BYR_CNTRY_ID in (77) 
+			and SLR_CNTRY_ID=BYR_CNTRY_ID
+			AND CK_TRANS_DT >= '2021-01-01'
+			)s -- transaction table
+ON s.BUYER_ID = t.USER_ID
+AND s.item_id = t.LSTG_ID
+
+JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp -- all possible questions and responses
+ON rsp.QSTN_ID = q.QSTN_ID -- getting the question ID to join to response table
+AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN qs -- all questions and question IDs
+ON qs.QSTN_ID = q.QSTN_ID
+
+LEFT JOIN (
+           SELECT USER_SRVY_RSPNS_ID,QSTN_ID,VRBTM_RSPNS_TXT FROM IDM_NPS_V.NPS_TCHPNT_SRVY_VRBTM_RSPNS
+          ) VR
+ON t.USER_SRVY_RSPNS_ID= VR.USER_SRVY_RSPNS_ID 
+AND vr.qstn_id = 37000
+
+WHERE 1=1 
+	AND USER_SRVY_CMPLTD_DT IS NOT NULL
+	AND LSTG_ID not in (-99)
+	AND t.TCHPNT_ID in (92) --92 is the latest touchpoint ID for buyers 
+	AND q.QSTN_ID in ( 36001, 37000) --Numeric Value assigned to each of the questions
+	AND t.USER_SRVY_CMPLTD_DT >= '2021-01-01'
+	and t.TCHPNT_DESC in (
+	"Sneakers>100"
+	,"Sneakers>118"
+	,"Watches>=2000"
+	,"Watches>=500&<2000"
+	)
+	and t.USER_CNTRY_ID in (77)
+group by 1,2,3,4,5,6,7,8,9,10);
+
+--DE Sneakers
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_DE_Sneakers;
+CREATE TABLE P_SANSEN_T.CSAT_DE_Sneakers AS (
+SELECT 
+	user_cntry,
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.b2c_c2c_flag,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW_DE raw
+
+INNER JOIN DW_USERS u
+	ON u.USER_ID = raw.slr_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10) 
+	AND AGE_FOR_MONTH_ID <0
+
+where raw.TCHPNT_DESC in (
+"Sneakers>100"
+,"Sneakers>118")
+group by 1,2,3,4,5,6,7,8,9,10);
+
+--DE Watches
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_DE_Watches;
+CREATE TABLE P_SANSEN_T.CSAT_DE_Watches AS (
+SELECT 
+	user_cntry,
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.b2c_c2c_flag,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW_DE raw
+
+INNER JOIN DW_USERS u
+	ON u.USER_ID = raw.slr_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10) 
+	AND AGE_FOR_MONTH_ID <0
+
+where raw.TCHPNT_DESC in (
+"Watches>=2000"
+,"Watches>=500&<2000")
+group by 1,2,3,4,5,6,7,8,9,10);
+
+--No DE Handbags
+
+---------------
+--AU
+---------------
+
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_RAW_AU;
+CREATE TABLE P_SANSEN_T.CSAT_RAW_AU AS
+(
+SELECT
+	case when user_cntry_id in (0,1) then 'US' else upper(user_cntry_cd) end as user_cntry,
+	s.EU_B2C_C2C_FLAG as b2c_c2c_flag,
+	t.USER_ID, -- join to buyer id
+	t.USER_SRVY_CMPLTD_DT,
+	t.LSTG_TITLE_TXT as Listing,
+	t.LSTG_ID, -- join to item_id
+	s.SLR_ID as slr_id,
+	t.TCHPNT_DESC,
+	CASE WHEN q.QSTN_ID in (36001) THEN rsp.QSTN_RSPNS_VALUE_TXT ELSE NULL END AS Satisfied_with_eBay, --satisfaction rating
+	vr.VRBTM_RSPNS_TXT as verbatim --verbatim free form text from user
+	
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t -- CSAT table
+
+JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q -- user responses to the questions
+ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID -- join to get responses by survey ID
+
+INNER JOIN (
+			SELECT SLR_ID, BUYER_ID, SLR_CNTRY_ID, BYR_CNTRY_ID, ITEM_ID, TRANSACTION_ID, CREATED_DT, CK_TRANS_DT, EU_B2C_C2C_FLAG
+			FROM PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT 
+			WHERE 
+			SLR_CNTRY_ID in (15) and BYR_CNTRY_ID in (15) 
+			and SLR_CNTRY_ID=BYR_CNTRY_ID
+			AND CK_TRANS_DT >= '2021-01-01'
+			)s -- transaction table
+ON s.BUYER_ID = t.USER_ID
+AND s.item_id = t.LSTG_ID
+
+JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp -- all possible questions and responses
+ON rsp.QSTN_ID = q.QSTN_ID -- getting the question ID to join to response table
+AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN qs -- all questions and question IDs
+ON qs.QSTN_ID = q.QSTN_ID
+
+LEFT JOIN (
+           SELECT USER_SRVY_RSPNS_ID,QSTN_ID,VRBTM_RSPNS_TXT FROM IDM_NPS_V.NPS_TCHPNT_SRVY_VRBTM_RSPNS
+          ) VR
+ON t.USER_SRVY_RSPNS_ID= VR.USER_SRVY_RSPNS_ID 
+AND vr.qstn_id = 37000
+
+WHERE 1=1 
+	AND USER_SRVY_CMPLTD_DT IS NOT NULL
+	AND LSTG_ID not in (-99)
+	AND t.TCHPNT_ID in (92) --92 is the latest touchpoint ID for buyers 
+	AND q.QSTN_ID in ( 36001, 37000) --Numeric Value assigned to each of the questions
+	AND t.USER_SRVY_CMPLTD_DT >= '2021-01-01'
+	and t.TCHPNT_DESC in (
+	"PSA Sneakers"
+	,"Sneakers>100"
+	,"PSA Watches"
+	,"Watches>450"
+	--,"PSA Handbags"
+	,"Handbags"
+	)
+	and t.USER_CNTRY_ID in (15)
+group by 1,2,3,4,5,6,7,8,9,10);
+
+--AU Sneakers
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_AU_Sneakers;
+CREATE TABLE P_SANSEN_T.CSAT_AU_Sneakers AS (
+SELECT 
+	user_cntry,
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.b2c_c2c_flag,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW_AU raw
+
+INNER JOIN DW_USERS u
+	ON u.USER_ID = raw.slr_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10) 
+	AND AGE_FOR_MONTH_ID <0
+
+where raw.TCHPNT_DESC in (
+"PSA Sneakers"
+,"Sneakers>100")
+group by 1,2,3,4,5,6,7,8,9,10);
+
+--AU Watches
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_AU_Watches;
+CREATE TABLE P_SANSEN_T.CSAT_AU_Watches AS (
+SELECT 
+	user_cntry,
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.b2c_c2c_flag,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW_AU raw
+
+INNER JOIN DW_USERS u
+	ON u.USER_ID = raw.slr_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10) 
+	AND AGE_FOR_MONTH_ID <0
+
+where raw.TCHPNT_DESC in (
+--"PSA Watches",
+"Watches>450")
+group by 1,2,3,4,5,6,7,8,9,10);
+
+--AU Handbags
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_AU_Handbags;
+CREATE TABLE P_SANSEN_T.CSAT_AU_Handbags AS (
+SELECT 
+	user_cntry,
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.b2c_c2c_flag,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW_AU raw
+
+INNER JOIN DW_USERS u
+	ON u.USER_ID = raw.slr_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10) 
+	AND AGE_FOR_MONTH_ID <0
+
+where raw.TCHPNT_DESC in (
+--"PSA Handbags",
+"Handbags")
+group by 1,2,3,4,5,6,7,8,9,10);
+
+
+--QC Check
+--select * from P_SANSEN_T.CSAT_RAW_US;
+--select * from P_SANSEN_T.CSAT_RAW_DE;
+--select * from P_SANSEN_T.CSAT_RAW_AU;
+--select * from P_SANSEN_T.CSAT_US_Sneakers;
+--select * from P_SANSEN_T.CSAT_DE_Sneakers;
+--select * from P_SANSEN_T.CSAT_AU_Sneakers;
+--select * from P_SANSEN_T.CSAT_US_Watches;
+--select * from P_SANSEN_T.CSAT_DE_Watches;
+--select * from P_SANSEN_T.CSAT_AU_Watches;
+
+--select * from P_SANSEN_T.CSAT_US_Handbags;
+--select * from P_SANSEN_T.CSAT_AU_Handbags;
+
+/*
+--Add to report data connection in Watches report
+select 
+user_cntry
+,b2c_c2c_flag
+,seller_name
+,count(distinct (case when age_for_month_id=-1 then user_id end)) as M_1_total_response
+,count(distinct (case when age_for_month_id=-1 and Satisfied_with_eBay='Extremely satisfied' then user_id end)) as M_1_extremely_satistified_user
+,count(distinct (case when age_for_month_id=-2 then user_id end)) as M_2_total_response
+,count(distinct (case when age_for_month_id=-2 and Satisfied_with_eBay='Extremely satisfied' then user_id end)) as M_2_extremely_satistified_user
+from P_SANSEN_T.Csat_US_Watches
+where age_for_month_id in (-1,-2)
+group by 1,2,3
+
+union all
+
+select 
+user_cntry
+,b2c_c2c_flag
+,seller_name
+,count(distinct (case when age_for_month_id=-1 then user_id end)) as M_1_total_response
+,count(distinct (case when age_for_month_id=-1 and Satisfied_with_eBay='Extremely satisfied' then user_id end)) as M_1_extremely_satistified_user
+,count(distinct (case when age_for_month_id=-2 then user_id end)) as M_2_total_response
+,count(distinct (case when age_for_month_id=-2 and Satisfied_with_eBay='Extremely satisfied' then user_id end)) as M_2_extremely_satistified_user
+from P_SANSEN_T.Csat_DE_Watches
+where age_for_month_id in (-1,-2)
+group by 1,2,3
+
+union all
+
+select 
+user_cntry
+,b2c_c2c_flag
+,seller_name
+,count(distinct (case when age_for_month_id=-1 then user_id end)) as M_1_total_response
+,count(distinct (case when age_for_month_id=-1 and Satisfied_with_eBay='Extremely satisfied' then user_id end)) as M_1_extremely_satistified_user
+,count(distinct (case when age_for_month_id=-2 then user_id end)) as M_2_total_response
+,count(distinct (case when age_for_month_id=-2 and Satisfied_with_eBay='Extremely satisfied' then user_id end)) as M_2_extremely_satistified_user
+from P_SANSEN_T.Csat_AU_Watches
+where age_for_month_id in (-1,-2)
+group by 1,2,3;
+
+
+
+
+select * from P_SANSEN_T.Csat_US_Watches
+where age_for_month_id=-1 
+
+union all
+
+select * from P_SANSEN_T.Csat_DE_Watches
+where age_for_month_id=-1 
+
+union all
+
+select * from P_SANSEN_T.Csat_AU_Watches
+where age_for_month_id=-1; 
+
+
+
+
+--Add to report data connection in Handbags report
+select 
+user_cntry
+,b2c_c2c_flag
+,seller_name
+,count(distinct (case when age_for_month_id=-1 then user_id end)) as M_1_total_response
+,count(distinct (case when age_for_month_id=-1 and Satisfied_with_eBay='Extremely satisfied' then user_id end)) as M_1_extremely_satistified_user
+,count(distinct (case when age_for_month_id=-2 then user_id end)) as M_2_total_response
+,count(distinct (case when age_for_month_id=-2 and Satisfied_with_eBay='Extremely satisfied' then user_id end)) as M_2_extremely_satistified_user
+from P_SANSEN_T.Csat_US_Handbags
+where age_for_month_id in (-1,-2)
+group by 1,2,3
+
+union all
+
+select 
+user_cntry
+,b2c_c2c_flag
+,seller_name
+,count(distinct (case when age_for_month_id=-1 then user_id end)) as M_1_total_response
+,count(distinct (case when age_for_month_id=-1 and Satisfied_with_eBay='Extremely satisfied' then user_id end)) as M_1_extremely_satistified_user
+,count(distinct (case when age_for_month_id=-2 then user_id end)) as M_2_total_response
+,count(distinct (case when age_for_month_id=-2 and Satisfied_with_eBay='Extremely satisfied' then user_id end)) as M_2_extremely_satistified_user
+from P_SANSEN_T.Csat_AU_Handbags
+where age_for_month_id in (-1,-2)
+group by 1,2,3;
+
+
+
+
+select * from P_SANSEN_T.Csat_US_Handbags
+where age_for_month_id=-1 
+
+union all
+
+select * from P_SANSEN_T.Csat_AU_Handbags
+where age_for_month_id=-1; 
+
+
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Brand Outlet (Brand outlet sellers - supplied by Robbie on 2022-07-25)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_SANSEN_T.csat_bo;
+create table P_SANSEN_T.csat_bo as(
+
+SELECT 
+	user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	bo.user_slctd_id as seller_name,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW raw
+
+--INNER JOIN P_awang_ops_T.seller_ops_83 bo 
+inner join p_robevans_t.bo_sellers bo--Use BO seller list provided by Robbie on 2022-07-25
+on raw.slr_id=bo.seller_id 
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10)
+	AND AGE_FOR_MONTH_ID <0
+	
+where raw.TCHPNT_DESC = 'Brand Outlet'
+--AND bo.seller_vertical = 'Fashion'
+group by 1,2,3,4,5,6,7,8
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Home Interiors (B2C Sellers - supplied by Mansie on 2022-07-29)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_SANSEN_T.homint_csat ;
+CREATE TABLE P_SANSEN_T.homint_csat AS (
+SELECT 
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW raw
+
+--INNER JOIN select * from P_UK_BC_T.HomeInterior hi
+inner join P_macheung_T.csat_home_interiors hi--Use seller list provided by Mansie on 2022-07-29
+on raw.slr_id=hi.seller_id 
+	
+inner join access_views.dw_users u
+on hi.seller_id=u.user_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10)
+	AND AGE_FOR_MONTH_ID <0
+where raw.TCHPNT_DESC in ('Home Interiors', 'Furniture') -- technically these two should be separated out, included Furniture based on feedback from Chris Gardner to Sanjutka
+group by 1,2,3,4,5,6,7,8
+); 
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Refurb (B2C CR & SR Listers)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_SANSEN_T.csat_refurb;
+CREATE TABLE P_SANSEN_T.csat_refurb AS
+(
+select 
+raw.user_id
+,left(raw.user_srvy_cmpltd_dt, 10) as srvy_date
+,cal.month_of_year_id
+,cal.age_for_month_id
+,raw.listing
+,raw.lstg_id
+,cat.categ_lvl2_name
+,cat.categ_lvl3_name
+,cat.categ_lvl4_name
+,sr.launch_category
+,sr.launch_date
+,raw.tchpnt_desc
+,raw.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,raw.satisfied_with_ebay
+,raw.verbatim
+,concat(raw.user_id,srvy_date,raw.lstg_id) as uni_key
+from p_sansen_t.csat_raw raw
+
+inner join access_views.dw_users u
+on raw.slr_id=u.user_id
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on raw.lstg_id=lstg.item_id
+
+inner join (select categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id
+			from access_views.dw_category_groupings 
+			group by 1,2,3,4,5,6,7,8) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join access_views.dw_cal_dt cal 
+on cal.cal_dt = left(raw.user_srvy_cmpltd_dt, 10) and age_for_month_id < 0 
+
+left join (select * from P_InventoryPlanning_T.SR_categories where launch_date < current_date) sr
+on cat.categ_lvl2_id=sr.categ_lvl2_id and cat.categ_lvl3_id=sr.categ_lvl3_id and cat.categ_lvl4_id=sr.categ_lvl4_id
+	
+where raw.TCHPNT_DESC in ('Certified Refurbished','Excellent Refurbished','Very Good Refurbished','Good Refurbished')
+);
+
+
+/*
+--10749
+select count(*) from P_SANSEN_T.CSAT_RAW where TCHPNT_DESC in ('Certified Refurbished','Excellent Refurbished','Very Good Refurbished','Good Refurbished')
+
+--10749
+select count(*) from P_SANSEN_T.CSAT_RAW raw
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on raw.lstg_id=lstg.item_id
+inner join (select categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id
+			from access_views.dw_category_groupings 
+			group by 1,2,3,4,5,6,7,8) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+where raw.TCHPNT_DESC in ('Certified Refurbished','Excellent Refurbished','Very Good Refurbished','Good Refurbished')
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- CX Main survey (B2C CSAT calculated at business vertical level)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_MAIN_VERT;
+CREATE TABLE P_SANSEN_T.CSAT_MAIN_VERT AS
+(
+SELECT
+	--cal.retail_week,
+	t.USER_CNTRY_ID as country,
+	s.EU_B2C_C2C_FLAG as b2c_c2c_flag,
+	t.USER_ID, -- join to buyer id
+	t.USER_SRVY_CMPLTD_DT,
+	t.LSTG_TITLE_TXT as Listing,
+	t.LSTG_ID, -- join to item_id
+	t.BSNS_VRTCL_NAME,
+	s.SLR_ID as slr_id,
+	--USER_SLCTD_ID as seller_name,
+	t.TCHPNT_ID,
+	t.TCHPNT_DESC,
+	q.QSTN_ID,
+	CASE WHEN q.QSTN_ID in (36001) THEN rsp.QSTN_RSPNS_VALUE_TXT ELSE NULL END AS Satisfied_with_eBay, -- satisfaction rating
+	vr.VRBTM_RSPNS_TXT as verbatim --verbatim free form text from user
+
+FROM idm_nps_v.NPS_TCHPNT_SRVY_SAMPLE t -- csat table for overall verticals
+
+JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q -- user responses to the questions
+			ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID -- join to get responses by survey ID
+
+INNER JOIN (
+			SELECT SLR_ID, BUYER_ID, SLR_CNTRY_ID, BYR_CNTRY_ID, ITEM_ID, TRANSACTION_ID, CREATED_DT, CK_TRANS_DT, EU_B2C_C2C_FLAG
+			FROM PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT 
+			WHERE SLR_CNTRY_ID in (3) 
+			AND BYR_CNTRY_ID in (3)
+			and SLR_CNTRY_ID=BYR_CNTRY_ID
+			AND CK_TRANS_DT >= '2021-01-01'
+			)
+			s -- transaction table
+		ON s.BUYER_ID = t.USER_ID
+		AND s.item_id = t.LSTG_ID
+
+JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp -- all possible questions and responses
+	ON rsp.QSTN_ID = q.QSTN_ID -- getting the question ID to join to response table
+	AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+ JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN qs -- all questions and question IDs
+	ON qs.QSTN_ID = q.QSTN_ID
+
+LEFT JOIN (
+           SELECT USER_SRVY_RSPNS_ID,QSTN_ID,VRBTM_RSPNS_TXT FROM IDM_NPS_V.NPS_TCHPNT_SRVY_VRBTM_RSPNS
+          ) VR
+    ON t.USER_SRVY_RSPNS_ID= VR.USER_SRVY_RSPNS_ID 
+	AND vr.qstn_id = 37000
+
+WHERE 1=1 
+	AND USER_SRVY_CMPLTD_DT IS NOT NULL
+	AND LSTG_ID not in (-99)
+	AND t.TCHPNT_ID in (92) --92 is the latest touchpoint ID for buyers (but only has focus vertical ddata)
+	AND q.QSTN_ID in ( 36001, 37000)
+	AND t.USER_SRVY_CMPLTD_DT >= '2021-07-01'
+	AND s.EU_B2C_C2C_FLAG = 'B2C'
+	and t.USER_CNTRY_ID=3
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13
+); 
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- P&A (B2C P&A sellers with a flag for focus sellers as confirmed by Tony Tong on 2022-07-25, previously tracking only B2C P&A focus sellers)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_PA;
+CREATE TABLE P_SANSEN_T.CSAT_PA AS
+(
+SELECT 
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	raw.bsns_vrtcl_name as vertical,
+	listing,
+	cat.categ_lvl2_name,
+	cat.categ_lvl3_name,
+	cat.categ_lvl4_name,
+	u.user_slctd_id as seller_name,
+	case when fs.seller_id is not null then "P&A Focus Seller" else "Not P&A Focus Seller" end as focus_seller,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_MAIN_VERT raw
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on raw.lstg_id=lstg.item_id
+
+inner join (select categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id
+			from access_views.dw_category_groupings 
+			group by 1,2,3,4,5,6,7,8) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10)
+	AND AGE_FOR_MONTH_ID <0
+	
+left join access_views.dw_users u
+on raw.slr_id = u.user_id
+
+left join P_awang_ops_t.seller_ops_83 fs
+on raw.slr_id = fs.seller_id and fs.seller_vertical ='Parts & Accessories'
+
+where raw.bsns_vrtcl_name = 'Parts & Accessories'
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13
+);
+
+
+
+/*
+-- FMCG
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_FMCG ;
+CREATE TABLE P_SANSEN_T.CSAT_FMCG AS
+(
+SELECT 
+	user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	fmcg.user_slctd_id as seller_name,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_MAIN_VERT raw
+
+INNER JOIN P_ndourish_T.fmcg_seller_list fmcg
+		ON fmcg.seller_id = raw.SLR_ID
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10)
+	AND AGE_FOR_MONTH_ID <0
+	
+group by 1,2,3,4,5, 6, 7,8 );
+
+-- SMB
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_SMB ;
+CREATE TABLE P_SANSEN_T.CSAT_SMB AS
+(
+SELECT 
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	BSNS_VRTCL_NAME as vertical,
+	listing,
+	smb.user_slctd_id as seller_name,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_MAIN_VERT raw
+
+INNER JOIN P_awang_opt_T.protrader_2021_Q2 smb
+		ON smb.user_id = raw.SLR_ID
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10)
+	AND AGE_FOR_MONTH_ID <0
+	
+group by 1,2,3,4,5, 6, 7,8,9);
+*/
