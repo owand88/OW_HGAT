@@ -1,0 +1,166 @@
+--------------------------------------------------------------------------------------------------
+-------- Create LL table from Inventory Health Dashboard, no need to dedup -----------------------
+--------------------------------------------------------------------------------------------------
+Drop table if exists p_robevans_t.IP_LL_WEEKLY;
+Create table p_robevans_t.IP_LL_WEEKLY as
+(
+SELECT
+lstg.RETAIL_YEAR,
+case when lstg.retail_year = 2020 then lstg.RETAIL_WEEK -1 else lstg.retail_week end as retail_week,
+cal.AGE_FOR_RTL_WEEK_ID,
+lstg.VERTICAL,
+inv.focus_flag,
+SUM(TLL) AS TLL, -- Listings
+SUM(VIEW_ITEMS) AS VIEW_ITEMS -- View items
+FROM 
+P_INVENTORY_HEALTH_UK_T.INV_FUNNEL_WKLY_AGG LSTG 
+INNER JOIN (select new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3) inv on lstg.vertical = inv.new_vertical and lstg.inventory_prop = inv.inventory_prop 
+INNER JOIN
+	(select retail_year, retail_week, AGE_FOR_RTL_WEEK_ID
+	From DW_CAL_DT
+	Where AGE_FOR_RTL_WEEK_ID in (-1,-2,-3,-4,-5,-6,-53,-54,-55,-56,-57,-58)
+	Group by 1,2,3) cal on lstg.retail_year = cal.retail_year and lstg.retail_week = cal.retail_week
+WHERE Dashboard_View='Overall'
+And seller_segment = 'B2C'
+And trade_type = 'DOMESTIC'
+GROUP BY 1,2,3,4,5);
+
+
+
+
+
+-----------------------------------------------------------------------------------------------------------------------
+-- Create Listers table from Inventory Health Dashboard (diff table to above, as at a daily level). No need to dedup --
+-----------------------------------------------------------------------------------------------------------------------
+
+Drop table if exists p_robevans_t.IP_LISTERS_WEEKLY;
+Create table p_robevans_t.IP_LISTERS_WEEKLY as
+(SELECT
+a.RETAIL_YEAR,
+-- case when a.retail_year = 2020 then a.RETAIL_WEEK -1 else
+a.retail_week as retail_week,
+cal.AGE_FOR_RTL_WEEK_ID,
+inv.new_vertical as vertical,
+inv.focus_flag,
+count(distinct slr_id) as total_listers
+from 
+P_CSI_TBS_T.INV_HEALTH_DAILY A
+inner join (select item_id, new_vertical, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3) inv on a.item_id = inv.item_id  
+INNER JOIN DW_CAL_DT cal on cal.CAL_DT = a.cal_dt and cal.AGE_FOR_RTL_WEEK_ID in (-1,-2,-3,-4,-5,-6,-53,-54,-55,-56,-57,-58)
+Where seller_segment = 'B2C'
+And trade_type = 'DOMESTIC'
+group by 1,2,3,4,5);
+
+
+
+
+
+-----------------------------------------------------------------------------------------------------------------------
+-- Create Final table to join above tables together -------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------
+Drop table if exists p_robevans_t.IP_LL_VI_LISTERS_WEEKLY;
+Create table p_robevans_t.IP_LL_VI_LISTERS_WEEKLY as
+(Select ll.*, listers.total_listers
+From p_robevans_t.IP_LL_WEEKLY ll
+Left Join p_robevans_t.IP_LISTERS_WEEKLY listers on ll.retail_year = listers.retail_year and ll.retail_week = listers.retail_week and ll.vertical = listers.vertical and ll.focus_flag = listers.focus_flag
+);
+
+
+
+
+
+
+-- DROP TABLE IF EXISTS P_ROBEVANS_T.IP_LL_WEEKLY;
+-- CREATE TABLE P_ROBEVANS_T.IP_LL_WEEKLY as
+-- select
+-- IP.new_vertical as Vertical
+-- ,IP.FOCUS_FLAG
+-- ,count(distinct case when AGE_FOR_RTL_WEEK_ID = -1 then lstg.item_id else 0 END) as RW_TY_LL
+-- ,count(distinct case when AGE_FOR_RTL_WEEK_ID = -105 then lstg.item_id else 0 END)  as RW_2LY_LL
+-- ,count(distinct case when AGE_FOR_RTL_WEEK_ID = -1 then lstg.SLR_ID else 0 End) as RW_TY_Listers
+-- ,count(distinct case when AGE_FOR_RTL_WEEK_ID = -105 then lstg.SLR_ID else 0 End) as RW_2LY_Listers
+
+-- FROM dw_lstg_item lstg 
+-- INNER JOIN DW_CAL_DT cal on lstg.AUCT_START_DT <cal.CAL_DT and lstg.AUCT_END_DT >= cal.CAL_DT and cal.AGE_FOR_RTL_WEEK_ID in (-1,-105)
+-- Left JOIN DW_USEGM_HIST USEGM_HIST  ON USEGM_HIST.USER_ID = LSTG.SLR_ID AND USEGM_HIST.USEGM_GRP_ID  = 48   AND AUCT_START_DT BETWEEN USEGM_HIST.BEG_DATE AND USEGM_HIST.END_DATE
+-- INNER JOIN P_awang_ops_t.item_invent_lstg ip on ip.item_id = lstg.item_id
+
+-- WHERE 1=1
+-- AND lstg.ITEM_SITE_ID NOT IN (223,-1,-2,-3)
+-- AND lstg.ITEM_SITE_ID =3
+-- AND lstg.auct_type_code NOT IN (10,15) -- Want it Now (WIN), Shopping.com Listing (SDC), SDC on DW_LSTG_ITEM was stopped by 2008/8/15
+-- AND lstg.auct_end_dt >= '2017-12-25'
+-- AND lstg.WACKO_YN = 'N'
+-- AND lstg.ITEM_SITE_ID = LSTG.SLR_CNTRY_ID -- Domestic ONLY
+-- AND USEGM_ID = 206 -- B2C ONLY
+-- GROUP BY 1,2
+
+-- UNION ALL
+
+-- select
+-- 'Total' as Vertical
+-- ,'Total' as FOCUS_FLAG
+-- ,count(distinct case when AGE_FOR_RTL_WEEK_ID = -1 then lstg.item_id else 0 END) as RW_TY_LL
+-- ,count(distinct case when AGE_FOR_RTL_WEEK_ID = -105 then lstg.item_id else 0 END)  as RW_2LY_LL
+-- ,count(distinct case when AGE_FOR_RTL_WEEK_ID = -1 then lstg.SLR_ID else 0 End) as RW_TY_Listers
+-- ,count(distinct case when AGE_FOR_RTL_WEEK_ID = -105 then lstg.SLR_ID else 0 End) as RW_2LY_Listers
+
+-- FROM dw_lstg_item lstg 
+-- INNER JOIN DW_CAL_DT cal on lstg.AUCT_START_DT <cal.CAL_DT and lstg.AUCT_END_DT >= cal.CAL_DT and cal.AGE_FOR_RTL_WEEK_ID in (-1,-105)
+-- Left JOIN DW_USEGM_HIST USEGM_HIST  ON USEGM_HIST.USER_ID = LSTG.SLR_ID AND USEGM_HIST.USEGM_GRP_ID  = 48   AND AUCT_START_DT BETWEEN USEGM_HIST.BEG_DATE AND USEGM_HIST.END_DATE
+-- INNER JOIN P_awang_ops_t.item_invent_lstg ip on ip.item_id = lstg.item_id
+
+-- WHERE 1=1
+-- AND lstg.ITEM_SITE_ID NOT IN (223,-1,-2,-3)
+-- AND lstg.ITEM_SITE_ID =3
+-- AND lstg.auct_type_code NOT IN (10,15) -- Want it Now (WIN), Shopping.com Listing (SDC), SDC on DW_LSTG_ITEM was stopped by 2008/8/15
+-- AND lstg.auct_end_dt >= '2017-12-25'
+-- AND lstg.WACKO_YN = 'N'
+-- AND lstg.ITEM_SITE_ID = LSTG.SLR_CNTRY_ID -- Domestic ONLY
+-- AND USEGM_ID = 206 -- B2C ONLY
+-- ;
+
+
+
+
+
+
+
+-- Drop table if Exists p_robevans_t.IP_VI_WEEKLY;
+-- Create table p_robevans_t.IP_VI_WEEKLY as
+-- (
+-- select ip.new_vertical as Vertical
+-- ,ip.focus_flag
+-- ,sum(case when AGE_FOR_RTL_WEEK_ID = -1 then trfc.TTL_VI_CNT End) as RW_TY_VI
+-- ,sum(case when AGE_FOR_RTL_WEEK_ID = -105 then trfc.TTL_VI_CNT End) as RW_2LY_VI
+-- From PRS_restricted_V.SLNG_TRFC_SUPER_FACT trfc
+-- INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = trfc.LEAF_CATEG_ID
+-- INNER JOIN P_awang_ops_t.item_invent_lstg ip on ip.item_id = trfc.item_id
+-- INNER JOIN DW_CAL_DT cal on cal.cal_dt = trfc.CAL_DT and AGE_FOR_RTL_WEEK_ID in (-1,-105)
+-- Where trfc.site_id = 3
+-- and ip.FOCUS_FLAG = 'Focused'
+-- Group by 1,2
+
+-- UNION ALL
+
+-- select ip.new_vertical as Vertical
+-- ,sum(case when AGE_FOR_RTL_WEEK_ID = -1 then trfc.TTL_VI_CNT End) as RW_TY_VI
+-- ,sum(case when AGE_FOR_RTL_WEEK_ID = -105 then trfc.TTL_VI_CNT End) as RW_2LY_VI
+-- From PRS_restricted_V.SLNG_TRFC_SUPER_FACT trfc
+-- INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = trfc.LEAF_CATEG_ID
+-- INNER JOIN P_awang_ops_t.item_invent_lstg ip on ip.item_id = trfc.item_id
+-- INNER JOIN DW_CAL_DT cal on cal.cal_dt = trfc.CAL_DT and AGE_FOR_RTL_WEEK_ID in (-1,-105)
+-- Where trfc.site_id = 3
+-- and IP.new_vertical = 'Collectibles'
+-- Group by 1
+-- );
+
+-- Drop table if exists p_robevans_t.IP_LL_VI_WEEKLY;
+-- create table p_robevans_t.IP_LL_VI_WEEKLY as
+-- (
+-- Select ll.*,vi.RW_TY_VI,RW_2LY_VI
+-- From P_ROBEVANS_T.IP_LL_WEEKLY ll
+-- LEFT JOIN p_robevans_t.IP_VI_WEEKLY vi on ll.vertical = vi.vertical
+-- )
+-- ;
+
