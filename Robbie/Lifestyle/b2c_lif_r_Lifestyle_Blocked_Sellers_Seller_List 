@@ -1,0 +1,129 @@
+-- select * from  p_hroon_t.lifestyle_sellers where user_slctd_id = 'beauty-scent'
+
+drop table p_hroon_t.lifestyle_sellers;
+
+create table p_hroon_t.lifestyle_sellers as (select * from (SELect
+
+seller_id as slr_id,
+u.user_slctd_id,
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' -- added smart home
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+-- when bsns_vrtcl_name in ('Collectibles') and meta_categ_id in (220, 237, 550)  then 'Collectibles B2C'
+-- when bsns_vrtcl_name in ('Collectibles') and categ_lvl2_id in (180250) then 'Collectibles B2C' 
+else bsns_vrtcl_name end as new_vertical, 
+categ_lvl2_name,
+meta_Categ_name,
+SUM(CAST(CK.QUANTITY AS DECIMAL(18,2))* CAST(CK.ITEM_PRICE AS DECIMAL(18,2))*CAST(SSA.CURNCY_PLAN_RATE AS DECIMAL(18,2))) AS GMV
+
+FROM   DW_CHECKOUT_TRANS ck
+        
+INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS SSA 
+    ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID LEFT OUTER JOIN dw_users u on ck.seller_Id = u.user_id     
+
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.CREATED_DT   and retail_year in (2020,2021,2022) --change here for time period if needed 
+
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+
+
+WHERE 1=1
+	and CK.SALE_TYPE NOT IN (10,15) 
+-- 	and new_vertical = 'Lifestyle'
+	and ck.site_id = 3
+	and slr_cntry_id = 3
+	and user_dsgntn_id =  2
+/*	AND BYR_CNTRY_ID = 3 --UK buyers -- help table  DW_CHECKOUT_TRANS
+	AND SLR_CNTRY_ID = BYR_CNTRY_ID --DOM*/  
+
+/*AND CK.SITE_ID = 3*/
+	
+ GROUP BY 1,2,3,4,5) a where new_vertical = 'Lifestyle'  ) ;
+ 
+ ---------------
+ drop table p_hroon_t.lifestyle_issue_seller;
+create table p_hroon_t.lifestyle_issue_seller as (
+
+select 
+i.user_id
+, user_slctd_id
+,case when  i.user_id  = fss.seller_id then 'Focus' else 'Non-focus' end as focus_flag
+, case when i.user_id  = fss.seller_id then am_name else ' - ' end as CM_flag
+, case when  i.user_id  = fss.seller_id then initiative_name else ' - ' end as inventory_prop
+, i.SRC_CRE_DT as issue_date
+, scenario_desc
+, i.scenario_id
+, status_desc
+, sum(gmv) as gmv
+
+from access_views.DW_USER_ISSUE I
+
+left join access_views.DW_USER_ISSUE_LKP_SCENARIO lkp
+       on i.SCENARIO_ID=lkp.SCENARIO_ID
+left join ACCESS_VIEWS.DW_USER_ISSUE_LKP_STATUS st on st.status_id = i.status_id
+LEFT JOIN P_awang_ops_T.seller_ops_83 fss on i.user_id = fss.seller_id
+inner join dw_cal_dt cal on cal.cal_dt = i.src_cre_dt and age_for_rtl_week_id = -1
+left join (select slr_id, user_slctd_id, sum(gmv) as gmv from p_hroon_t.lifestyle_sellers group by 1,2) s on s.slr_id = i.user_id
+
+where i.user_id in (select slr_id from p_hroon_t.lifestyle_sellers s) and scenario_desc not in ('UNKNOWN') 
+
+group by 1,2,3,4,5   ,6,7,8,9) ;
+
+-------------------------------------------------------------------------------------
+
+drop table p_hroon_t.lifestyle_blocked;
+create table p_hroon_t.lifestyle_blocked  as (
+
+
+SELECT  sh.ID AS USER_ID, 
+u.user_slctd_id,
+case when sh.id = fss.seller_id then 'Focus' else 'Non-focus' end as focus_flag
+, user_cre_date as User_created_date, TOP_RATED_SELLER_UK_YN,
+lf.gmv as GMV_2020YTD,
+sh.CHANGE_TIME,
+fs.USER_STS_DESC AS FROM_STATE
+,ts.USER_STS_DESC AS TO_STATE
+,crsn.STATE_CHG_RSN_NAME AS CHANGE_REASON
+,cn.ADMIN_NODE_NAME AS MAC_RULE_NAME
+
+FROM DW_USER_STATE_HISTORY sh
+LEFT JOIN DW_USER_STATUS_CODES fs ON sh.FROM_STATE = fs.USER_STS_CODE 
+LEFT JOIN DW_USER_STATUS_CODES ts ON sh.TO_STATE = ts.USER_STS_CODE
+LEFT JOIN DW_USER_STATE_CHG_RSN_LKP crsn
+ON sh.REASON_CODE = crsn.STATE_CHG_RSN_ID 
+LEFT JOIN EBAY_TS_V.MAC_ACTIVITY mac
+ON sh.MAC_ACTVTY_ID = mac.MAC_ACTIVITY_ID
+INNER JOIN (select slr_id, sum(GMV) as GMV from p_hroon_t.lifestyle_sellers group by 1) lf on sh.id = lf.slr_id
+LEFT JOIN (select distinct seller_id from P_awang_ops_T.seller_ops_83) fss on sh.id = fss.seller_id
+LEFT JOIN EBAY_CS_V.CSM_NODE cn
+ON mac.RULE_ID = cn.ADMIN_NODE_ID
+AND mac.CSM_HIER_ID = cn.CSM_HIER_ID left join dw_users u on u.user_id = sh.id and ACCT_TYPE_CD = 1
+inner join dw_cal_dt cal on cal.cal_dt = to_date(sh.change_time) and age_for_rtl_week_id = -1
+
+where cn.ADMIN_NODE_NAME not in ('Account_Deletion')
+/*and ts.USER_STS_DESC not in */
+and u.user_site_id = 3
+group by 1,2,3,4,5,6,7,8,9,10,11
+);
+
+--------------------------------------------------------------
+drop table p_hroon_t.blocked_scenarios;
+create table p_hroon_t.blocked_scenarios  as (select 
+i.user_id
+, user_slctd_id
+,case when  i.user_id  = fss.seller_id then 'Focus' else 'Non-focus' end as focus_flag
+, case when i.user_id  = fss.seller_id then am_name else ' - ' end as CM_flag
+, case when  i.user_id  = fss.seller_id then initiative_name else ' - ' end as inventory_prop
+, i.SRC_CRE_DT as issue_date, scenario_desc, i.scenario_id, status_desc, sum(gmv) as gmv
+from access_views.DW_USER_ISSUE i
+left join access_views.DW_USER_ISSUE_LKP_SCENARIO lkp
+on i.SCENARIO_ID=lkp.SCENARIO_ID
+left join ACCESS_VIEWS.DW_USER_ISSUE_LKP_STATUS st on st.status_id = i.status_id
+LEFT JOIN P_awang_ops_T.seller_ops_83 fss on i.user_id = fss.seller_id
+inner join dw_cal_dt cal on cal.cal_dt = i.src_cre_dt and age_for_rtl_week_id = -1
+left join p_hroon_t.lifestyle_sellers s on s.slr_id = i.user_id
+where i.user_id in (select slr_id from p_hroon_t.lifestyle_sellers) and scenario_desc not in ('UNKNOWN')
+group by 1,2,3,4,5   ,6,7,8,9) ;
