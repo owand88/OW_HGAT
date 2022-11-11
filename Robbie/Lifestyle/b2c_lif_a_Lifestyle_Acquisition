@@ -1,1 +1,0 @@
-select * from p_awang_ops_t.aw_d2c_acq_tracker where user_slctd_id in ('bluesky_cosmetics', 'theperfumedirect', 'wahlukstore', 'perfume_boulevard', 'beauty-scent', 'anielas', 'avoncosmetics', 'Smoothskin via Yoltso', 'oulac_cosmetics', 'This Works');
