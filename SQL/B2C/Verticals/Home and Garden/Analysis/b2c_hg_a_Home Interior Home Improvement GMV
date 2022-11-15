@@ -1,0 +1,124 @@
+select * from p_awang_ops_t.item_invent_lstg  where item_id = 123009289660 
+limit 10;
+select * from prs_restricted_v.slng_trans_super_fact limit 10;
+
+drop table if exists p_macheung_t.hg_gmv_history;
+create table p_macheung_t.hg_gmv_history as(
+select
+cal.retail_year,
+cal.retail_week,
+cal.QTR_OF_YEAR_ID,
+case when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+	  when cat.meta_categ_id in (26395) then 'Lifestyle'
+	  when cat.categ_lvl3_id in (260325) then 'Lifestyle'
+	  when cat.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 64808, 92074, 246) then 'Home & Garden'
+	  when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+	  when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
+	  when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+	  when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
+	  else cat.bsns_vrtcl_name end as new_vertical,
+
+-- H&G updated
+case when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (32254, 32878, 38199, 103430, 114397) then 'Bedroom Furniture Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (41989, 180979, 180981, 259207) then 'Decorative Home Improvement Focus'
+--when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (3201, 20702, 20708, 36027, 112581, 116022, 116880, 117503) then 'Decorative Lighting & Dine Focus'
+--when new_vertical = 'Home & Garden' and cat.categ_lvl2_id in (20727, 25863, 29521, 177017, 181003, 181027,43560,29518) then 'Garden Focus'
+--when new_vertical = 'Home & Garden' and cat.categ_lvl2_id in (10033) then 'Home Decor & Rugs Focus'
+--when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (175749,45510) then 'Home Decor & Rugs Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl2_id in (631, 61573) then 'Home Improvement Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (98989, 259482) then 'Home Improvement Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (3199, 20488, 38204, 38208, 88057, 107578, 183322) then 'Living Room Furniture Focus'
+else 'other'
+end as inventory_prop,
+CASE
+            WHEN U.user_dsgntn_id = 2 THEN 'B2C'
+            ELSE 'C2C'
+            END AS seller_type,
+sum(GMV20_plan) as GMV,
+sum(GMV20_sold_quantity) as BI
+
+from prs_restricted_v.slng_trans_super_fact ck	
+left join p_awang_ops_t.item_invent_lstg i on ck.item_id = i.item_id
+INNER JOIN DW_USERS U on ck.seller_id = u.user_id
+inner join (
+	select meta_categ_name,meta_categ_id,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,leaf_categ_name,site_id,BSNS_VRTCL_NAME
+	from access_views.dw_category_groupings 
+	where sap_category_id not in (5,7,41,23,-999) 
+    group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat																
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id = 3 	
+
+inner join access_views.dw_cal_dt cal 
+on ck.GMV_dt=cal.cal_dt 
+	and retail_year in (2016,2017,2018,2019,2020,2021,2022)
+	and AGE_FOR_RTL_WEEK_ID <= -1
+--and (cal.age_for_rtl_year_id between -2 and 0) and cal.day_of_year_id <=75--2022-03-15 is 75 days since the start of the year
+
+where 
+ck.slr_cntry_id = 3 																										
+and ck.byr_cntry_id = 3 	
+and ck.slr_cntry_id=ck.byr_cntry_id 
+and ck.lstg_site_id = 3 
+AND ck.iscore = 1	
+and ck.rprtd_wacko_yn = 'N'	
+and ck.auct_end_dt > '2012-12-31'
+
+group by 1,2,3,4,5,6
+having new_vertical in ('Home & Garden')
+);
+
+
+-- VERSION 2
+
+
+drop table if exists p_macheung_t.hg_gmv_history;
+create table p_macheung_t.hg_gmv_history as(
+select
+cal.retail_year,
+cal.retail_week,
+cal.QTR_OF_YEAR_ID,
+CASE WHEN CAT.categ_lvl2_id in (3247) and CAT.categ_lvl3_id in (3247) then 'Home Improvement: DIY'
+                when CAT.categ_lvl2_id in (64808,92074,26677,3187,631,38219,41968,20601,34998) then 'Home Improvement: DIY'
+                when CAT.categ_lvl2_id in (181020,159473,177032,181033,42154,29518,177017,181027,43560,159913,179308,181003,20727,29521,181034) then 'Home Improvement: Gardening'
+                when CAT.categ_lvl2_id in (149242,20444,258031,20625,63514,10033,20697,181076,20571,43502) then 'Home Interior: Home Decor'
+                when CAT.categ_lvl2_id in (3197,25863,176988,177073) then 'Home Interior: Furniture' --including 176988 and 177073 in Furniture to align with DE
+                ELSE 'NA'           
+                END AS category,
+
+CASE
+            WHEN U.user_dsgntn_id = 2 THEN 'B2C'
+            ELSE 'C2C'
+            END AS seller_type,
+sum(GMV20_plan) as GMV,
+sum(GMV20_sold_quantity) as BI
+
+from prs_restricted_v.slng_trans_super_fact ck	--
+left join p_awang_ops_t.item_invent_lstg i on ck.item_id = i.item_id
+INNER JOIN DW_USERS U on ck.seller_id = u.user_id
+inner join (
+	select meta_categ_name,meta_categ_id,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,leaf_categ_name,site_id,BSNS_VRTCL_NAME
+	from access_views.dw_category_groupings 
+	where sap_category_id not in (5,7,41,23,-999) 
+    group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat																
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id = 3 	
+
+inner join access_views.dw_cal_dt cal 
+on ck.GMV_dt=cal.cal_dt 
+	and retail_year in (2016,2017,2018,2019,2020,2021,2022)
+	and AGE_FOR_RTL_WEEK_ID <= -1
+--and (cal.age_for_rtl_year_id between -2 and 0) and cal.day_of_year_id <=75--2022-03-15 is 75 days since the start of the year
+
+where 
+ck.slr_cntry_id = 3 																										
+and ck.byr_cntry_id = 3 	
+and ck.slr_cntry_id=ck.byr_cntry_id 
+and ck.lstg_site_id = 3 
+AND ck.iscore = 1	
+and ck.rprtd_wacko_yn = 'N'	
+and ck.auct_end_dt > '2012-12-31'
+
+group by 1,2,3,4,5
+);
+
+select * from  p_macheung_t.hg_gmv_history limit 10;
+
+

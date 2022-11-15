@@ -1,0 +1,61 @@
+-- select sum(coupon_gmb) from P_SLR_TRACKER_T.PP_CouponHist__subset
+
+drop table if exists P_SLR_TRACKER_T.PP_CouponHist__subset;
+
+create table P_SLR_TRACKER_T.PP_CouponHist__subset as (
+select
+
+/*--coupon_name,
+--discount_offer,
+--promotion_type,*/
+RETAIL_YEAR,
+RETAIL_WEEK,
+vertical,
+case when INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end as INVENT_PROP,
+FOCUS_FLAG,
+sum((GMB_USD_PLAN)) as coupon_gmb,
+sum((QTY_BGHT)) as QTY_BGHT,
+sum((CONTRA_USD_PLAN)) as coupon_spend
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1   /*-- HELP TABLE  P_Plan_PPatel_T.PP_CouponHist_1_coupon_sum1*/
+WHERE 
+(
+-- RETAIL_YEAR = 2021
+RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+-- RETAIL_WEEK= 4
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+)
+and promotion_type='seller coupon'
+
+group by 1,2,3,4,5);
+
+
+
+/*
+select
+coupon_name,
+discount_offer,
+promotion_type,
+RETAIL_YEAR,
+RETAIL_WEEK,
+vertical,
+case when INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end as INVENT_PROP,
+FOCUS_FLAG,
+sum((GMB_USD_PLAN)) as coupon_gmb,
+sum((QTY_BGHT)) as QTY_BGHT,
+sum((CONTRA_USD_PLAN)) as coupon_spend
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1   -- HELP TABLE  P_Plan_PPatel_T.PP_CouponHist_1_coupon_sum1
+WHERE 
+(
+-- RETAIL_YEAR = 2021
+RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+-- RETAIL_WEEK= 4
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+)
+and promotion_type='seller coupon'
+
+group by 1,2,3,4,5,6,7,8
+*/
+
+

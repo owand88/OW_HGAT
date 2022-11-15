@@ -1,0 +1,534 @@
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- This code creates the 'Sneaker Aspect Report', which shows the performance of Sneakers over the last 52 weeks by aspect
+
+-- Aspects include: Brand, Model, Shoe Size, Colour
+-- There are 5 tables: 1x creates LL view, 1x creates GMV view, 3x limit and tidy up Size/Model/Brand data
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- LL Table
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_robevans_t.sneakers_ASPCT_LL ;
+create table p_robevans_t.sneakers_ASPCT_LL as (select * from (select
+retail_year,
+retail_week,
+	CASE
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 100 THEN 'A. <100'
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 125 THEN 'A. 100-125'
+		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 150 THEN 'A. 125-150'
+		ELSE 'B.150+' END AS price_bucket,
+	 brand,
+	model,
+	UK_SIZE,
+	COLOR,
+	CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Not Specified' END AS Item_Cond,
+	case when U.USER_DSGNTN_ID=2  then 'B2C' else 'C2C' end as bus_flag,
+	CASE WHEN UPPER(BRND.ASPCT_VLU_NM_BRAND) IN ('MODIFIED', 'CUSTOMIZED','YES') THEN 'MODIFIED' ELSE 'NO' end AS MODIFIED_ITEM,
+	case when v.item_id = ck.item_id then  c else 1 end as count,
+	count(distinct slr_id) as Seller_Count,
+	count(distinct ck.item_id) as LL
+
+FROM DW_LSTG_ITEM AS CK
+
+        LEFT JOIN 
+                    (
+                    SELECT ITEM_ID,
+                           AUCT_END_DT,
+                           COALESCE(MAX(ASPCT.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                            FROM
+                            ITEM_ASPCT_CLSSFCTN ASPCT
+                            WHERE
+                            UPPER(ASPCT.NS_TYPE_CD) IN ('NF','DF') 
+                            AND ASPCT.AUCT_END_DT>='2018-12-26'
+                            AND UPPER(ASPCT.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                            GROUP BY 1,2
+                            
+                        UNION 
+                        
+                        SELECT  ITEM_ID,
+                           AUCT_END_DT,
+                          COALESCE(MAX(ASPCT_COLD.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                        FROM
+                        ITEM_ASPCT_CLSSFCTN_COLD ASPCT_COLD
+                        WHERE UPPER(ASPCT_COLD.NS_TYPE_CD) IN ('NF','DF') 
+                        AND ASPCT_COLD.AUCT_END_DT>='2018-12-26'
+                        AND UPPER(ASPCT_COLD.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                        GROUP BY 1,2
+                    ) BRND ON CK.ITEM_ID = BRND.ITEM_ID AND CK.AUCT_END_DT = BRND.AUCT_END_DT
+
+LEFT JOIN (select item_id, ITEM_VRTN_ID  from LSTG_ITEM_VRTN group by 1,2) v on v.item_id = ck.item_id
+LEFT JOIN (select item_id, count(ITEM_VRTN_ID) c  from LSTG_ITEM_VRTN group by 1) v1 on v1.item_id = ck.item_id
+
+
+ LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID
+INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
+INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR in (2021,2022) and AGE_FOR_RTL_WEEK_ID = -1 
+left outer join dw_users u
+on ck.slr_id = u.user_id
+
+left join (select a.* from (
+select 
+ITEM_ID, AUCT_END_DT
+, SIAB_B2C_C2C_IND
+, ITEM_CNDTN_ID
+,color, uk_size
+,performance_activity
+,brand
+,model
+ from CTLG_ITEM_FACT f
+inner join  P_CATVERTICALS_T.Sneakers_Epid_Level a on f.PROD_REF_ID  = a.PROD_REF_ID  where ITEM_SITE_ID = 3 and  a.SITE_ID = 3
+) a
+) bbase1
+					ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+WHERE 1=1
+	AND  CK.AUCT_end_dt >= '2018-01-01'
+and ck.WACKO_YN = 'N'                      
+AND CK.AUCT_TYPE_CODE NOT IN (10,15)
+AND CK.ITEM_SITE_ID in (3)
+and ck.auct_end_dt >= date '2018-01-01'	
+	and cat.CATEG_LVL4_ID in (15709,95672)
+	and (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100))
+	and ck.slr_CNTRY_ID in (3)
+		GROUP BY 1,2,3,4,5,6,7,8,9,10,11) 
+-- 		where phase_flag not in ('Other')
+		);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Brand aspect table
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- select * from  p_robevans_t.sneakers_ASPCT_GMV
+-- select * from p_robevans_t.sneakers_ASPCT_brands
+-- select * from p_robevans_t.sneakers_ASPCT_models
+
+drop table if exists p_robevans_t.sneakers_ASPCT_brands;
+create table p_robevans_t.sneakers_ASPCT_brands as 
+-- select *,  ROW_NUMBER() over  ( partition by  brand order by GMV desc) as RNum from 
+(select * from (select
+	BRAND,
+	SUM(CK.gmv_plan_usd) AS GMV
+
+FROM DW_CHECKOUT_TRANS AS CK
+
+LEFT JOIN (select item_id, auct_titl, AUCT_END_DT from DW_LSTG_ITEM where item_site_id = 3 group by 1,2,3) as i on i.item_id = ck.item_id and i.auct_end_dt = ck.AUCT_END_DT
+-- inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+-- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
+	ON CAL.CAL_DT = CK.gmv_dt 
+	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID >= -53
+
+left join 
+(select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as BRAND,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('brand') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase
+					ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+					
+left join 
+(select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as MODEL,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('model') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase1
+					ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+		
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+
+WHERE 1=1
+	AND  CK.AUCT_end_dt >= '2018-01-01'                    
+AND CK.SITE_ID in (3)
+	and cat.CATEG_LVL4_ID in (15709,95672)
+	and (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 100)
+	and ck.slr_CNTRY_ID in (3)
+GROUP BY 1) 
+order by gmv desc
+limit 250
+		);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- model  aspect table
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_robevans_t.sneakers_ASPCT_models;
+create table p_robevans_t.sneakers_ASPCT_models as 
+-- select *,  ROW_NUMBER() over  ( partition by  brand order by GMV desc) as RNum from 
+(select * from (select
+	model,
+	SUM(CK.gmv_plan_usd) AS GMV
+
+FROM DW_CHECKOUT_TRANS AS CK
+LEFT JOIN (select item_id, auct_titl, AUCT_END_DT from DW_LSTG_ITEM where item_site_id = 3 group by 1,2,3) as i on i.item_id = ck.item_id and i.auct_end_dt = ck.AUCT_END_DT
+-- inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+-- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
+	ON CAL.CAL_DT = CK.gmv_dt 
+	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID >= -53
+left join 
+(select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as  model,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('model') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase
+					ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT	
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+
+WHERE 1=1
+	AND  CK.AUCT_end_dt >= '2018-01-01'                    
+AND CK.SITE_ID in (3)
+	and cat.CATEG_LVL4_ID in (15709,95672)
+	and (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 100)
+	and ck.slr_CNTRY_ID in (3)
+GROUP BY 1) 
+order by gmv desc
+limit 2000
+		);
+
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Shoe size aspect table
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_robevans_t.sneakers_ASPCT_size;
+create table p_robevans_t.sneakers_ASPCT_size as 
+-- select *,  ROW_NUMBER() over  ( partition by  brand order by GMV desc) as RNum from 
+(select * from (select
+	case when UK_size = 'UK 10.5' THEN 10.5 
+		when UK_size = 'UK 11' THEN 11 
+		when UK_size = 'UK 11.5' THEN 11.5 
+		when UK_size = 'UK 12.5' THEN 12.5 
+		when UK_size = 'UK 13' THEN 13 
+		when UK_size = 'UK 3.5' THEN 3.5
+		when UK_size = 'UK 4.5' THEN 4.5
+		when UK_size = 'UK 5' THEN 5
+		when UK_size = 'UK 4' THEN 4
+		when UK_size = 'UK 3' THEN 3
+		when UK_size = 'UK 5.5' THEN 5.5
+		when UK_size = 'UK 6' THEN 6
+		when UK_size = 'UK 6.5' THEN 6.5 
+		when UK_size = 'UK 7' THEN 7
+		when UK_size = 'UK 2.5' THEN 2.5
+		when UK_size = 'UK 2' THEN 2
+		when UK_size = 'UK 1.5' THEN 1.5
+		when UK_size = 'UK 1' THEN 1
+		when UK_size = 'UK 7.5' THEN 7.5
+		when UK_size = 'UK 3.5' THEN 3.5
+		when UK_size = 'UK 8' THEN 8 
+		when UK_size = 'UK 8.5' THEN 8.5
+		when UK_size = 'UK 9' THEN 9
+		when UK_size = 'UK 9.5' THEN 9.5
+		when UK_size = 'UK 10' THEN 10
+		when UK_size = 'UK 11' THEN 11
+		when UK_size = 'UK 12' THEN 12
+		when UK_size = 'UK 13' THEN 13
+		when UK_size = 'UK 14' THEN 14
+		when UK_size = 'UK 15' THEN 15
+		when UK_size = 'UK 16' THEN 16
+		when UK_size = 'UK 17' THEN 17
+		when UK_size = 'UK 10.5' THEN 10.5
+		when UK_size = 'UK 11.5' THEN 11.5
+		when UK_size = 'UK 12.5' THEN 12.5
+		when UK_size = 'UK 13.5' THEN 13.5
+		when UK_size = 'UK 14.5' THEN 14.5
+		when UK_size = 'UK 15.5' THEN 15.5
+		when UK_size = 'UK 16.5' THEN 16.5
+		when UK_size = 'UK 17.5' THEN 17.5
+		when UK_size = 'UK 18' THEN 18 
+		when UK_size = 'UK 18.5' THEN 18.5
+		when UK_size = 'UK 19' THEN 19
+		when UK_size = 'UK 19.5' THEN 19.5
+		when UK_size in ('10 1/2','ALL','EU 42','EU 44','EU39','N / A','SIZE 44','UK 10 (MEN''S)','UK 10 / IT44','UK 10 EUR 45 US 11 CM 29','UK 3   4   4 . 5   5   5 . 5   6   6 . 5   7   8','UK 36','UK 37','UK 40','UK 41','UK 42.5','UK 577','UK 670','UK 7 UK 8 UK 9 UK 9.5 UK 10 UK 10.5 UK 11 UK 12','UK 7.5 & UK 9','UK 8.25','UK 8-10','UK 8-11','UK 9 AND 9.5','UK 9.5 EUR 44.5','UK 9.6','UK 991','UK 991.5','UK7.5/US8.5/EU42/CM26.5','US 10 / UK 9','US 12 / UK 11.5','US UK  7   8   9   10   11   12   13','US1Y','VARIOUS'
+) THEN 'OTHER' 
+		when UK_size like any ('%UK%', '%EU%', '%&%','%-%', '%/%') then 'OTHER'
+		ELSE UK_SIZE END AS UK_SIZE,
+	SUM(CK.gmv_plan_usd) AS GMV
+
+FROM DW_CHECKOUT_TRANS AS CK
+LEFT JOIN (select item_id, auct_titl, AUCT_END_DT from DW_LSTG_ITEM where item_site_id = 3 group by 1,2,3) as i on i.item_id = ck.item_id and i.auct_end_dt = ck.AUCT_END_DT
+-- inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+-- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
+	ON CAL.CAL_DT = CK.gmv_dt 
+	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID >= -53
+left join (select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as UK_size,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('uk shoe size') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase3
+					ON ck.ITEM_ID = bbase3.ITEM_ID AND ck.AUCT_END_dt = bbase3.AUCT_END_DT	
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+
+WHERE 1=1
+	AND  CK.AUCT_end_dt >= '2018-01-01'                    
+AND CK.SITE_ID in (3)
+	and cat.CATEG_LVL4_ID in (15709,95672)
+	and (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 100)
+	and ck.slr_CNTRY_ID in (3)
+GROUP BY 1) 
+order by gmv desc
+limit 2000
+		);
+
+
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- GMV Table
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- select * from  p_robevans_t.sneakers_ASPCT_GMV
+
+drop table if exists p_robevans_t.sneakers_ASPCT_GMV;
+create table p_robevans_t.sneakers_ASPCT_GMV as (select * from (select
+retail_year,
+retail_week,
+		CASE
+		WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2))  < 100 THEN 'A. <100'
+		WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2))  < 125 THEN 'A. 100-125'
+		WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2))  < 150 THEN 'A. 125-150'
+		ELSE 'B.150+' END AS
+	PRICE_BUCKET,
+	case when  d.brand = bbase.brand then d.brand else 'Other' end as brand,
+	case when e.model = bbase1.model then e.model else 'Other' end as model,
+	f.UK_SIZE,
+	COLOUR,
+	categ_lvl4_name,
+	CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Not Specified' END AS Item_Cond,
+		case when U.USER_DSGNTN_ID=2  then 'B2C' else 'C2C' end as bus_flag,
+	CASE WHEN UPPER(BRND.ASPCT_VLU_NM_BRAND) IN ('MODIFIED', 'CUSTOMIZED','YES') THEN 'MODIFIED' ELSE 'NO' end AS MODIFIED_ITEM,
+	SUM(CK.gmv_plan_usd) AS GMV, 
+	SUM(QUANTITY) AS BI,
+	count(distinct (buyer_id)) as byr_cnt,
+	count(distinct(ck.item_id)) as converted_lll,
+	GMV/BI as ASP
+
+FROM DW_CHECKOUT_TRANS AS CK
+
+ LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+LEFT JOIN (select item_id, auct_titl, AUCT_END_DT from DW_LSTG_ITEM where item_site_id = 3 group by 1,2,3) as i on i.item_id = ck.item_id and i.auct_end_dt = ck.AUCT_END_DT
+
+        LEFT JOIN 
+                    (
+                    SELECT ITEM_ID,
+                           AUCT_END_DT,
+                           COALESCE(MAX(ASPCT.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                            FROM
+                            ITEM_ASPCT_CLSSFCTN ASPCT
+                            WHERE
+                            UPPER(ASPCT.NS_TYPE_CD) IN ('NF','DF') 
+                            AND ASPCT.AUCT_END_DT>='2018-12-26'
+                            AND UPPER(ASPCT.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                            GROUP BY 1,2
+                            
+                        UNION 
+                        
+                        SELECT  ITEM_ID,
+                           AUCT_END_DT,
+                          COALESCE(MAX(ASPCT_COLD.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+                        FROM
+                        ITEM_ASPCT_CLSSFCTN_COLD ASPCT_COLD
+                        WHERE UPPER(ASPCT_COLD.NS_TYPE_CD) IN ('NF','DF') 
+                        AND ASPCT_COLD.AUCT_END_DT>='2018-12-26'
+                        AND UPPER(ASPCT_COLD.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+                        GROUP BY 1,2
+                    ) BRND ON CK.ITEM_ID = BRND.ITEM_ID AND CK.AUCT_END_DT = BRND.AUCT_END_DT
+
+		
+-- inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+-- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
+	ON CAL.CAL_DT = CK.gmv_dt 
+	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID >= -53 and AGE_FOR_RTL_WEEK_ID <= -1
+
+left join 
+(select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as BRAND,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('brand') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase
+					ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+					
+left join 
+(select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as MODEL,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('model') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase1
+					ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+
+left join (select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as UK_size,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('uk shoe size') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase3
+					ON ck.ITEM_ID = bbase3.ITEM_ID AND ck.AUCT_END_dt = bbase3.AUCT_END_DT
+					
+left join (select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as colour,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('colour') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase4
+					ON ck.ITEM_ID = bbase4.ITEM_ID AND ck.AUCT_END_dt = bbase4.AUCT_END_DT
+
+left JOIN (select brand from p_robevans_t.sneakers_ASPCT_brands) d on d.brand = bbase.brand
+left join (select model from  p_robevans_t.sneakers_ASPCT_models) e on e.model = bbase1.model
+left join (select UK_SIZE from  p_robevans_t.sneakers_ASPCT_size) f on f.UK_SIZE = bbase3.UK_SIZE
+
+
+left outer join dw_users u
+	on ck.seller_id = u.user_id
+	
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+
+WHERE 1=1
+	AND  CK.AUCT_end_dt >= '2018-01-01'                    
+AND CK.SITE_ID in (3)
+	and cat.CATEG_LVL4_ID in (15709,95672)
+	and (Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 100)
+	and ck.slr_CNTRY_ID in (3)
+		GROUP BY 1,2,3,4,5,6,7,8,9,10,11)
+-- 		where phase_flag not in ('Other')
+		);
+		
+		
+		
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- First week by model
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+drop table if exists p_robevans_t.sneakers_ASPCT_models_week;
+create table p_robevans_t.sneakers_ASPCT_models_week as 
+-- 
+(select * from (select *,  ROW_NUMBER() over  ( partition by  model order by AGE_FOR_RTL_WEEK_ID asc) as RNum from (
+select
+retail_year,
+retail_week,
+model,
+AGE_FOR_RTL_WEEK_ID,
+	count(distinct slr_id) as Seller_Count,
+	count(distinct ck.item_id) as LL
+
+FROM DW_LSTG_ITEM AS CK
+
+
+LEFT JOIN (select item_id, ITEM_VRTN_ID  from LSTG_ITEM_VRTN group by 1,2) v on v.item_id = ck.item_id
+LEFT JOIN (select item_id, count(ITEM_VRTN_ID) c  from LSTG_ITEM_VRTN group by 1) v1 on v1.item_id = ck.item_id
+
+
+ LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID
+INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
+INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT 
+left outer join dw_users u
+on ck.slr_id = u.user_id
+
+	
+	
+left join (select a.* from (
+select
+item_id,
+auct_end_dt,
+lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+upper(ASPCT_VLU_NM) as MODEL,
+ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+FROM ITEM_ASPCT_CLSSFCTN ASPCT
+where 
+lower(PRDCT_ASPCT_NM) in ('model') and NS_TYPE_CD='df' )a
+where RNum = 1
+) bbase1
+					ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+					
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+	
+WHERE 1=1
+	AND  CK.AUCT_end_dt >= '2018-01-01'
+and ck.WACKO_YN = 'N'                      
+AND CK.AUCT_TYPE_CODE NOT IN (10,15)
+AND CK.ITEM_SITE_ID in (3)
+and ck.auct_end_dt >= date '2018-01-01'	
+	and cat.CATEG_LVL4_ID in (15709,95672)
+	and (Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100 OR (Cast(CK.BIN_PRICE_LSTG_CURNCY AS DECIMAL(18,2)) >= 100))
+	and ck.slr_CNTRY_ID in (3)
+		GROUP BY 1,2,3,4))
+		where rnum = 1
+		);
+
+

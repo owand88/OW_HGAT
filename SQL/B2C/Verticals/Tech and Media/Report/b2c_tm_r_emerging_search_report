@@ -1,0 +1,152 @@
+/*Aim: Emerging Tech searches*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Exploring data
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--2019-01-01, 2022-10-29 (Run on 31Oct2022, 2 day data lag)
+--select min(session_start_dt),max(session_start_dt) from access_views.srch_cnvrsn_event_fact;
+
+--Searches that fall into Tech category in the last 4 weeks
+drop table if exists P_InventoryPlanning_T.Tech_searches_4week;
+create table P_InventoryPlanning_T.Tech_searches_4week as (
+select    
+cal.age_for_rtl_week_id
+,cal.retail_year
+,cal.retail_week
+,cal.retail_wk_end_date
+,cat.meta_categ_name
+,cat.categ_lvl2_name
+,cat.categ_lvl3_name
+,cat.categ_lvl4_name 
+,cat.meta_categ_id
+,cat.categ_lvl2_id
+,cat.categ_lvl3_id
+,cat.categ_lvl4_id 
+
+,lower(src.query) as act_srch
+,count(*) as src_cnt 
+
+from  access_views.srch_cnvrsn_event_fact src       
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on src.site_id=3                                                                
+and substring(src.items,1,instr(src.items,',')-1) = lstg.item_id--Assume the first item appears is the most relevant to the search input
+
+inner join (
+	select distinct meta_categ_id,meta_categ_name,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,move_to,leaf_categ_name,site_id,
+	case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+	when meta_categ_id in (26395) then 'Lifestyle'
+	when categ_lvl3_id in (260325) then 'Lifestyle'
+	when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+	when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+	when categ_lvl3_id in (3244) then 'Parts & Accessories'
+	when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+	when categ_lvl2_id in (46576) then 'Parts & Accessories'
+	when categ_lvl2_id in (63, 29223) then 'Collectibles'
+	else bsns_vrtcl_name end as new_vertical
+	from access_views.dw_category_groupings
+	where sap_category_id not in (5,7,23,41,-999)) as cat               
+on lstg.leaf_categ_id=cat.leaf_categ_id 
+and cat.site_id=3
+and lstg.leaf_categ_id=cat.move_to--latest category hierarchy
+
+inner join access_views.dw_cal_dt cal
+on src.session_start_dt = cal.cal_dt and cal.age_for_rtl_week_id between -4 and -1--observe last full 4 weeks trend
+
+where cat.new_vertical='Electronics'
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13);
+
+/*
+--22,233,570 rows, 113,325,411 searches, circa 4M Tech related searches per day
+select count(*),sum(src_cnt) from P_InventoryPlanning_T.Tech_searches_4week;
+
+select * from P_InventoryPlanning_T.Tech_searches_4week
+order by age_for_rtl_week_id desc,src_cnt desc;
+
+--Top 500 Tech searches in latest 4 weeks
+select 
+act_srch
+,categ_lvl2_name 
+,sum(src_cnt) as total_search 
+from P_InventoryPlanning_T.Tech_searches_4week
+group by 1,2
+qualify (row_number() over (order by total_search desc))<=500;
+
+--Top 500 Tech searches in latest week
+select 
+act_srch
+,categ_lvl2_name
+,sum(src_cnt) as total_search 
+from P_InventoryPlanning_T.Tech_searches_4week
+where age_for_rtl_week_id = -1
+group by 1,2
+qualify (row_number() over (order by total_search desc))<=500;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Emerging seaches
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+--Top 0.01% searches in last week (RW43)
+--2022 RW43, the top 0.01% of search input have 3928 searches
+--496 rows
+with LW as (select
+act_srch
+,sum(src_cnt) as src
+from P_InventoryPlanning_T.Tech_searches_4week
+where age_for_rtl_week_id = -1
+group by 1)
+,top as (
+select percentile(cast(src as bigint), 0.9999) as top_pc
+from LW
+)
+select * from LW
+cross join top
+where LW.src>=top.top_pc
+
+
+--Searches that increased in popularity in the latest week
+with top as (
+select percentile(cast(src as bigint), 0.9999) as top_pc--Top 0.01% searches in latest week
+from
+(select
+act_srch
+,sum(src_cnt) as src
+from P_InventoryPlanning_T.Tech_searches_4week
+where age_for_rtl_week_id = -1
+group by 1)
+)
+select 
+act_srch
+,categ_lvl2_name
+,wk_1
+,wk_2
+,wk_3
+,wk_4
+
+,case when wk_1 is not null and wk_2 is not null then (wk_1 / wk_2) - 1
+      when wk_1 is not null and wk_2 is null then (wk_1 / 0.00000000000000000001) - 1
+	  else 0.00000000000000000001 end as wk_1_wk2_pct_diff
+	  
+,case when wk_1 is not null and wk_4 is not null then (wk_1 / wk_4) - 1
+      when wk_1 is not null and wk_4 is null then (wk_1 / 0.00000000000000000001) - 1
+	  else 0.00000000000000000001 end as wk_1_wk4_pct_diff
+	  
+,case when wk_1_wk2_pct_diff>0 then 1 else 0 end as increase_wk1_wk2	  
+,case when wk_1_wk4_pct_diff>0 then 1 else 0 end as increase_wk1_wk4	
+
+from
+(select  
+act_srch
+,categ_lvl2_name
+,sum(src_cnt) as total_search 
+,sum(case when age_for_rtl_week_id = -4 then src_cnt end) as wk_4
+,sum(case when age_for_rtl_week_id = -3 then src_cnt end) as wk_3
+,sum(case when age_for_rtl_week_id = -2 then src_cnt end) as wk_2
+,sum(case when age_for_rtl_week_id = -1 then src_cnt end) as wk_1
+from P_InventoryPlanning_T.Tech_searches_4week
+group by 1,2) a
+
+cross join top
+
+where a.wk_1>=top_pc;
+*/

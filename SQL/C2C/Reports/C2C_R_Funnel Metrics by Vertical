@@ -1,0 +1,437 @@
+/* Code created for C2C WBR files
+Used in Funnel Metrics by segment and funnel metrics by vertical workbooks
+FOR 2019 and 2020 RW2022 = RW2019+1 hence the case statements */
+
+DROP TABLE IF EXISTS P_hroon_T.c2c_ll;
+CREATE TABLE P_hroon_T.c2c_ll AS (
+
+SELECT              
+	cal.retail_year
+	,CASE 
+		WHEN retail_year in (2019,2020) THEN retail_week-1 
+		ELSE retail_week 
+	END AS retail_week
+	,DAY_OF_WEEK	
+	,AGE_FOR_RTL_WEEK_ID
+	,EU_B2C_C2C_FLAG
+	,CASE 
+		WHEN slr_cntry_id in (1, -1, 0, -999, 225, 679, 1000) THEN 'US'                                                                                     	
+		WHEN slr_cntry_id = 3 THEN 'UK'                                                                     	
+		WHEN slr_cntry_id = 77 THEN 'DE'                                                                                    	
+		WHEN slr_cntry_id = 71 THEN 'FR'                                                                                    	
+		WHEN slr_cntry_id = 101 THEN 'IT'                                                                                   	
+		WHEN slr_cntry_id = 186 THEN 'ES'                                                                                   	
+		ELSE 'other'                                                                                        	
+	END as SELLER_REV_ROLLUP    
+	,CASE 
+		WHEN seller_segment_detail = 'Regular' THEN 'Regular'
+		WHEN seller_segment_detail in ('Large Merchant', 'Merchant', 'Entrepreneur') THEN 'Entrepreneur'
+		WHEN seller_segment_detail = 'Occasional' THEN 'Occasional'
+		WHEN SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') THEN 'NORS'
+		WHEN SELLER_SEGMENT_DETAIL in ('FTL') THEN 'New'
+		ELSE 'other'
+	END as segment	
+    ,li.vertical	
+    ,COUNT(*) AS LSTG_CNT
+	,count(distinct slr_id) as slr_lst_cnt
+                
+FROM 		PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT li
+
+INNER JOIN 	access_views.dw_cal_dt cal 
+ON 			cal.cal_dt = li.auct_start_dt
+                
+WHERE  		ISCORE = 1          
+AND 		AUCT_START_DT BETWEEN '2018-12-30' and (current_date - 1)       
+AND 		AUCT_END_DT >= '2018-12-30'
+AND 		slr_cntry_id = 3
+AND 		relist_up_flag = 0 -- 1st gen only  
+AND 		upper(EU_B2C_C2C_FLAG) = 'C2C'
+                
+GROUP BY 	1,2,3,4,5,6,7,8
+);
+
+
+DROP TABLE IF EXISTS P_hroon_T.c2c_gmv;
+CREATE TABLE P_hroon_T.c2c_gmv AS (
+
+select 
+	CASE 
+		WHEN retail_year in (2019,2020) THEN retail_week-1 
+		ELSE retail_week 
+	END AS retail_week
+	,cal.retail_year	
+	,cal.day_of_week	
+	,AGE_FOR_RTL_WEEK_ID
+	,EU_B2C_C2C_FLAG	
+	,CASE 
+		WHEN slr_cntry_id in (1, -1, 0, -999, 225, 679, 1000) THEN 'US'                                                                                     	
+		WHEN slr_cntry_id = 3 THEN 'UK'                                                                     	
+		WHEN slr_cntry_id = 77 THEN 'DE'                                                                                    	
+		WHEN slr_cntry_id = 71 THEN 'FR'                                                                                    	
+		WHEN slr_cntry_id = 101 THEN 'IT'                                                                                   	
+		WHEN slr_cntry_id = 186 THEN 'ES'                                                                                   	
+		ELSE 'other'                                                                                        	
+	END as SELLER_REV_ROLLUP                                                                                        	                                                                           	
+	,vertical
+	,CASE 
+		WHEN seller_segment_detail = 'Regular' THEN 'Regular'
+		WHEN seller_segment_detail in ('Large Merchant', 'Merchant', 'Entrepreneur') THEN 'Entrepreneur'
+		WHEN seller_segment_detail = 'Occasional' THEN 'Occasional'
+		WHEN SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') THEN 'NORS'
+		WHEN SELLER_SEGMENT_DETAIL in ('FTL') THEN 'New'
+		ELSE 'other'
+	END as segment
+	,sum(gmv20_plan) AS GMV_PLAN                                           	
+	,SUM(T.QUANTITY) AS SOLD_ITEMS	
+	,count(distinct seller_id) as slr_cnt_gmv
+	
+FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT t 
+
+INNER JOIN 	access_views.dw_cal_dt cal 
+ON 			cal.cal_dt = t.gmv_dt	
+
+WHERE 		t.gmv_dt BETWEEN '2018-12-30' and current_date - 1
+AND 		t.auct_end_dt >= '2018-12-30'                                                      	
+AND 		upper(T.CK_WACKO_YN) ='N'                                                                                                                          	
+AND 		t.ISCORE = 1	
+AND 		slr_cntry_id in (3)	
+AND 		AUCT_TYPE_CD not IN (10,12,15)
+AND 		upper(EU_B2C_C2C_FLAG) = 'C2C'
+AND			SITE_ID = 3
+                                                                            	
+GROUP BY 	1,2,3,4,5,6,7,8
+);
+
+
+DROP TABLE IF EXISTS P_hroon_T.c2c_vi;
+CREATE TABLE P_hroon_T.c2c_vi AS (
+
+SELECT                         
+	cal.retail_year
+	,CASE 
+		WHEN retail_year in (2019,2020) THEN retail_week-1 
+		ELSE retail_week 
+	END AS retail_week
+	,DAY_OF_WEEK	
+	,AGE_FOR_RTL_WEEK_ID
+	,EU_B2C_C2C_FLAG                                    
+	,CASE	
+		WHEN slr_cntry_id in (1, -1, 0, -999, 225, 679, 1000) THEN 'US'                                                                                     
+		WHEN slr_cntry_id = 3 THEN 'UK'                                                                     
+		WHEN slr_cntry_id = 77 THEN 'DE'                                                                                    
+		WHEN slr_cntry_id = 71 THEN 'FR'                                                                                    
+		WHEN slr_cntry_id = 101 THEN 'IT'                                                                                   
+		WHEN slr_cntry_id = 186 THEN 'ES'    
+		WHEN slr_cntry_id = 2 THEN 'CA'       
+		ELSE 'other'                                                                                        
+    END as SELLER_REV_ROLLUP                                                                                      
+	,CASE 
+		WHEN seller_segment_detail = 'Regular' THEN 'Regular'
+	    WHEN seller_segment_detail in ('Large Merchant', 'Merchant', 'Entrepreneur') THEN 'Entrepreneur'
+        WHEN seller_segment_detail = 'Occasional' THEN 'Occasional'
+		WHEN SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') THEN 'NORS'
+		WHEN SELLER_SEGMENT_DETAIL in ('FTL') THEN 'New'
+        ELSE 'other'
+	END as segment
+    ,vertical	
+	,SUM(SRP_IMPRSN_CNT) as SRP_IMP
+	,SUM(TTL_VI_CNT) as TTL_VI
+
+FROM 		PRS_restricted_V.SLNG_TRFC_SUPER_FACT li
+
+LEFT JOIN  	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT a 
+ON 			a.item_id = li.ITEM_ID 
+
+INNER JOIN 	access_views.dw_cal_dt cal 
+ON 			cal.cal_dt = li.cal_dt
+                
+WHERE  		ISCORE = 1          
+AND  		li.cal_dt BETWEEN '2018-12-30' and (current_date - 1)       
+AND  		li.cal_dt >= '2018-12-30'
+AND 		slr_cntry_id = 3
+AND 		relist_up_flag = 0 -- 1st gen only  
+AND 		upper(EU_B2C_C2C_FLAG) = 'C2C'
+                
+GROUP BY 1,2,3,4,5,6,7,8
+);
+
+---------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------- 
+
+DROP TABLE IF EXISTS p_hroon_t.c2c_funnel;
+CREATE table p_hroon_t.c2c_funnel as(
+
+SELECT 
+	a.retail_year
+	,a.retail_week
+	,a.DAY_OF_WEEK	
+	,a.AGE_FOR_RTL_WEEK_ID
+	,a.EU_B2C_C2C_FLAG   
+	,a.SELLER_REV_ROLLUP                                                                                        
+	,a.segment	
+	,a.vertical	
+	,LSTG_CNT
+	,slr_lst_cnt
+	,GMV_PLAN                                      	
+	,SOLD_ITEMS	
+	,slr_cnt_gmv
+	,SRP_IMP
+	,TTL_VI
+
+FROM (		
+	SELECT 
+		retail_year
+		,retail_week
+		,DAY_OF_WEEK	
+		,AGE_FOR_RTL_WEEK_ID
+		,EU_B2C_C2C_FLAG  
+		,SELLER_REV_ROLLUP                                                                                        
+		,segment
+		,vertical
+		,LSTG_CNT
+		,slr_lst_cnt
+	FROM P_hroon_T.c2c_ll 
+	) a
+
+LEFT OUTER JOIN (
+				SELECT 
+					retail_week
+					,retail_year
+					,day_of_week
+					,AGE_FOR_RTL_WEEK_ID
+					,EU_B2C_C2C_FLAG
+					,SELLER_REV_ROLLUP                                                                                     	                                                                           	
+					,vertical
+					,segment
+					,GMV_PLAN                                    	
+					,SOLD_ITEMS
+					,slr_cnt_gmv
+				FROM P_hroon_T.c2c_gmv
+			)b 
+ON		a.AGE_FOR_RTL_WEEK_ID = B.AGE_FOR_RTL_WEEK_ID 
+AND 	A.DAY_OF_WEEK = B.DAY_OF_WEEK  
+AND		a.SELLER_REV_ROLLUP = B.SELLER_REV_ROLLUP 
+AND		a.eu_b2c_c2c_flag = b.eu_b2c_c2c_flag 
+AND		a.seller_Rev_rollup = b.seller_rev_rollup 
+AND		a.retail_year = b.retail_year  
+AND		a.segment =  B.segment  
+AND 	a.vertical =  B.vertical
+
+LEFT OUTER JOIN (
+				SELECT 
+					retail_year
+					,retail_week
+					,DAY_OF_WEEK	
+					,AGE_FOR_RTL_WEEK_ID
+					,EU_B2C_C2C_FLAG                                    
+					,SELLER_REV_ROLLUP                                                                                        
+					,segment
+					,vertical	
+					,SRP_IMP
+					,TTL_VI
+				FROM P_hroon_T.c2c_vi		
+			) c 
+ON		a.AGE_FOR_RTL_WEEK_ID = c.AGE_FOR_RTL_WEEK_ID 
+AND		A.DAY_OF_WEEK = C.DAY_OF_WEEK  
+AND		a.SELLER_REV_ROLLUP = c.SELLER_REV_ROLLUP 
+AND		a.eu_b2c_c2c_flag = c.eu_b2c_c2c_flag 
+AND		a.seller_Rev_rollup = c.seller_rev_rollup 
+AND		a.retail_year = c.retail_year  
+AND		a.segment = c.segment  
+AND		a.vertical = c.vertical
+
+
+GROUP BY 
+		a.retail_year
+		,a.retail_week
+		,a.DAY_OF_WEEK
+		,a.AGE_FOR_RTL_WEEK_ID
+		,a.EU_B2C_C2C_FLAG 
+		,a.SELLER_REV_ROLLUP                                                                                      
+		,a.segment
+		,a.vertical
+		,LSTG_CNT
+		,slr_lst_cnt
+		,GMV_PLAN                                    	
+		,SOLD_ITEMS
+		,slr_cnt_gmv
+		,SRP_IMP
+		,TTL_VI
+ ); 
+
+---------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------- 
+DROP TABLE IF EXISTS p_hroon_t.c2c_funnel_summary;
+CREATE table p_hroon_t.c2c_funnel_summary as (
+
+SELECT
+			BASE.segment	
+			,BASE.vertical
+			,LW_LST_CNT
+			,LW_SLR_LST_CNT
+			,LW_GMV
+			,LW_SI
+			,LW_SLR_CNT_GMV
+			,LW_SRP_IMP
+			,LW_VI
+			,L2W_LST_CNT
+			,L2W_SLR_LST_CNT
+			,L2W_GMV
+			,L2W_SI
+			,L2W_SLR_CNT_GMV
+			,L2W_SRP_IMP
+			,L2W_VI
+			,LY_LST_CNT
+			,LY_SLR_LST_CNT
+			,LY_GMV
+			,LY_SI
+			,LY_SLR_CNT_GMV
+			,LY_SRP_IMP
+			,LY_VI
+			,L2Y_LST_CNT
+			,L2Y_SLR_LST_CNT
+			,L2Y_GMV
+			,L2Y_SI
+			,L2Y_SLR_CNT_GMV
+			,L2Y_SRP_IMP
+			,L2Y_VI
+			,L3Y_LST_CNT
+			,L3Y_SLR_LST_CNT
+			,L3Y_GMV
+			,L3Y_SI
+			,L3Y_SLR_CNT_GMV
+			,L3Y_SRP_IMP
+			,L3Y_VI
+			
+FROM 		(SELECT 
+				A.SEGMENT
+				,A.VERTICAL
+				,SUM(LSTG_CNT) AS LW_LST_CNT
+				,SUM(slr_lst_cnt) AS LW_SLR_LST_CNT
+				,SUM(GMV_PLAN) AS LW_GMV
+				,SUM(SOLD_ITEMS) AS LW_SI
+				,SUM(slr_cnt_gmv) AS LW_SLR_CNT_GMV
+				,SUM(SRP_IMP) AS LW_SRP_IMP
+				,SUM(TTL_VI) AS LW_VI 
+		
+			FROM 		p_hroon_t.c2c_funnel A 
+			WHERE 		AGE_FOR_RTL_WEEK_ID = -1 -- THIS WILL BE RETAIL WEEK 38
+			GROUP BY 	1,2
+			) BASE
+
+LEFT JOIN 	(SELECT 
+				A.SEGMENT
+				,A.VERTICAL
+				,SUM(LSTG_CNT) AS L2W_LST_CNT
+				,SUM(slr_lst_cnt) AS L2W_SLR_LST_CNT
+				,SUM(GMV_PLAN) AS L2W_GMV
+				,SUM(SOLD_ITEMS) AS L2W_SI
+				,SUM(slr_cnt_gmv) AS L2W_SLR_CNT_GMV
+				,SUM(SRP_IMP) AS L2W_SRP_IMP
+				,SUM(TTL_VI) AS L2W_VI 
+			FROM p_hroon_t.c2c_funnel A 
+			WHERE AGE_FOR_RTL_WEEK_ID = -2 -- THIS WILL BE RETAIL WEEK 37
+			GROUP BY 1,2
+			) L2W 
+ON 			L2W.VERTICAL = BASE.VERTICAL 
+AND 		L2W.SEGMENT  = BASE.SEGMENT 
+
+LEFT JOIN 	(SELECT 
+				A.SEGMENT
+				,A.VERTICAL
+				,SUM(LSTG_CNT) AS LY_LST_CNT
+				,SUM(slr_lst_cnt) AS LY_SLR_LST_CNT
+				,SUM(GMV_PLAN) AS LY_GMV
+				,SUM(SOLD_ITEMS) AS LY_SI
+				,SUM(slr_cnt_gmv) AS LY_SLR_CNT_GMV
+				,SUM(SRP_IMP) AS LY_SRP_IMP
+				,SUM(TTL_VI) AS LY_VI 
+			FROM p_hroon_t.c2c_funnel A 
+			WHERE AGE_FOR_RTL_WEEK_ID = -53 
+			GROUP BY 1,2
+			) LY 
+ON 			LY.VERTICAL = BASE.VERTICAL 
+AND			LY.SEGMENT  = BASE.SEGMENT 
+
+LEFT JOIN 	(SELECT 
+				A.SEGMENT
+				,A.VERTICAL, SUM(LSTG_CNT) AS L2Y_LST_CNT
+				,SUM(slr_lst_cnt) AS L2Y_SLR_LST_CNT
+				,SUM(GMV_PLAN) AS L2Y_GMV
+				,SUM(SOLD_ITEMS) AS L2Y_SI
+				,SUM(slr_cnt_gmv) AS L2Y_SLR_CNT_GMV
+				,SUM(SRP_IMP) AS L2Y_SRP_IMP
+				,SUM(TTL_VI) AS L2Y_VI 
+			FROM p_hroon_t.c2c_funnel A 
+			WHERE AGE_FOR_RTL_WEEK_ID = -105 
+			GROUP BY 1,2
+			) L2Y 
+ON 			L2Y.VERTICAL = BASE.VERTICAL 
+AND 		L2Y.SEGMENT  = BASE.SEGMENT 
+
+LEFT JOIN 	(SELECT 
+				A.SEGMENT
+				,A.VERTICAL
+				,SUM(LSTG_CNT) AS L3Y_LST_CNT
+				,SUM(slr_lst_cnt) AS L3Y_SLR_LST_CNT
+				,SUM(GMV_PLAN) AS L3Y_GMV
+				,SUM(SOLD_ITEMS) AS L3Y_SI
+				,SUM(slr_cnt_gmv) AS L3Y_SLR_CNT_GMV
+				,SUM(SRP_IMP) AS L3Y_SRP_IMP
+				,SUM(TTL_VI) AS L3Y_VI 
+			FROM p_hroon_t.c2c_funnel A 
+			WHERE AGE_FOR_RTL_WEEK_ID = -157 
+			GROUP BY 1,2
+			) L3Y 
+ON 			L3Y.VERTICAL = BASE.VERTICAL 
+AND		 	L3Y.SEGMENT  = BASE.SEGMENT 			
+ );
+
+---------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------- 
+DROP TABLE IF EXISTS p_hroon_t.c2c_funnel_summary1;
+CREATE table p_hroon_t.c2c_funnel_summary1 as (
+
+SELECT * FROM 
+	(SELECT
+		CASE
+			WHEN AGE_FOR_RTL_WEEK_ID = -1  THEN 'LW ACTUALS'
+			WHEN AGE_FOR_RTL_WEEK_ID = -2  THEN 'L2W ACTUALS'
+			WHEN AGE_FOR_RTL_WEEK_ID = -53  THEN 'LY ACTUALS'
+			WHEN AGE_FOR_RTL_WEEK_ID = -105  THEN 'L2Y ACTUALS'
+			WHEN AGE_FOR_RTL_WEEK_ID = -157  THEN 'L3Y ACTUALS'
+			ELSE 'OTHER' 
+		END AS WEEK_FLAG
+		,a.DAY_OF_WEEK
+		,a.AGE_FOR_RTL_WEEK_ID                                                                                      
+		,a.segment
+		,a.vertical
+		,LSTG_CNT
+		,slr_lst_cnt
+		,GMV_PLAN                                    	
+		,SOLD_ITEMS
+		,slr_cnt_gmv
+		,SRP_IMP
+		,TTL_VI
+				
+	FROM p_hroon_t.c2c_funnel A 
+	) 
+
+WHERE WEEK_FLAG NOT IN ('OTHER') 
+);
+
+select * from p_hroon_t.c2c_funnel_summary1  limit 100;
+
+
+-- select count(*) from (
+
+-- select aaa.*,
+-- City,
+-- dayphone,
+-- do_not_email_daily_status,
+-- email,
+-- user_name
+-- from P_awang_ops_T.seller_final_output aaa
+-- left outer join prs_secure_v.dw_users u
+-- on aaa.slr_id = u.user_id
+-- where average_GMV_pre5weeks > 1000)

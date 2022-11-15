@@ -1,0 +1,61 @@
+---------- schedule ----------
+drop table if exists p_hroon_t.c2c_wbr_eugem;
+create table p_hroon_t.c2c_wbr_eugem
+
+select 
+	distinct BUSINESS, CATEGORY, CBT, GMV_Plan, RETAIL_YEAR_ROLL52, RETAIL_WEEK_ROLL52, REV_ROLLUP, VERSION, TOT_REV_PLAN, retail_week, retail_year, SI
+from access_views.eugem 
+where 1=1
+	and RETAIL_YEAR in (2019, 2021 , 2022)
+	and business = 'C2C'
+	and rev_rollup = 'UK'
+	and version = "ACTUALS"
+	and category = "Core"
+;
+------------------------------
+
+
+
+-- select
+-- 	distinct retail_week, retail_week_roll52
+-- from access_views.eugem 
+-- where 1=1
+-- 	and RETAIL_YEAR in (2019)
+-- 	and business = 'C2C'
+-- 	and rev_rollup = 'UK'
+-- 	and version = "ACTUALS"
+-- 	and category = "Core"
+-- ;
+
+
+
+-- select
+-- 	distinct retail_week, sum(TOT_REV_PLAN) as TOT_REV_PLAN
+-- from access_views.eugem 
+-- where 1=1
+-- 	and RETAIL_YEAR in (2019)
+-- 	and business = 'C2C'
+-- 	and rev_rollup = 'UK'
+-- 	and version = "ACTUALS"
+-- 	and category = "Core"
+-- group by 1
+-- order by 1
+-- ;
+
+
+
+-- select 
+-- 	distinct version, retail_week, sum(GMV_Plan) as GMV
+-- from access_views.eugem
+-- where 1=1
+-- 	and RETAIL_YEAR in (2022)
+-- 	and business = 'C2C'
+-- 	and rev_rollup = 'UK'
+-- 	and category = "Core"
+-- 	and version in ("BUDGET_2022_GMV2", "BUDGET_2022")
+-- group by 1,2
+-- order by 1,2
+-- ;
+
+
+-- -- describe vw_eugemfinal;

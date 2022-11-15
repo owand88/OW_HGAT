@@ -1,0 +1,165 @@
+/*Aim:
+Request from Cristian:
+Seller was suspended and as a result, their listings were deleted. I am trying to gather how much GMV these listings generated up to the point of the suspension.
+At the first step, I will need to look at the aggregate GMV (on a yearly / weekly gain from 2020) 
+but I may need to deep dive into which listings are the GMV generators vs. the ones that were not generating anything.
+*/
+
+--3021 listings supplied by Cristian in the 08Nov22 email
+select * from P_UK_BC_T.suspended_slr_lstg;
+
+--defendapack (UK seller)
+select user_slctd_id, user_cntry_id from access_views.dw_users
+where user_id=140764281;
+
+--All 3021 listings appear in listing table and all listed on UK site
+select 
+a.item_id
+,a.lstg_site_id
+from prs_restricted_v.slng_lstg_super_fact a
+inner join P_UK_BC_T.suspended_slr_lstg b
+on a.item_id=b.item_id;
+
+--User suspended and reinstated on the same day on 23Aug2017 and 29Aug2017
+select 
+u.id
+,u.change_time
+,u.from_state
+,fs.user_sts_desc as from_state_desc
+,u.to_state
+,ts.user_sts_desc as to_state_desc
+,u.reason_code
+,rsn.state_chg_rsn_name
+--,rsn.state_chg_rsn_desc
+,u.mac_actvty_id
+,u.mac_rule_id
+,mac.admin_node_name
+from access_views.dw_user_state_history u
+left join access_views.dw_user_status_codes fs
+on u.from_state=fs.user_sts_code
+left join access_views.dw_user_status_codes ts
+on u.to_state=ts.user_sts_code
+left join access_views.dw_user_state_chg_rsn_lkp rsn
+on u.reason_code=rsn.state_chg_rsn_id
+left join prs_global_v.mac_txnmy_lkp mac
+on u.mac_rule_id=mac.admin_node_id
+where id=140764281;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Suspended seller GMV from listings on UK site (Domestic & CBT) in 2020 to 2022RW44
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+create table p_uk_bc_t.suspended_slr_GMV as (
+select 
+cal.retail_year
+,cal.retail_week
+,cal.retail_wk_end_date
+,ck.item_id
+,case when t.item_id is not null then 1 else 0 end as target_lstg
+,lstg.auct_start_dt as listing_start_date
+,lstg.auct_end_dt as listing_end_date
+,lstg.auct_title as listing_title
+,cat.vertical
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+,cat.categ_lvl4_id
+,cat.categ_lvl4_name
+,case when lstg.cndtn_rollup_id = 1 then 'New'
+	  when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+	  when lstg.cndtn_rollup_id = 3 then 'Used'
+	  else 'Other' end as condition_rollup
+,case when ck.byr_cntry_id <> 3 then 'CBT' else 'DOM' end as CBT_DOM
+,sum(ck.GMV20_plan) as tot_GMV
+,sum(ck.GMV20_sold_quantity) as tot_BI
+
+from prs_restricted_v.slng_trans_super_fact ck 
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on ck.item_id=lstg.item_id
+
+inner join (select meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id 
+,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl3_id in (260325) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+when categ_lvl2_id in (63, 29223) then 'Collectibles'
+else bsns_vrtcl_name end as vertical
+from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3 
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt
+and cal.age_for_rtl_year_id in (0,-1,-2) and cal.age_for_rtl_week_id<=-1--Till 2022RW44
+
+left join P_UK_BC_T.suspended_slr_lstg t
+on ck.item_id=t.item_id
+
+where 
+ck.seller_id=140764281
+and lstg.lstg_site_id=3
+and ck.iscore = 1
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+
+
+
+
+select * from p_uk_bc_t.suspended_slr_GMV;
+
+
+--Sales all through 2020 to 2022-11-05 (latest week)
+select min(retail_wk_end_date), max(retail_wk_end_date) from p_uk_bc_t.suspended_slr_GMV;
+
+--Total 1866 listings were converted. Only 1501 out of the 3021 listings provided made a sale
+select target_lstg, count(distinct item_id) from p_uk_bc_t.suspended_slr_GMV group by 1;
+
+--This item has 2 different categories
+select item_id, count(distinct categ_lvl4_name) from p_uk_bc_t.suspended_slr_GMV
+group by 1
+having count(distinct categ_lvl2_name) >1;
+
+select * from p_uk_bc_t.suspended_slr_GMV
+where item_id=401554701684;
+
+--Almost all listings in Cristian's email ended in Jun2022, rest ended in 2022 before Jun22
+select 
+year(listing_end_date)||' '||month(listing_end_date)
+,count(distinct item_id)
+from p_uk_bc_t.suspended_slr_GMV
+where target_lstg=1
+group by 1
+
+--GMV till 2022 RW24 for listings in Cristian's email
+select 
+max(retail_wk_end_date)
+,max(retail_week)
+from p_uk_bc_t.suspended_slr_GMV
+where target_lstg=1 and retail_year=2022
+
+--GMV till YTD for listings not in Cristian's email
+select 
+max(retail_wk_end_date)
+from p_uk_bc_t.suspended_slr_GMV
+where target_lstg=0
+
+
+
+
+
+
+
+
+
+
+
+
+
+

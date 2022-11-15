@@ -1,0 +1,64 @@
+---SAVEFIVE (Just selected items)
+--SAVING5
+drop table if exists P_RHARRUS_T.PTO2021_5PERCENT_SAVEFIVE;
+create table P_RHARRUS_T.PTO2021_5PERCENT_SAVEFIVE  as
+select item_id as itemId, cast (6343077901  as decimal(20,0))as couponId, (date_format(cast(unix_timestamp() as timestamp), 'yyyy-MM-dd HH:mm:ss.SSS'))  as runDate
+from P_RHARRUS_T.PTO2021_SAVEFIVE
+GROUP BY 1
+limit 20000; --- change limits
+
+--FIVENOW
+drop table if exists P_RHARRUS_T.PTO2021_5PERCENT_FIVENOW;
+create table P_RHARRUS_T.PTO2021_5PERCENT_FIVENOW  as
+select a.item_id as itemId, cast (6343077901  as decimal(20,0))as couponId, (date_format(cast(unix_timestamp() as timestamp), 'yyyy-MM-dd HH:mm:ss.SSS'))  as runDate
+from P_RHARRUS_T.PTO2021_SAVEFIVE a
+left join P_RHARRUS_T.PTO2021_5PERCENT_SAVEFIVE b on a.item_id = b.itemId
+WHERE b.itemId is null
+GROUP BY 1
+limit 20000; --- change limits
+
+---TAKE8 (Just certified refurb)
+--HAVE8
+drop table if exists P_RHARRUS_T.PTO2021_8PERCENT_TAKE8;
+create table P_RHARRUS_T.PTO2021_8PERCENT_TAKE8  as
+select item_id as itemId, cast (6343077801  as decimal(20,0))as couponId, (date_format(cast(unix_timestamp() as timestamp), 'yyyy-MM-dd HH:mm:ss.SSS'))  as runDate
+from P_RHARRUS_T.PTO2021_8PERCENT
+GROUP BY 1
+limit 20000; --- change limits;
+
+--FORYOU8
+drop table if exists P_RHARRUS_T.PTO2021_8PERCENT_FORYOU8;
+create table P_RHARRUS_T.PTO2021_8PERCENT_FORYOU8  as
+select a.item_id as itemId, cast (6343077801  as decimal(20,0))as couponId, (date_format(cast(unix_timestamp() as timestamp), 'yyyy-MM-dd HH:mm:ss.SSS'))  as runDate
+from P_RHARRUS_T.PTO2021_8PERCENT a
+left join P_RHARRUS_T.PTO2021_8PERCENT_TAKE8 b on a.item_id = b.itemId
+WHERE b.itemId is null
+GROUP BY 1
+limit 20000; --- change limits;
+
+
+---FORYOU5 (For DCP)
+
+-- select * from  P_RHARRUS_T.PTO2021_5PERCENT_SAVEWITHFIVE b inner join P_RHARRUS_T.PTO2021_5PERCENT_HAVEFIVEOFF a on a.itemid = b.itemid
+/*
+drop table if exists P_RHARRUS_T.PTO2021_5PERCENT_FORYOU5;
+create table P_RHARRUS_T.PTO2021_5PERCENT_FORYOU5 as
+select b.item_id as itemId, cast (6343078001  as decimal(20,0))as couponId, (date_format(cast(unix_timestamp() as timestamp), 'yyyy-MM-dd HH:mm:ss.SSS'))  as runDate
+from P_RHARRUS_T.PTO2021_FORYOU5 b
+left join P_RHARRUS_T.PTO2021_SAVEFIVE a  on a.item_id = b.item_id
+where a.item_id == b.item_id
+group by 1
+limit 19500; --- change limits
+*/
+---PICK8 (For DCP)
+/*
+drop table  P_RHARRUS_T.PTO2021_8PERCENT_PICK8;
+create table P_RHARRUS_T.PTO2021_8PERCENT_PICK8  as
+select item_id as itemId, cast (6342920301  as decimal(20,0))as couponId, (date_format(cast(unix_timestamp() as timestamp), 'yyyy-MM-dd HH:mm:ss.SSS'))  as runDate
+from P_RHARRUS_T.PTO2021_8PERCENT_TOPUP
+limit 19500; --- change limits*/
+
+/*
+Select * from P_RHARRUS_T.PTO2021_5PERCENT_FORYOU5;
+Select * from P_RHARRUS_T.PTO2021_8PERCENT_TAKE8;
+Select * from P_RHARRUS_T.PTO2021_5PERCENT_SAVEFIVE;

@@ -1,0 +1,714 @@
+-- OEM and Green parts LL growth by quarter by year from 2020
+--first week per quarter
+
+-- listings  ---------------------------------------------------------------------------------------------------------------------------
+--PUll all  listings
+
+--select distinct RETAIL_YEAR, QTR_OF_YEAR_ID,Retail_week  from DW_CAL_DT  where retail_year in ( 2019, 2020, 2021, 2022) and  QTR_OF_YEAR_ID =4 group by 1,2, 3 order by 1,2,3
+
+
+Drop table if exists   p_ichan_t.listings_oem ;-- select * from   p_ichan_t.listings_oem limit 100 
+create table  p_ichan_t.listings_oem as (
+select * from 
+(
+select 
+brand,
+brand_type,
+lst.Item_id,
+USER_SLCTD_ID,
+Retail_year,
+Retail_week,
+case when SLR_CNTRY_ID = 3 then 'UK' else 'other' end as seller_country,
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' -- added smart home
+										when meta_categ_id in (26395) then 'Lifestyle'
+										when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573) then 'Home & Garden'
+										when categ_lvl3_id in (35000) then 'Home & Garden'
+										when categ_lvl3_id in (3244) then 'Parts & Accessories'
+										when categ_lvl2_id in (46576) then 'Parts & Accessories'
+										when bsns_vrtcl_name in ('Collectibles') and meta_categ_id in (220, 237, 550)  then 'Collectibles B2C'
+										when bsns_vrtcl_name in ('Collectibles') and categ_lvl2_id in (180250) then 'Collectibles B2C'
+										else bsns_vrtcl_name end as new_vertical,
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name,
+case when CATEG_LVL2_ID=6030 and  CNDTN_ROLLUP_ID = 3  then 'GP' else 'other' end as inventory_prop,
+
+case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  'Other'  end as Condition
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+--inner join ( select distinct  seller_id from  P_ICHAN_T.recyclers_upload)  c on lst.slr_id=c.seller_id-- select * from   P_ICHAN_T.recyclers_upload order by seller_id rank where seller_id =1077516705
+--inner join P_ICHAN_T.certified_ll   c on lst.Slr_ID=c.SLr_ID
+	INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 --and cASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+			
+left join (select
+						upper(ASPCT_VLU_NM) as brand,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('brand' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) bbase
+				ON lst.ITEM_ID = bbase.ITEM_ID
+left join (select
+						upper(ASPCT_VLU_NM) as brand_type,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('brand type' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) cbase
+				ON lst.ITEM_ID = cbase.ITEM_ID		
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  --AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+--INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL         	ON CAL.CAL_DT =lst.AUCT_START_DT--  AND retail_year in (2021,2022) and age_for_rtl_week_id <= -1 and lst.AUCT_START_DT >= '2021-03-01'--  and  age_for_rtl_week_id >= -10
+--INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+--INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON  CAL.CAL_DT = lst.CREATED_DT AND 				RETAIL_YEAR >= 2017
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 
+ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2022   and AGE_FOR_RTL_WEEK_ID =-1/*  and retail_week in (2,14,27,40)*/ 
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID and retail_year >=  2020
+--INNER JOIN dw_lstg_item_cold lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--WHERE lst.AUCT_end_dt >= date -- limiit on live listings
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and lst.SLR_CNTRY_ID =3
+ and lst.AUCT_end_dt >= '2019-01-01')sub 
+ where  new_vertical='Parts & Accessories') ;
+ 
+ 
+--- select * from ITEM_ASPCT_CLSSFCTN ASPCT	where ( lower(PRDCT_ASPCT_NM) in ('brand' )  or   lower(PRDCT_ASPCT_NM) in ('brand type' )  )and NS_TYPE_CD='df'   and  aspct.auct_end_dt  >=  date '2022-08-01' and item_id in ( 
+ --- select distinct item_id from p_ichan_t.listings_oem where brand = 'FEBI BILSTEIN' ) ; 
+ ---- select * from   ITEM_ASPCT_CLSSFCTN ASPCT where item_id in (373942099006,363666184040,164693817988) and  NS_TYPE_CD='df'  and   ( lower(PRDCT_ASPCT_NM) in ('brand' )  or   lower(PRDCT_ASPCT_NM) in ('brand type' )  );
+ -- select * from  p_ichan_t.listings_oem ;
+ -- select retail_year, retail_week, inventory_prop, seller_country,count(distinct item_id)ll from   p_ichan_t.listings_oem  group by 1 ,2,3,4 order by 4,3,1,2;
+ -- 
+-- select retail_year, retail_week, inventory_prop, count(distinct item_id)ll from   p_ichan_t.listings_oem  group by 1 ,2,3 order by 3,1,2;
+ -- 
+ drop table if exists p_ichan_t.oem_data ;
+Create table p_ichan_t.oem_data as (
+select
+Item_id, 
+retail_year, 
+retail_week,
+new_vertical,
+CATEG_LVL2_NAME,
+CATEG_LVL2_ID,
+Condition,
+inventory_prop,
+max(OEM_flag) OEM_flag,
+max(OEM_flag2) as OEM_flag2
+
+from ( 
+
+ select 
+ brand,
+ brand_type, 
+ item_id, 
+ inventory_prop,
+ case 
+
+when USER_SLCTD_ID= 'aceparts_uk' AND upper(BRAND) IN   ('LUK CLUTCHES','LUK')   THEN 'Y'
+when USER_SLCTD_ID= 'carpartsinmotion' AND upper(BRAND) IN   ( 'BOSCH', 'LUK', 'DELPHI', 'DENSO', 'TRW', 'SACHS', 'VALEO', 'MANN', 'NGK', 'NTK', 'GATES',  'FEBI',   'PIERBURG') THEN 'Y'
+when USER_SLCTD_ID= 'partbusters-mintex-store' AND upper(BRAND) IN   ( 'BOSCH', 'LUK', 'DELPHI', 'DENSO', 'TRW', 'LASER', 'SACHS', 'VALEO', 'MANN', 'NGK', 'NTK', 'GATES', 'FEBI', 'PIERBURG' ) THEN 'Y'
+when USER_SLCTD_ID= 'thetowbarstore' AND upper(BRAND) IN   ('BOSCH', 'DELPHI','PERKINS','CATERPILLAR','CONTINENTAL','DENSO')THEN 'Y'
+when USER_SLCTD_ID= 'arks4autoparts' AND upper(BRAND) IN   ('HELLA') THEN 'Y' 
+when USER_SLCTD_ID in ('partbusters' , 'partbusters_outlet') and upper(BRAND) IN   ('LUK' , 'FEBI BILSTEIN') THEN 'Y' 
+  else 0 end   as OEM_flag,
+case 
+when UPPER(Brand_Type) = 'GENUINE OEM' then 1
+else 0 end as OEM_flag2,
+retail_year, 
+retail_week,
+new_vertical,
+CATEG_LVL2_NAME,
+CATEG_LVL2_ID,
+Condition
+from p_ichan_t.listings_oem
+where retail_year >=2019) sub  
+group by 1,2,3,4,5,6,7,8) ;
+ --  Select * from   p_ichan_t.oem_data  limit 1000;
+-- select Retail_year, count(distinct item_id) from  p_ichan_t.PA_carparts_max  group by 1 ; 
+-- select * from p_ichan_t.PA_carparts_max ; 
+-- select * from  p_ichan_t.oem_data ORDER BY 1  LIMIT 1000 ;
+/*
+drop table   p_ichan_t.listings_oem_partbusters 
+create table   p_ichan_t.listings_oem_partbusters as 
+select * from (
+
+Select case 
+
+when USER_SLCTD_ID= 'aceparts_uk' AND upper(BRAND) IN   ('LUK CLUTCHES','LUK')   THEN 'Y'
+when USER_SLCTD_ID= 'carpartsinmotion' AND upper(BRAND) IN   ( 'BOSCH', 'LUK', 'DELPHI', 'DENSO', 'TRW', 'SACHS', 'VALEO', 'MANN', 'NGK', 'NTK', 'GATES',  'FEBI',   'PIERBURG') THEN 'Y'
+when USER_SLCTD_ID= 'partbusters-mintex-store' AND upper(BRAND) IN   ( 'BOSCH', 'LUK', 'DELPHI', 'DENSO', 'TRW', 'LASER', 'SACHS', 'VALEO', 'MANN', 'NGK', 'NTK', 'GATES', 'FEBI', 'PIERBURG' ) THEN 'Y'
+when USER_SLCTD_ID= 'thetowbarstore' AND upper(BRAND) IN   ('BOSCH', 'DELPHI','PERKINS','CATERPILLAR','CONTINENTAL','DENSO')THEN 'Y'
+when USER_SLCTD_ID= 'arks4autoparts' AND upper(BRAND) IN   ('HELLA') THEN 'Y' 
+when USER_SLCTD_ID in ('partbusters' , 'partbusters_outlet') and upper(BRAND) IN   ('LUK' , 'FEBI BILSTEIN') THEN 'Y' 
+  else 0 end   as OEM_flag,
+case 
+when UPPER(Brand_Type) = 'GENUINE OEM' then 1
+else 0 end as OEM_flag2, -- select distinct retail_week from  p_ichan_t.listings_oem
+* from p_ichan_t.listings_oem where   USER_SLCTD_ID in ('partbusters','mechanics-choice','online-automotive-01604666170'))
+where  OEM_flag+OEM_flag2 >=1 ; 
+-- 85154656 
+drop table    p_ichan_t.listings_oem_partbusters_week
+Create table   p_ichan_t.listings_oem_partbusters_week as  
+( select item_id, USER_SLCTD_ID, OEM_flag , max(OEM_flag2 )  OEM_flag2 from  ( select item_id, USER_SLCTD_ID,OEM_flag2 ,  max(OEM_flag) OEM_flag
+from   p_ichan_t.listings_oem_partbusters  group by 1,2,3) group by 1,2,3) ;
+select  USER_SLCTD_ID , count( item_id) from  p_ichan_t.listings_oem_partbusters_week group by 1;
+--mechanics-choice
+--online-automotive-01604666170
+--partbusters
+select * from p_ichan_t.listings_oem_partbusters_week  limit 1000;
+select * from p_ichan_t.listings_oem_partbusters_output  limit 20000;
+Create table   p_ichan_t.listings_oem_partbusters_output  as  
+select distinct *  from 
+ p_ichan_t.listings_oem 
+ where item_id in ( select distinct item_id from p_ichan_t.listings_oem_partbusters_week ) and brand_type ='GENUINE OEM'  ;
+ 
+ */
+--- de dupe 
+Drop table if exists  P_InventoryPlanning_t.oem_data_old_dedupe ;-- select count(*) from  P_InventoryPlanning_t.oem_data_old_dedupe; -- 33800660 7850513 
+create table P_InventoryPlanning_t.oem_data_old_dedupe as 
+( 
+select item_id, 
+max(OEM_flag) as OEM_flag,
+max(OEM_flag2) as OEM_flag2 from (
+ select 
+ item_id, 
+ case 
+when USER_SLCTD_ID= 'aceparts_uk' AND upper(BRAND) IN   ('LUK CLUTCHES','LUK')   THEN 'Y'
+when USER_SLCTD_ID= 'carpartsinmotion' AND upper(BRAND) IN   ( 'BOSCH', 'LUK', 'DELPHI', 'DENSO', 'TRW', 'SACHS', 'VALEO', 'MANN', 'NGK', 'NTK', 'GATES',  'FEBI',   'PIERBURG') THEN 'Y'
+when USER_SLCTD_ID= 'partbusters-mintex-store' AND upper(BRAND) IN   ( 'BOSCH', 'LUK', 'DELPHI', 'DENSO', 'TRW', 'LASER', 'SACHS', 'VALEO', 'MANN', 'NGK', 'NTK', 'GATES', 'FEBI', 'PIERBURG' ) THEN 'Y'
+when USER_SLCTD_ID= 'thetowbarstore' AND upper(BRAND) IN   ('BOSCH', 'DELPHI','PERKINS','CATERPILLAR','CONTINENTAL','DENSO')THEN 'Y'
+when USER_SLCTD_ID= 'arks4autoparts' AND upper(BRAND) IN   ('HELLA') THEN 'Y' 
+when USER_SLCTD_ID in ('partbusters' , 'partbusters_outlet') and upper(BRAND) IN   ('LUK' , 'FEBI BILSTEIN') THEN 'Y' 
+  else 0 end   as OEM_flag,
+case 
+when UPPER(Brand_Type) = 'GENUINE OEM' then 1
+else 0 end as OEM_flag2
+from p_ichan_t.listings_oem
+where retail_year >=2021 and Condition ='New' and CATEG_LVL2_ID = 6030   ) sub  
+where   oem_flag+oem_flag2 >=1
+group by 1) ;
+
+
+
+--drop table if exists p_ichan_t.oem_data_ROW;
+--Create table p_ichan_t.oem_data_ROW as (
+--SELECT * FROM ( SELECT *, ROW_NUMBER () OVER ( PARTITION BY ITEM_ID ORDER BY OEM_FLAG DESC ) AS ROW_ORDER FROM   p_ichan_t.oem_data  )/* WHERE  ROW_ORDER =1*/ );
+--select row_order , count( distinct item_id) ll from   p_ichan_t.oem_data_ROW group by 1 ; 
+
+--SELECT COUNT(*) , COUNT(DISTINCT ITEM_ID) FROM  p_ichan_t.oem_data;
+--SELECT COUNT(*) , COUNT(DISTINCT ITEM_ID) FROM  p_ichan_t.oem_data_ROW;
+--56931653 
+---select retail_year, retail_week, oem_flag2, count(distinct item_id ) ll  from p_ichan_t.oem_data   where  oem_flag2 =1 and   CATEG_LVL2_ID=6030 and Condition='New'  group by 1,2,3; 
+--retail_year	retail_week	oem_flag2	ll
+--2022	28	1	1002670
+
+
+-- 3. Summary and output
+drop table if exists p_ichan_t.oem_data_weekly;
+Create table p_ichan_t.oem_data_weekly as (
+Select retail_year,
+retail_week, 
+		case when CATEG_LVL2_ID=6030 and Condition='Used' then 'Greenparts' 
+		 when brand_update >= 1 /*and  Condition='New' */and  CATEG_LVL2_ID=6030  then 'OEM'
+		else 'Other' end as PA_Grouping,
+count( distinct item_id) listing
+from (  select a.*, oem_flag+oem_flag2  as brand_update  from    p_ichan_t.oem_data a where CATEG_LVL2_ID=6030  ) 
+WHERE Retail_week in ( select distinct Retail_week from DW_CAL_DT where  AGE_FOR_RTL_WEEK_ID =-1)
+group by 1,2,3) ;
+-- select * from   p_ichan_t.oem_data  limit 100
+
+
+
+--select * from p_ichan_t.oem_data_weekly ;
+-- select retail_year, retail_week, inventory_prop, count(distinct item_id)ll from   p_ichan_t.oem_data_weekly  group by 1 ,2,3 order by 3,1,2;
+/*
+--3.1 --This week only 
+drop table if exists p_ichan_t.oem_data_tw;
+Create table p_ichan_t.oem_data_tw as (
+select a.* 
+from p_ichan_t.oem_data_weekly a
+inner join ( select distinct Retail_week from DW_CAL_DT where  AGE_FOR_RTL_WEEK_ID =-1) b on a.Retail_week=b.Retail_week) ;
+*/
+--drop table if exists p_ichan_t.oem_data_okr_output;
+--Create table p_ichan_t.oem_data_okr_output as ( select * from p_ichan_t.oem_data_weekly ) ;
+
+
+CONVERT TO DELTA p_ichan_t.oem_data_okr_output;
+
+DELETE FROM p_ichan_t.oem_data_okr_output  WHERE Retail_week in ( select distinct Retail_week from DW_CAL_DT where  AGE_FOR_RTL_WEEK_ID =-1) ;
+
+INSERT INTO p_ichan_t.oem_data_okr_output
+SELECT * FROM p_ichan_t.oem_data_weekly;
+
+--  select * from p_ichan_t.oem_data_okr_output; 
+ 
+
+-- select* from p_ichan_t.oem_data_ate limit 10 
+
+-- 4. list of brands and brand type to excel
+ drop table if exists p_ichan_t.oem_data_ate ;
+Create table p_ichan_t.oem_data_ate as (
+select 
+ brand,
+ brand_type, 
+ item_id, 
+ inventory_prop,
+ case 
+
+when USER_SLCTD_ID= 'aceparts_uk' AND upper(BRAND) IN   ('LUK CLUTCHES','LUK')   THEN 'Y'
+when USER_SLCTD_ID= 'carpartsinmotion' AND upper(BRAND) IN   ( 'BOSCH', 'LUK', 'DELPHI', 'DENSO', 'TRW', 'SACHS', 'VALEO', 'MANN', 'NGK', 'NTK', 'GATES',  'FEBI',   'PIERBURG') THEN 'Y'
+when USER_SLCTD_ID= 'partbusters-mintex-store' AND upper(BRAND) IN   ( 'BOSCH', 'LUK', 'DELPHI', 'DENSO', 'TRW', 'LASER', 'SACHS', 'VALEO', 'MANN', 'NGK', 'NTK', 'GATES', 'FEBI', 'PIERBURG' ) THEN 'Y'
+when USER_SLCTD_ID= 'thetowbarstore' AND upper(BRAND) IN   ('BOSCH', 'DELPHI','PERKINS','CATERPILLAR','CONTINENTAL','DENSO')THEN 'Y'
+when USER_SLCTD_ID= 'arks4autoparts' AND upper(BRAND) IN   ('HELLA') THEN 'Y' 
+when USER_SLCTD_ID in ('partbusters' , 'partbusters_outlet') and upper(BRAND) IN   ('LUK' , 'FEBI BILSTEIN') THEN 'Y' 
+  else 0 end  as OEM_flag,
+case 
+when UPPER(Brand_Type) = 'GENUINE OEM' then 1
+else 0 end as OEM_flag2,
+retail_year, 
+retail_week,
+new_vertical,
+CATEG_LVL2_NAME,
+CATEG_LVL2_ID,
+Condition
+from p_ichan_t.listings_oem
+where retail_year >=2019
+and  Retail_week in ( select distinct Retail_week from DW_CAL_DT where  AGE_FOR_RTL_WEEK_ID =-1)) ;
+
+-----
+drop table if exists   p_ichan_t.GENUINE_OEM_okr  ;
+create table  p_ichan_t.GENUINE_OEM_okr  as 
+select brand, brand_type ,item_id from  p_ichan_t.oem_data_ate 
+where OEM_flag2+OEM_flag >=1
+and Condition <>'Used'
+and CATEG_LVL2_ID=6030;
+--select * from  p_ichan_t.GENUINE_OEM_okr  ;
+
+drop table if exists  p_ichan_t.GENUINE_OEM_okr_output ;
+create table  p_ichan_t.GENUINE_OEM_okr_output   as 
+select brand,  brand_type ,count (distinct item_id ) ll
+from ( 
+select item_id, max(brand) brand, max(brand_type) as brand_type from   p_ichan_t.GENUINE_OEM_okr  group by 1) sub
+group by 1,2 ;
+
+
+--- GMV
+drop table if exists  p_ichan_t.GENUINE_OEM_okr_gmv ;
+create table  p_ichan_t.GENUINE_OEM_okr_gmv as (
+select * from 
+(
+SELECT			
+Retail_year,
+--cal.AGE_FOR_QTR_ID,
+cal.QTR_OF_YEAR_ID,
+cal.RETAIL_week,
+--seller_id,
+--USER_SLCTD_ID,
+---New_Vertical,
+meta_categ_id, 
+CATEG_LVL2_ID, 
+categ_lvl2_name, 
+categ_lvl3_name, 
+categ_lvl3_id,
+--categ_lvl4_name, 
+--categ_lvl4_id,
+	case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
+		when meta_categ_id in (26395) then 'Lifestyle'
+		when CATEG_LVL3_ID in (260325) then 'Lifestyle'
+		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+		when categ_lvl3_id in (3244) then 'Parts & Accessories'
+		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+		when categ_lvl2_id in (46576) then 'Parts & Accessories'
+		when bsns_vrtcl_name in ('Collectibles') and meta_categ_id in (220, 237, 550)  then 'Collectibles B2C'
+		when bsns_vrtcl_name in ('Collectibles') and categ_lvl2_id in (180250) then 'Collectibles B2C' 
+		else bsns_vrtcl_name end as vertical,
+
+case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 2 then 'Refurb' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  'Other'  end as Condition,
+SUM(CAST(CK.QUANTITY AS DECIMAL(18,2))* CAST(CK.ITEM_PRICE AS DECIMAL(18,2))*CAST(LPR.CURNCY_PLAN_RATE AS DECIMAL(18,2))) AS GMV_10,
+sum(GMV_PLAN_USD) as GMV_20,
+count(distinct  BUYER_ID) as buyer_count,
+sum(QUANTITY) as BI
+--COALESCE(SUM(CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE),0) AS GMV
+
+
+			FROM   DW_CHECKOUT_TRANS ck 
+			inner join ( select DISTINCT item_id from P_InventoryPlanning_t.oem_data_old_dedupe) kr on ck.ITEM_ID=kr.item_id
+			INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS LPR
+				ON LPR.CURNCY_ID = CK.LSTG_CURNCY_ID
+			INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.CREATED_DT   and retail_year >= 2021 and AGE_FOR_RTL_WEEK_ID  <= -1 -- and retail_week between 1 and 52  --change here for time period if needed
+			INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			INNER join dw_users b on CK.seller_id=b.user_id -- select * from  dw_users where user_id in (  59275107,777151520)
+			 
+			inner JOIN lstg_item_cndtn CNDTN ON ck.item_id = CNDTN.item_id  AND ck.auct_end_dt = CNDTN.AUCT_END_DT
+			INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+			WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				and ck.site_id = 3
+				and slr_cntry_id = 3
+				and SLR_CNTRY_ID=BYR_CNTRY_ID
+				and  QTR_OF_YEAR_ID in ( select distinct  QTR_OF_YEAR_ID from ACCESS_VIEWS.DW_CAL_DT  where  AGE_FOR_RTL_WEEK_ID  = -1  )
+				-- and RETAIL_WEEK<= (SELECT distinct  RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID<=-1 GROUP BY 1)
+				--and CNDTN_ROLLUP_ID = 1 
+				--and vertical IN ('Parts & Accessories')
+				--and categ_lvl2_id = 6030
+				
+
+				GROUP BY 1,2,3,4,5,6,7,8,9,10
+) sub 
+
+where  vertical IN ('Parts & Accessories') );
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---new 
+ ----OEM TIER-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table  IF EXISTS  p_ichan_t.ll_listing_only_1 ; 
+create table  p_ichan_t.ll_listing_only_1 as (
+SELECT DISTINCT * FROM 
+(
+select 
+
+Retail_year ,
+RETAIL_WEEK,
+lst.Slr_ID,
+  U.USER_SLCTD_ID,
+  lst.auct_titl,
+BRAND,
+Brand_Type,
+lst.Item_id,
+ -- cal.retail_year,
+ -- cal.QTR_OF_YEAR_ID,
+  CAT.meta_categ_id, 
+CAT.CATEG_LVL2_ID, 
+	 CAT.categ_lvl2_name, 
+	 
+	 CAT.CATEG_LVL3_ID, 
+	 CAT.categ_lvl3_name, 
+	 
+	 CAT.CATEG_LVL4_ID, 
+	 CAT.categ_lvl4_name, 
+	 
+	 CAT.CATEG_LVL5_ID, 
+	 CAT.categ_lvl5_name, 
+	 
+	 
+	    COND.CNDTN_ROLLUP_ID
+	 --site_id
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+---inner join ( select distinct  seller_id from  P_ICHAN_T.recyclers_upload)  c on lst.slr_id=c.seller_id-- select * from   P_ICHAN_T.recyclers_upload order by seller_id rank where seller_id =1077516705
+--inner join P_ICHAN_T.certified_ll   c on lst.Slr_ID=c.SLr_ID
+
+	INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 --and cASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+	
+left join (select
+						upper(ASPCT_VLU_NM) as brand,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('brand' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) bbase
+				ON lst.ITEM_ID = bbase.ITEM_ID
+left join (select
+						upper(ASPCT_VLU_NM) as brand_type,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('brand type' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) cbase
+				ON lst.ITEM_ID = cbase.ITEM_ID			
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and cat.site_id =3 -- select distinct site_id from 
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID ---- AND  COND.CNDTN_ROLLUP_ID =  1  /*THEN 'Used' */  
+--B2C_REGION_GRP_CDINNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+     ---   	ON CAL.CAL_DT =lst.AUCT_START_DT AND retail_year >=2022 and age_for_rtl_week_id <= -1 and lst.AUCT_START_DT >= '2021-03-01'--  and  age_for_rtl_week_id >= -10
+--INNER JOIN (select CAL_DT,RETAIL_YEAR, QTR_OF_YEAR_ID,Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4,5 ) CAL  ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR in (  2022)    and AGE_FOR_RTL_WEEK_ID <=-1
+--INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+--INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON  CAL.CAL_DT = lst.CREATED_DT AND 				RETAIL_YEAR >= 2017
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID		,QTR_OF_YEAR_ID	 from DW_CAL_DT   CAL  group by 1,2, 3, 4 ,5 ) CAL 
+			ON lst.AUCT_START_DT < CAL.CAL_DT AND LST.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR IN (2022) and AGE_FOR_RTL_WEEK_ID = -1   --- and retail_week in ( 24,25)  --AND  LST.AUCT_END_DT >CURRENT_DATE
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID and retail_year >=  2020
+--INNER JOIN dw_lstg_item_cold lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--WHERE lst.AUCT_end_dt >= date -- limiit on live listings
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'         
+and lst.SLR_CNTRY_ID=3
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+ --	and  CATEG_LVL3_ID in (33743)
+  and  CATEG_LVL2_ID in (6030)
+  ---AND USER_SLCTD_ID='carpartsinmotion'
+  AND  COND.CNDTN_ROLLUP_ID in (  1 ) 
+  --and   LST.AUCT_START_DT<='2021-01-03' and   LST.AUCT_end_DT>='2021-01-31'
+ --  and   LST.AUCT_START_DT<='2019-10-03' and   LST.AUCT_end_DT>='2019-12-31'
+  
+ )
+ WHERE 1=1
+/* AND  UPPER(Brand) like '%GENUINE%OE%'  
+OR UPPER(Brand) like '%OEM%'
+OR UPPER(Brand) like '%OEM%GENUINE%' 
+OR UPPER(Brand) like '%GENUINE%OEM%' 
+
+OR UPPER(Brand_Type) like '%GENUINE%OEM%'
+OR UPPER(Brand_Type) like '%GENUINE%OE%'  
+OR UPPER(Brand_Type) like '%OEM%'
+OR UPPER(Brand_Type) like '%OEM%GENUINE%' */
+);
+
+---select * from P_awang_ops_t.seller_ops_83 where seller_id=124458920
+ 
+ -- 4673996 
+-- SELECT distinct *   FROM  p_ichan_t.ll_listing_only_1 where  user_slctd_id  ='partbusters' and retail_week >=30  and brand_type  ='GENUINE OEM' LIMIT 1000; 
+ -- SELECT * FROM  p_ichan_t.ll_listing_only_2  order by item_id LIMIT 1000; 
+ 
+--CONVERT TO DELTA p_ichan_t.ll_listing_only_1;
+
+---UPDATE  p_ichan_t.ll_listing_only_1 SET Brand_type = 'AFTERMARKET BRANDED'  WHERE brand='FEBI BILSTEIN' and Brand_type = 'GENUINE OEM';
+
+ 
+ 
+ DROP TABLE IF EXISTS    p_ichan_t.ll_listing_only_2;
+ create table   p_ichan_t.ll_listing_only_2 as (
+ 					 select *,
+					
+					 case 
+					--WHEN  UPPER(Brand_Type) = 'OE'then 1
+					WHEN  UPPER(Brand_Type) = 'OEM'then 1
+					WHEN UPPER(Brand_Type) like '%GENUINE%OEM%'  then 1
+					WHEN  UPPER(Brand_Type) like '%OEM%'then 1 
+					WHEN  UPPER(Brand_Type) like '%OEM%GENUINE%' then 1 
+					WHEN  UPPER(Brand_Type) like '%GENUINE%OE%'then 1
+					
+					 else 0 end as Brand_type_flag,
+					 
+					 
+					 case
+				--	WHEN  UPPER(Brand) = 'OE'then 1
+					WHEN  UPPER(Brand) = 'OEM'then 1
+					WHEN   UPPER(Brand) like '%GENUINE%OE%'   then 1 
+					WHEN  UPPER(Brand) like '%OEM%'then 1 
+					WHEN  UPPER(Brand) like '%OEM%GENUINE%' then 1 
+					WHEN  UPPER(Brand) like '%GENUINE%OEM%'then 1 else 0 end as Brand_flag
+					 FROM ( select distinct * from   p_ichan_t.ll_listing_only_1 )) ;
+
+---select brand_type, count(*)  from   p_ichan_t.ll_listing_only_1  where brand='FEBI BILSTEIN' group by 1 ;
+
+-- max table 
+-- ADD TIER 1 SELLER AND BRAND IF NEEDED
+drop table if exists   p_ichan_t.ll_listing_only_2_max_flag;
+create table   p_ichan_t.ll_listing_only_2_max_flag as 
+select 
+case
+when USER_SLCTD_ID= 'aceparts_uk' AND upper(BRAND) IN   ('LUK CLUTCHES','LUK')   THEN 'Y'
+when USER_SLCTD_ID= 'carpartsinmotion' AND upper(BRAND) IN   ( 'BOSCH', 'LUK', 'DELPHI', 'DENSO', 'TRW', 'SACHS', 'VALEO', 'MANN', 'NGK', 'NTK', 'GATES',  'FEBI',   'PIERBURG') THEN 'Y'
+when USER_SLCTD_ID= 'partbusters-mintex-store' AND upper(BRAND) IN   ( 'BOSCH', 'LUK', 'DELPHI', 'DENSO', 'TRW', 'LASER', 'SACHS', 'VALEO', 'MANN', 'NGK', 'NTK', 'GATES', 'FEBI', 'PIERBURG' ) THEN 'Y'
+when USER_SLCTD_ID= 'thetowbarstore' AND upper(BRAND) IN   ('BOSCH', 'DELPHI','PERKINS','CATERPILLAR','CONTINENTAL','DENSO')THEN 'Y'
+when USER_SLCTD_ID= 'arks4autoparts' AND upper(BRAND) IN   ('HELLA') THEN 'Y' 
+when USER_SLCTD_ID in ('partbusters' , 'partbusters_outlet') and upper(BRAND) IN   ('LUK' , 'FEBI BILSTEIN') THEN 'Y' 
+  else 0 end as user_tier_1,*
+  from  p_ichan_t.ll_listing_only_2;
+---select count(*) from  p_ichan_t.ll_listing_only_2_max_flag where  user_tier_1 ='Y';
+-- 42356004 
+
+--- dedupe
+DROP TABLE IF EXISTS    p_ichan_t.ll_listing_only_2_max_r;
+create table   p_ichan_t.ll_listing_only_2_max_r as (select * from (
+select  row_number () over ( partition by item_id order by user_tier_1 desc, brand_flag desc ,brand_type_flag desc, brand_type desc , brand desc ) as Rank_, * from p_ichan_t.ll_listing_only_2_max_flag )where  Rank_=1);
+select count( distinct item_id) from  p_ichan_t.ll_listing_only_2_max_r ; 
+-- 32625867
+--select  retail_week , count( * )   from p_ichan_t.ll_listing_only_2_max_r where user_slctd_id  ='partbusters' and retail_week >=30  and brand_type  ='GENUINE OEM' group by 1 limit 1000; 
+
+-- Assign Tier for report
+DROP TABLE IF EXISTS    p_ichan_t.ll_listing_only_3;
+create table   p_ichan_t.ll_listing_only_3 as (
+ select 
+ CASE  WHEN CATEG_LVL2_ID=6030 and  CNDTN_ROLLUP_ID = 3 THEN 'GP'
+	 when user_tier_1 ='Y' then   'OEM_tier_1'
+	 WHEN  CATEG_LVL2_ID=6030 and UPPER(Brand_Type) = 'GENUINE OEM' AND  CNDTN_ROLLUP_ID = 1 THEN 'GENUINE OEM'
+	WHEN CATEG_LVL2_ID=6030 and BRAND_TYPE_FLAG+BRAND_FLAG >=1 THEN 'OEM in Brand Values' 
+			ELSE 'OTHER' END AS LISTING_TYPE,
+  Retail_year,
+  retail_week,
+  count(distinct  item_id) LL
+  from   p_ichan_t.ll_listing_only_2_max_r -- select distinct retail_week  from   p_ichan_t.ll_listing_only_2_max 
+  group by 1,2,3);
+  -- select * from p_ichan_t.ll_listing_only_3;
+  
+ -- select sum(LL) from   p_ichan_t.ll_listing_only_3 where listing_type = 'OEM_tier_1' and retail_week =29 ;
+ --  select sum(LL) from   p_ichan_t.ll_listing_OE_new where listing_type = 'OEM_tier_1' and retail_week =27 ;
+  
+ -- Backend data for all brand and brand type combination for all tier:
+drop table if exists   p_ichan_t.ll_listing_OE_new_air; 
+create table   p_ichan_t.ll_listing_OE_new_air as 
+select 
+CASE  WHEN CATEG_LVL2_ID=6030 and  CNDTN_ROLLUP_ID = 3 THEN 'GP'
+when user_tier_1 ='Y' then   'OEM_tier_1'
+WHEN  CATEG_LVL2_ID=6030 and UPPER(Brand_Type) = 'GENUINE OEM' AND  CNDTN_ROLLUP_ID = 1 THEN 'GENUINE OEM'
+WHEN CATEG_LVL2_ID=6030 and BRAND_TYPE_FLAG+BRAND_FLAG >=1 THEN 'OEM in Brand Values' 	ELSE 'OTHER' END AS LISTING_TYPE,* 
+from   p_ichan_t.ll_listing_only_2_max_r;
+		 
+-- select count(*), count ( distinct item_id) from     p_ichan_t.ll_listing_OE_new_air; 
+--select* from  p_ichan_t.ll_listing_OE_new_air;  
+--select listing_type, count(distinct item_id) from   p_ichan_t.ll_listing_OE_new_air group by 1;
+
+-- All Tiers by Brands and Brand Types
+drop table if exists   p_ichan_t.ll_listing_OE_new_wrap; 
+create table   p_ichan_t.ll_listing_OE_new_wrap as 
+select Retail_year, retail_week, listing_type, brand, brand_type,count(distinct item_id)  ll from   p_ichan_t.ll_listing_OE_new_air group by 1,2,3,4,5;
+-- Select * from   p_ichan_t.ll_listing_OE_new_wrap where  listing_type in(  'OEM_tier_1', 'OEM_tier_2');
+
+--Tier 1/2 by seller and brand
+drop table if exists   p_ichan_t.ll_listing_OE_new_user; 
+create table   p_ichan_t.ll_listing_OE_new_user as 
+select retail_week,USER_SLCTD_ID,listing_type, brand, brand_type,count(distinct item_id)  ll from   p_ichan_t.ll_listing_OE_new_air  
+where listing_type in(  'OEM_tier_1', 'GENUINE OEM')group by 1,2,3,4 ,5;
+-- Select  listing_type, COUNT(*) from p_ichan_t.ll_listing_OE_new_user group by 1 ; Select * from p_ichan_t.ll_listing_OE_new_user; 
+
+----select count(distinct item_id) from   p_ichan_t.ll_listing_OE_new_air where listing_type =  'OEM_tier_1'  ;
+---  select * from  p_ichan_t.ll_listing_only_3 where listing_type =  'OEM_tier_3'  ;
+drop table if exists   p_ichan_t.ll_listing_OE_new ; 
+create table   p_ichan_t.ll_listing_OE_new as 
+select LISTING_TYPE,RETAIL_YEAR,
+retail_week,
+SUM( Ll) LL
+from   p_ichan_t.ll_listing_only_3
+group by 1,2,3;
+---  select * from   p_ichan_t.ll_listing_OE_new ; 
+  
+ --create table   p_ichan_t.ll_listing_OE_history as  select * from   p_ichan_t.ll_listing_OE_new ;
+ 
+ -- select * from p_ichan_t.ll_listing_OE_history;
+ 
+-- UPDATE p_ichan_t.ll_listing_OE_history SET LISTING_TYPE = 'GENUINE OEM' WHERE LISTING_TYPE ='OEM_tier_2' ;
+ 
+ -- UPDATE p_ichan_t.ll_listing_OE_history SET LISTING_TYPE = 'OEM in Brand Values' WHERE LISTING_TYPE ='OEM_tier_3' ;
+ 
+ 
+ CONVERT TO DELTA p_ichan_t.ll_listing_OE_history;
+
+DELETE FROM p_ichan_t.ll_listing_OE_history  WHERE Retail_week in ( select distinct Retail_week from DW_CAL_DT where  AGE_FOR_RTL_WEEK_ID =-1) ;
+
+INSERT INTO p_ichan_t.ll_listing_OE_history
+SELECT * FROM p_ichan_t.ll_listing_OE_new;
+
+
+---- tier 1 and tier 2 brand and brand type
+--drop table   p_ichan_t.ll_listing_OE_tier_track ;
+--create table  p_ichan_t.ll_listing_OE_tier_track as Select * from  p_ichan_t.ll_listing_OE_new_user;
+--select * from    p_ichan_t.ll_listing_OE_tier_track;
+--select listing_type , count(*) from    p_ichan_t.ll_listing_OE_tier_track group by 1;
+
+-- UPDATE p_ichan_t.ll_listing_OE_tier_track SET LISTING_TYPE = 'GENUINE OEM' WHERE LISTING_TYPE ='OEM_tier_2' ;
+ 
+ -- UPDATE p_ichan_t.ll_listing_OE_tier_track SET LISTING_TYPE = 'OEM in Brand Values' WHERE LISTING_TYPE ='OEM_tier_3' ;
+ 
+
+
+CONVERT TO DELTA p_ichan_t.ll_listing_OE_tier_track ;
+DELETE FROM p_ichan_t.ll_listing_OE_tier_track  WHERE Retail_week in ( select distinct Retail_week from DW_CAL_DT where  AGE_FOR_RTL_WEEK_ID =-1) ;
+
+INSERT INTO p_ichan_t.ll_listing_OE_tier_track
+SELECT * FROM p_ichan_t.ll_listing_OE_new_user; 
+--35398 
+--DELETE FROM p_ichan_t.ll_listing_OE_tier_track  WHERE Retail_week in (29,30,31,32,33,34,35,36,37,38,39,40 );
+--SELECT DISTINCT RETAIL_WEEK FROM p_ichan_t.ll_listing_OE_tier_track  ;
+------------------------------------------------------------------------------------------------
+-- To update the first tab of the report with the tiers: 1. Green parts, 2.OEM and 3. Aftermarket
+-- ---------------------------------------------------------------------------------------------
+drop table if exists  p_ichan_t.oem_data_okr_output_part1 ; 
+create table   p_ichan_t.oem_data_okr_output_part1 as 
+select retail_year, retail_week, PA_Grouping , sum(listing) listing from  p_ichan_t.oem_data_okr_output where PA_Grouping='Greenparts'  AND RETAIL_WEEK >=27 group by 1,2,3
+UNION ALL 
+ select retail_year, 
+ retail_week,  
+ case when listing_type in ('OEM_tier_1','GENUINE OEM') then 'Tier 1 OEM +GENUINE OEM' ELSE '' END AS PA_Grouping ,
+sum(ll) ll 
+from   p_ichan_t.ll_listing_OE_history 
+where listing_type in ('OEM_tier_1','GENUINE OEM') 
+   AND RETAIL_WEEK >=27
+   group by 1,2,3 ;
+ ----  select * from  p_ichan_t.oem_data_okr_output_part1 ; 
+
+
+drop table if exists  p_ichan_t.oem_data_okr_output_part2 ; 
+create table   p_ichan_t.oem_data_okr_output_part2 as 
+select a.retail_year,
+a.retail_week,
+case when 1=1 then'Aftermarket' else 0 end as  PA_Grouping,
+sum(total_listing)-sum(gp_oem) as ll
+from (
+
+   select 
+   Retail_year,
+   retail_week,
+  sum( case when PA_Grouping='Greenparts'  then listing  else 0 end) as  Greenparts,
+   sum( case when PA_Grouping='Tier 1 OEM +GENUINE OEM'  then listing  else 0 end) as  Tier_1_OEM_GENUINE_OEM ,
+     sum( case when PA_Grouping in ('Greenparts','Tier 1 OEM +GENUINE OEM' )  then listing  else 0 end) as  gp_oem
+   from  p_ichan_t.oem_data_okr_output_part1 
+   group by 1 ,2 ) a 
+   left join ( select retail_year, retail_week,  sum(listing) total_listing from  p_ichan_t.oem_data_okr_output where RETAIL_WEEK >=27 group by 1,2 ) B
+   on a.retail_year=b.retail_year and a.retail_week=b.retail_week
+   group by 1,2,3;
+ 
+ drop table if exists  p_ichan_t.oem_data_okr_output_partfull ; 
+create table   p_ichan_t.oem_data_okr_output_partfull as 
+   select * from  p_ichan_t.oem_data_okr_output_part1 union all     select * from  p_ichan_t.oem_data_okr_output_part2;
+
+----select* from p_ichan_t.ll_listing_OE_history ;
+-------------------------------------------
+  --Request
+-- -------------------------------
+--select distinct USER_SLCTD_ID from  p_ichan_t.ll_listing_only_2_max  where USER_SLCTD_ID in (   'aceparts_uk',  'omnicraft_uk',   'carpartsinmotion',    'meyle-uk-store',	'official-fram-uk' ,	 'partbusters-mintex-store' ) ; 
+--select distinct USER_SLCTD_ID from DW_USERs where USER_SLCTD_ID in (   'aceparts_uk',  'omnicraft_uk',   'carpartsinmotion',    'meyle-uk-store',	'official-fram-uk' ,	 'partbusters-mintex-store' ) ; 	 
+---------------------------------------------------------------------------------   
+ -- output 2
+ --drop table if exists   p_ichan_t.ll_listing_OE;
+--C--REATE TABLE   p_ichan_t.ll_listing_OE AS 
+--select* from p_ichan_t.ll_listing_only_2_max  
+--where  (UPPER(brand_type) like 'OE%' or  UPPER(brand_type) like'%OEM%' OR UPPER(brand_type) like '%OE')
+--AND 	    CATEG_LVL2_ID=6030  AND  CNDTN_ROLLUP_ID = 1 
+--AND RETAIL_WEEK in ( select distinct Retail_week from DW_CAL_DT where  AGE_FOR_RTL_WEEK_ID =-1);
+--1933412 
+--select * from  p_ichan_t.ll_listing_OE  ; 
+-- drop table if exists   p_ichan_t.ll_listing_OE;
+--CREATE TABLE   p_ichan_t.ll_listing_OE_sample AS  select * from  p_ichan_t.ll_listing_OE  limit 500000 ;
+ 
+ -- drop table if exists   p_ichan_t.ll_listing_OE_brand;
+--CREATE TABLE   p_ichan_t.ll_listing_OE_brand AS 
+--select* from p_ichan_t.ll_listing_only_2_max  
+--where CATEG_LVL2_ID=6030 
+--AND  CNDTN_ROLLUP_ID = 1 
+--AND RETAIL_WEEK in ( select distinct Retail_week from DW_CAL_DT where  AGE_FOR_RTL_WEEK_ID =-1)
+--and  upper(brand)  in  ( select distinct upper(brand) from p_ICHAN_T.upload_oem_brand ) ;
+-- 1311208
+--select count(*)  from  p_ichan_t.ll_listing_OE_brand  ; 
+ -- drop table if exists   p_ichan_t.ll_listing_OE_brand;
+ --CREATE TABLE   p_ichan_t.ll_listing_brand_sample AS  select * from  p_ichan_t.ll_listing_OE_brand  limit 500000 ;
+-- select* from   p_ichan_t.ll_listing_brand_sample ;
+-- drop table if exists   p_ichan_t.ll_listing_brand_sample ; 
