@@ -150,16 +150,239 @@ max(retail_wk_end_date)
 from p_uk_bc_t.suspended_slr_GMV
 where target_lstg=0
 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--More context from Christian on 2022-11-11:
+/*
+This seller was part of the VAT suspension fiasco in July this year, which resulted in the account being suspended (week 24). 
+When the Seller was reinstated hours / days later, all of their listings were terminated. Of the 2,500 listings they had, they managed to reinstate 700 of them but then hit listing limits. (chart shows impact). 
+They fought with GCX but couldn’t get the listing limits removed. After 30 days of this fiasco, the listings were permanently deleted. 
+I was told the listings in the file were the ones that were permanently deleted. 
+I need to get back to the Seller to say sorry and make amends.  
+I am trying to figure out how much of the listings represented of their total business before suspension.
+*/
+--From previous analysis, it looks like the seller was suspended on 18Jun due to the top 3 listings (113594226597,113594226578,133010061968) ended on 2022-06-18
+--Find out LL changes in RW22,23,24,25,26
+--Which listings not added back in RW25
+--GMV loss from listings that were not reinstated in RW25
+--GMV loss in days from listings that were reinstated
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Live listings in 2022
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.suspended_slr_LL;
+create table p_uk_bc_t.suspended_slr_LL as
+(select
+distinct
+u.user_slctd_id as seller_name
+,lstg.slr_id as seller_id
+,cal.retail_year 
+,cal.retail_week	
+,cal.retail_wk_end_date
+,lstg.item_id
+,lstg.auct_start_dt as listing_start_date
+,lstg.auct_end_dt as listing_end_date
+,lstg.auct_title as listing_title
+,case when t.item_id is not null then 1 else 0 end as target_lstg	  
+
+from prs_restricted_v.slng_lstg_super_fact lstg
+        
+inner join access_views.dw_cal_dt cal 
+on lstg.auct_start_dt < cal.cal_dt and lstg.auct_end_dt >= cal.cal_dt  
+and cal.age_for_rtl_year_id in (0) and cal.age_for_rtl_week_id <= -1 
+
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+left join P_UK_BC_T.suspended_slr_lstg t
+on lstg.item_id=t.item_id
+
+where 
+lstg.slr_id=140764281
+and lstg.lstg_site_id = 3
+and lstg.iscore = 1	
+);
 
 
+--QC dataset
+--2959, 2959, 2956
+select count(*),count(distinct item_id),count(distinct (case when target_lstg=1 then item_id end)) from p_uk_bc_t.suspended_slr_LL
+where retail_week=22
+
+select * from p_uk_bc_t.suspended_slr_LL
+where retail_week=22
+order by item_id
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Weekly LL volume
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select 
+retail_week
+,count(distinct item_id)
+,count(distinct (case when target_lstg=1 then item_id end)) 
+from p_uk_bc_t.suspended_slr_LL
+group by 1
+order by retail_week;
 
 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Which listings not added back in RW25
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table p_uk_bc_t.suspended_slr_LL_24_25;
+create table p_uk_bc_t.suspended_slr_LL_24_25 as (
+with RW24 as(
+select 
+item_id as RW24_item_id
+,listing_title as RW24_listing_title
+,listing_start_date as RW24_listing_start_date
+,listing_end_date as RW24_listing_end_date 
+,target_lstg
+from p_uk_bc_t.suspended_slr_LL
+where retail_week=24)
+,RW25 as (
+select
+item_id as RW25_item_id
+,listing_title as RW25_listing_title
+,listing_start_date as RW25_listing_start_date
+,listing_end_date as RW25_listing_end_date 
+from p_uk_bc_t.suspended_slr_LL
+where retail_week=25)
+select 
+a.*
+,b.*
+,case when b.RW25_item_id is not null then 1 else 0 end as reinstate
+from RW24 a
+left join RW25 b
+on a.RW24_listing_title=b.RW25_listing_title
+);
 
 
+--Some of the listings in RW25 have the same listing title
+select RW24_item_id,count(*)
+from p_uk_bc_t.suspended_slr_LL_24_25
+group by 1
+having count(*)>1
+
+select * from p_uk_bc_t.suspended_slr_LL_24_25
+where RW24_item_id=132698062099;
+
+--Export to Excel
+select 
+a.*
+,case when b.RW24_item_id is not null then 1 else 0 end as multiple
+from p_uk_bc_t.suspended_slr_LL_24_25 a
+left join 
+(select RW24_item_id,count(*)
+from p_uk_bc_t.suspended_slr_LL_24_25
+group by 1
+having count(*)>1) b
+on a.RW24_item_id=b.RW24_item_id
+order by a.RW24_item_id;
+
+--Out of 2924 LL in RW24, 2170 were not reinstated and 754 had listings created in RW25 with the same listing title
+select reinstate,count(distinct RW24_item_id) 
+from p_uk_bc_t.suspended_slr_LL_24_25
+group by 1;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Quantify GMV loss from 2710 listings that were not reinstated in RW25
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select distinct RW24_item_id
+from p_uk_bc_t.suspended_slr_LL_24_25
+where reinstate=0;
+
+--GMV till RW24 only as not reinstated in RW25
+create table p_uk_bc_t.suspended_slr_not_reinstate as (
+select 
+retail_year
+,retail_week
+,retail_wk_end_date
+,item_id
+,target_lstg
+,listing_start_date
+,listing_end_date
+,listing_title
+,sum(tot_GMV) as ttl_GMV
+,sum(tot_BI) as ttl_BI
+from p_uk_bc_t.suspended_slr_GMV
+where 
+item_id in 
+	(select distinct RW24_item_id
+	from p_uk_bc_t.suspended_slr_LL_24_25
+	where reinstate=0)
+and retail_year=2022
+group by 1,2,3,4,5,6,7,8
+);
+
+--Out of 2710 listings that were not reinstated, only 320 made a sale between RW1-24 in 2022 
+select count(distinct item_id) from p_uk_bc_t.suspended_slr_not_reinstate;
+
+--Export to Excel
+select * from p_uk_bc_t.suspended_slr_not_reinstate;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--GMV loss in days from 754 listings that were reinstated 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--3 listings were unaffected 
+132993942283
+132993942950
+401732208332
+
+--No GMV ever made on these 3 items since 2020
+select 
+retail_year
+,retail_week
+,retail_wk_end_date
+,item_id
+,target_lstg
+,listing_start_date
+,listing_end_date
+,listing_title
+,sum(tot_GMV) as ttl_GMV
+,sum(tot_BI) as ttl_BI
+from p_uk_bc_t.suspended_slr_GMV
+where 
+item_id in (
+132993942283
+,132993942950
+,401732208332
+)
+group by 1,2,3,4,5,6,7,8
+order by 1;
+
+--751 listings started on 2022-06-21 (Day 3 [Tue] of RW25)
+select RW25_listing_start_date,count(distinct RW24_item_id)
+from p_uk_bc_t.suspended_slr_LL_24_25
+where reinstate=1
+group by 1;
 
 
+create table p_uk_bc_t.suspended_slr_reinstate as (
+select 
+retail_year
+,retail_week
+,retail_wk_end_date
+,item_id
+,target_lstg
+,listing_start_date
+,listing_end_date
+,listing_title
+,sum(tot_GMV) as ttl_GMV
+,sum(tot_BI) as ttl_BI
+from p_uk_bc_t.suspended_slr_GMV
+where 
+item_id in 
+	(select distinct RW24_item_id
+	from p_uk_bc_t.suspended_slr_LL_24_25
+	where reinstate=1)
+and retail_year=2022
+group by 1,2,3,4,5,6,7,8
+);
 
 
+--Out of 754 listings that were reinstated, only 281 made a sale between RW1-24 in 2022 
+select count(distinct item_id) from p_uk_bc_t.suspended_slr_reinstate;
 
 
-
+--Export to Excel
+select * from p_uk_bc_t.suspended_slr_reinstate;
