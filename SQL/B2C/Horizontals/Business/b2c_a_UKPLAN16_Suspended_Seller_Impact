@@ -386,3 +386,4 @@ select count(distinct item_id) from p_uk_bc_t.suspended_slr_reinstate;
 
 --Export to Excel
 select * from p_uk_bc_t.suspended_slr_reinstate;
+

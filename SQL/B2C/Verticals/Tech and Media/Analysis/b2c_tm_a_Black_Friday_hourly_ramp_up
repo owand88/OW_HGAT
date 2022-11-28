@@ -1,0 +1,420 @@
+/*
+Task: Analyse popular Tech products as Marketing ramping up and retailers releasing more deals close to BF
+Objective: Tech had a really strong end on Wednesday (2022-11-23) before BF and needs to understand products that are driving the good performance.
+Assumption at this stage: Uplift attributed to Marketing content on Dyson floor care that went live in the evening.
+*/
+
+--Ran on 2022-11-24 10:57
+select max(gmv_dt) from dw_checkout_trans;--1 day lag
+select max(gmv_dt) from prs_restricted_v.slng_trans_super_fact;--2 day lag
+
+--Dyson V11™ Total Clean Cordless Vacuum (Black)- Refurbished
+--qty_avail:2405	qty_sold:778	qty_remaining:1627
+
+--Dyson Cyclone V10™ Total Clean Cordless Vacuum - Refurbished
+--qty_avail:1268	qty_sold:497	qty_remaining:771
+
+select 
+qty_avail
+,qty_sold
+,qty_avail - qty_sold as qty_remaining
+from access_views.dw_lstg_item
+--from prs_restricted_v.slng_lstg_super_fact --more lag (not appropriate to use for stock level data)
+--where item_id=125290087957--V10 Total Clean
+where item_id=134330223251;--V11 Total Clean
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Tech GMV from 2022-11-20 (first day of RW47) [Use dw_checkout_trans]
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.Tech_BF_22RW47;
+create table p_uk_bc_t.Tech_BF_22RW47 as
+(
+select
+ck.GMV_time as timestamp
+,ck.GMV_dt as date
+,day(ck.GMV_time) as day
+,hour(ck.GMV_time) as hour
+,lstg.item_id
+,lstg.auct_title as listing_title
+,lstg.auct_start_dt as listing_start_date
+,lstg.auct_start_dt as listing_end_date
+,cat.vertical
+,cat.categ_lvl4_id
+,cat.categ_lvl4_name
+,u.user_slctd_id as seller_name
+,ck.seller_id
+,case when lstg.item_cndtn_id = 1000 then 'New'
+	  when lstg.item_cndtn_id = 1500 then 'New - Other'
+	  when lstg.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when lstg.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when lstg.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when lstg.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when lstg.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when lstg.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when lstg.item_cndtn_id = 3000 then 'Used'
+	  when lstg.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when lstg.item_cndtn_id = 5000 then 'Used - Good'
+	  when lstg.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when lstg.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+	  
+,case when lstg.cndtn_rollup_id = 1 then 'New'
+	  when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+	  when lstg.cndtn_rollup_id = 3 then 'Used'
+	  else 'Other' end as condition_rollup
+	  
+,sum(ck.GMV_PLAN_USD) as tot_GMV
+,sum(ck.quantity) AS tot_BI
+
+from access_views.dw_checkout_trans ck 
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on ck.item_id=lstg.item_id
+
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt
+and ck.GMV_dt >= '2022-11-20'
+    
+inner join access_views.dw_users u 
+on ck.seller_id = u.user_id
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5)as hist 																						
+on hist.user_id = ck.seller_id	and ck.created_dt between hist.beg_date and hist.end_date	
+
+where 
+ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Tech GMV from 2022-11-20 (first day of RW47) [Use dw_ck_trans_freq] No GMV2.0 figure but updated hourly
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+--Time zone for all timestamp/date fields is UTC-7 unless otherwise specified
+--2022-11-24 08:05:35.0 (ran on 2022-11-24 16:37 UK time)
+select max(created_time) from access_views.dw_ck_trans_freq;
+
+--Latest dw_lstg_item data updated at 2022-11-24 02:56:13 PDT [UCT-8] (https://zeta.dss.vip.ebay.com/zeta/#/metadata/tables/DW_LSTG_ITEM)
+
+drop table if exists p_uk_bc_t.Tech_BF_22RW47_hourly;
+create table p_uk_bc_t.Tech_BF_22RW47_hourly as
+(
+select
+ck.created_time as timestamp--UTC-7
+,ck.created_dt as date
+,day(ck.created_time) as day
+,hour(ck.created_time) as hour
+,ck.created_time + interval 7 hours as UK_timestamp
+,date(UK_timestamp) as UK_date
+,day(UK_timestamp) as UK_day
+,hour(UK_timestamp) as UK_hour
+,lstg.item_id
+,lstg.auct_titl as listing_title
+,lstg.auct_start_dt as listing_start_date
+,lstg.auct_start_dt as listing_end_date
+,lstg.qty_avail
+,lstg.qty_sold
+,lstg.qty_avail - lstg.qty_sold as qty_remaining
+,cat.vertical
+,cat.categ_lvl4_id
+,cat.categ_lvl4_name
+,u.user_slctd_id as seller_name
+,ck.seller_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+	  
+,case when cndtn.cndtn_rollup_id = 1 then 'New'
+	  when cndtn.cndtn_rollup_id = 2 then 'Refurbished'
+	  when cndtn.cndtn_rollup_id = 3 then 'Used'
+	  else 'Other' end as condition_rollup
+	  
+,sum(ck.item_price*ck.quantity*cr.curncy_plan_rate) as tot_GMV
+,sum(ck.quantity) AS tot_BI
+
+from access_views.dw_ck_trans_freq ck 
+
+inner join access_views.ssa_curncy_plan_rate_dim cr 
+on cr.curncy_id = ck.lstg_curncy_id	
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.created_dt
+and ck.created_dt >= '2022-11-20'
+    
+inner join access_views.dw_users u 
+on ck.seller_id = u.user_id
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5)as hist 																						
+on hist.user_id = ck.seller_id	and ck.created_dt between hist.beg_date and hist.end_date	
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+where 
+--ck.checkout_status=2 and ck.paid_dt <> '1969-12-31'--payment complete 
+ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.ck_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22
+);
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- QC
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select * from p_uk_bc_t.Tech_BF_22RW47;
+
+select date,sum(tot_GMV) from p_uk_bc_t.Tech_BF_22RW47
+group by 1 order by 1;
+
+select * from p_uk_bc_t.Tech_BF_22RW47_hourly;
+
+select date,sum(tot_GMV) from p_uk_bc_t.Tech_BF_22RW47_hourly
+group by 1 order by 1;
+
+--Avg - 4% daily GMV from hourly table compared to dw_checkout_trans if restrictions applied to checkout_status 
+--Avg + 1% daily GMV from hourly table compared to dw_checkout_trans if no restrictions applied to checkout_status 
+
+
+select * from p_uk_bc_t.Tech_BF_22RW47_hourly
+where date='2022-11-24'
+order by timestamp desc;
+
+
+--0 Duplicate
+with base as (
+select 
+UK_date
+,UK_day
+,UK_hour
+,item_id
+,listing_title
+,listing_start_date
+,listing_end_date
+,vertical
+,categ_lvl4_id
+,categ_lvl4_name
+,seller_name
+,seller_id
+,item_condition
+,condition_rollup
+,sum(tot_GMV) as ttl_GMV
+,sum(tot_BI) as ttl_SI
+from p_uk_bc_t.Tech_BF_22RW47_hourly
+where vertical in ('Electronics','Media')
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14)
+--select count(*) from base; 
+select item_id,count(*)
+from base
+where vertical in ('Electronics') and uk_hour=18 and uk_date='2022-11-23'
+group by 1
+having count(*)>1;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Analysis
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Export to Excel (685,061 rows)
+drop table p_uk_bc_t.Tech_BF_22RW47_hourly_final;
+create table p_uk_bc_t.Tech_BF_22RW47_hourly_final as (
+select 
+UK_date
+,UK_day
+,UK_hour
+,item_id
+,listing_title
+,listing_start_date
+,listing_end_date
+,qty_avail
+,qty_sold
+,qty_remaining
+,vertical
+,categ_lvl4_id
+,categ_lvl4_name
+,seller_name
+,seller_id
+,item_condition
+,condition_rollup
+,sum(tot_GMV) as ttl_GMV
+,sum(tot_BI) as ttl_SI
+from p_uk_bc_t.Tech_BF_22RW47_hourly
+where vertical in ('Electronics','Media')
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+select
+item_id
+,listing_title
+,qty_avail
+,qty_sold
+,qty_remaining
+,sum(ttl_GMV) as tot_GMV
+,sum(ttl_SI) as totSI
+from p_uk_bc_t.Tech_BF_22RW47_hourly_final
+where UK_date='2022-11-23'
+group by 1,2,3,4,5
+order by tot_GMV desc;
+
+
+--Top 100 listings per day
+select
+uk_date
+,item_id
+,seller_name
+,listing_title
+,item_condition
+,vertical
+,categ_lvl4_name
+,sum(ttl_GMV) as tot_GMV
+,sum(ttl_SI) as tot_SI
+,rank () over (partition by uk_date, vertical order by tot_GMV desc) as ranking
+from p_uk_bc_t.Tech_BF_22RW47_hourly_final
+group by 1,2,3,4,5,6,7
+qualify (row_number() over (partition by uk_date, vertical order by tot_GMV desc))<=100;--Only include the top 100 sellers in each day
+
+--Check if there is a spike in Dyson vacuum in the evening on 2022-11-24
+select
+uk_date
+,uk_hour
+,case when listing_title like '%V7%' then 'V7'
+	  when listing_title like '%V8%' then 'V8'
+	  when listing_title like '%V10%' then 'V10'
+	  when listing_title like '%V11%' then 'V11'
+	  else 'N/A' end as vaccum_model
+,listing_title
+,sum(ttl_GMV) as tot_GMV
+,sum(ttl_SI) as tot_SI
+from p_uk_bc_t.Tech_BF_22RW47_hourly_final
+where 
+seller_name='dyson_outlet'
+and categ_lvl4_name='Vacuum Cleaners'
+group by 1,2,3,4;
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Robbie's code in BF hourly report
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select
+REV_ROLLUP,
+BUSINESS,
+CBT,
+MT,
+MD,
+SUM(GMV) AS GMV,
+SUM(CASE WHEN VERTICAL='Parts & Accessories' THEN GMV END) AS GMV_PnA,	
+SUM(CASE WHEN VERTICAL='Fashion' THEN GMV END) AS GMV_Fash,
+SUM(CASE WHEN VERTICAL='Electronics' THEN GMV END) AS GMV_Elec,
+SUM(CASE WHEN VERTICAL='Home & Garden' THEN GMV END) AS GMV_HnG,
+SUM(CASE WHEN VERTICAL='Lifestyle'THEN GMV END) AS GMV_LIFESTYLE,
+SUM(CASE WHEN VERTICAL='Collectibles' THEN GMV END) AS GMV_Coll,
+SUM(CASE WHEN VERTICAL='Business & Industrial' THEN GMV END) AS GMV_BI
+from
+(SELECT
+CN.REV_ROLLUP,
+CASE WHEN HIST.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END AS BUSINESS,
+CASE WHEN CN.REV_ROLLUP <> CN2.REV_ROLLUP THEN 'CBT' ELSE 'DOM' END CBT,
+HOUR(CREATED_TIME) as MT,
+CREATED_DT AS MD,
+	case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
+	when meta_categ_id in (26395) then 'Lifestyle'
+	when CATEG_LVL3_ID in (260325) then 'Lifestyle'
+	when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+	when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+	when categ_lvl3_id in (3244) then 'Parts & Accessories'
+	when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+	when categ_lvl2_id in (46576) then 'Parts & Accessories'
+	when categ_lvl2_id in (63, 29223) then 'Collectibles'
+	else bsns_vrtcl_name end as VERTICAL,
+SUM(CK.ITEM_PRICE*CK.QUANTITY*CR.CURNCY_PLAN_RATE) AS GMV
+FROM ACCESS_VIEWS.DW_CK_TRANS_FREQ ck
+INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID AND CK.SITE_ID = CAT.SITE_ID	AND cat.SAP_CATEGORY_ID NOT IN (5,7,23,41,-999) 	
+INNER JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM CR ON CR.CURNCY_ID = CK.LSTG_CURNCY_ID	
+INNER JOIN ACCESS_VIEWS.DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID AND CN.REV_ROLLUP IN ('DE', 'UK', 'FR', 'IT', 'ES')
+INNER JOIN ACCESS_VIEWS.DW_COUNTRIES CN2 ON CN2.CNTRY_ID = CK.BYR_CNTRY_ID
+LEFT JOIN ACCESS_VIEWS.DW_USEGM_HIST HIST ON HIST.USER_ID = CK.SELLER_ID AND HIST.USEGM_GRP_ID = 48 AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+WHERE	CK.SALE_TYPE NOT IN  (10,15) 				
+AND CK.CK_WACKO_YN='N'		
+AND auct_end_DT >= '2019-10-30'
+AND created_dt >= '2019-10-30'
+GROUP BY 1,2,3,4,5,6)z
+where
+((MD between (select cast(MAX(CREATED_TIME) as date) from  ACCESS_VIEWS.DW_CK_TRANS_FREQ) - 2 AND (select cast(MAX(CREATED_TIME) as date) from  ACCESS_VIEWS.DW_CK_TRANS_FREQ) - 1)
+OR (MD = (select cast(MAX(CREATED_TIME) as date) from  ACCESS_VIEWS.DW_CK_TRANS_FREQ) AND MT < (SELECT HOUR(MAX(created_time)) FROM  ACCESS_VIEWS.DW_CK_TRANS_FREQ)))
+-- MD between '2020-09-13' AND '2020-09-19'
+GROUP BY 1,2,3,4,5
+;
+
+
+
+
+
+
+
+
+
+
