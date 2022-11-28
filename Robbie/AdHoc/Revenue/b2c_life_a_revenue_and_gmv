@@ -1,0 +1,197 @@
+-- drop table if exists P_CSI_TBS_T.UK_GMV_REVENUE;
+
+-- CREATE TABLE P_CSI_TBS_T.UK_GMV_REVENUE AS
+-- GET ALL REVENUE
+
+with seller as
+(
+Select user_id as seller_id, user_slctd_id as seller_name
+From DW_USERS 
+Where user_id in (1929034938,167935447,1379005411,1140366161,162611490)
+)
+
+
+
+SELECT  
+	"Weekly" as DataType
+   ,x.WEEK_END_DT as cal_dt
+   ,x.retail_year
+   ,x.retail_week
+   ,gem2.slr_cntry_id
+   ,s.seller_id
+   ,s.seller_name
+   ,CASE 
+   		WHEN bkt.REV_BKT_ID IN( 29,30 ) THEN 'INS_REV' 
+        WHEN bkt.REV_BKT_ID IN( 31,32 ) THEN 'FTR_REV'
+        WHEN bkt.REV_BKT_ID IN( 33,34 ) THEN 'FNL_VAL_REV'
+        WHEN bkt.REV_BKT_ID IN( 35,36 ) THEN 'OTHR_LSTG_REV'
+		ELSE 'OTHER' END  RVNU_BKT
+   ,lstg_rev_bkt_desc as fee_type
+   ,ACTN_CODE_TYPE_DESC2
+   ,case  
+   		when actn.actn_code in(409,410) then 'PL' 
+		when actn.actn_code in(5,28) then 'ITEM' 
+		when actn.actn_code in(373,374) then 'SHIPPING' 
+		when actn.actn_code in(504,505,506,507,508,509,510,511) then 'P2.0' 
+		else 'OTHERS' end  as RVNU_CATEGORY
+	, Case
+		when actn.ACTN_CODE in (5,373,504) then 'FV Fee'
+		when actn.ACTN_CODE in (28,374,505) then 'FV Credit'
+		when actn.ACTN_CODE in (506,507) then 'FV Intl Fee'
+		when actn.ACTN_CODE in (508,509) then 'FV Fixed Fee'
+		when actn.ACTN_CODE in (510,511) then 'FV Below Std Fee'
+		when actn.actn_code in(409,410) then 'PL'
+		when actn.actn_code in(198,199) then 'Subtitle'
+		when actn.actn_code in(468,469,470,471) then 'SNAD'
+		when actn.actn_code in(-358) then 'eTRS'
+				else 'OTHERS' end  as RVNU_GROUPS
+	,actncode.ACTN_CODE_DESC
+   ,case  when usegm_hist.usegm_id=206 then 'B2C' else 'C2C' end  as seller_segment
+   ,cat.bsns_vrtcl_name as vertical
+   ,lkp.cust_sgmntn_desc as SELLER_TYPE
+   ,case when INTMDT_PYMNT_MTHD_USED_IND = 'Y' then 'Y' else 'N' end as P2_INTERMEDIATED
+   ,CASE WHEN (gem2.leaf_categ_id = 172036  AND gem2.acct_trans_dt >='2016-01-01') OR (gem2.slr_id = 2120087788 AND gem2.acct_trans_dt >='2020-10-01' ) THEN 'N' ELSE 'Y' END AS  GMV_INCLD_YN
+   ,sum(gem2.amt_bc*cast ( cr.curncy_plan_rate as FLOAT)* -1) as revenue_usd
+   ,sum(gem2.amt_bc) as revenue_gbp 
+   ,sum(0) as gmv
+
+FROM ( 
+
+			-- =====================================================
+			-- TOTAL DAILY REVENUE
+			-- =====================================================
+
+			SELECT  
+			  gcr.acct_trans_dt ,gcr.slr_id ,gcr.actn_code ,gcr.leaf_categ_id ,gcr.lstg_site_id ,gcr.slr_cntry_id ,gcr.lstg_type_code ,gcr.blng_curncy_id , ck.INTMDT_PYMNT_MTHD_USED_IND,
+			  sum(cast ( gcr.amt_bc as FLOAT)) as amt_bc  
+			FROM ACCESS_VIEWS.dw_gem2_cmn_rvnu_i gcr
+				left join ACCESS_VIEWS.DW_CHECKOUT_TRANS ck on ck.TRANSACTION_ID = gcr.CK_TRANS_ID and ck.ITEM_ID = gcr.LSTG_ID and ck.SELLER_ID = gcr.slr_id
+			WHERE 
+				gcr.acct_trans_dt >=  '2019-01-01' and  
+				! gcr.lstg_site_id in(223, -1, -2, -3) and  
+				! gcr.lstg_type_code in(10,12,15, -4) and  
+				! gcr.lstg_site_id in(223, -1, -2, -3) and  
+				! gcr.adj_type_id in( -7, -1,3,5) and gcr.slr_cntry_id in (3 ,77)
+			GROUP BY 1,2,3,4,5,6,7,8,9
+
+			UNION ALL 
+
+			SELECT  
+			  gcr.acct_trans_dt   ,gcr.slr_id   ,gcr.actn_code   ,gcr.leaf_categ_id   ,gcr.lstg_site_id   ,gcr.slr_cntry_id   ,gcr.lstg_type_code   ,gcr.blng_curncy_id   ,ck.INTMDT_PYMNT_MTHD_USED_IND,
+			  sum(cast ( gcr.amt_bc* -1 as FLOAT)) as amt_usd 
+			FROM ACCESS_VIEWS.dw_gem2_cmn_adj_rvnu_i gcr
+			left join ACCESS_VIEWS.DW_CHECKOUT_TRANS ck on ck.TRANSACTION_ID = gcr.CK_TRANS_ID and ck.ITEM_ID = gcr.LSTG_ID and ck.SELLER_ID = gcr.slr_id 
+			 WHERE  
+				gcr.acct_trans_dt >=  '2019-01-01' and  
+				! gcr.lstg_site_id in(223, -1, -2, -3) and  
+				! gcr.lstg_type_code in(10,12,15, -4) and  
+				! gcr.lstg_site_id in(223, -1, -2, -3) and  
+				! gcr.adj_type_id in( -7, -1,3,5) and 
+				gcr.iswacko_yn_id=1 and gcr.slr_cntry_id in (3 ,77)
+			 GROUP BY 1,2,3,4,5,6,7,8,9
+
+			UNION ALL
+
+			-- =====================================================
+			-- ETRS: this is to remove eTRS from revenue and approach is provided by central team
+			-- =====================================================
+
+			SELECT  
+			  gcr.acct_trans_dt ,gcr.slr_id ,gcr.actn_code ,gcr.leaf_categ_id ,gcr.lstg_site_id ,gcr.slr_cntry_id ,gcr.lstg_type_code ,gcr.blng_curncy_id , 'Y' as INTMDT_PYMNT_MTHD_USED_IND,
+			  sum(cast ( gcr.amt_bc as FLOAT)) as amt_usd  
+			FROM ACCESS_VIEWS.DW_GEM2_CMN_RVNU_I_ETRS gcr
+			WHERE 
+				gcr.acct_trans_dt >=  '2019-01-01' and  
+				! gcr.lstg_site_id in(223, -1, -2, -3) and  
+				! gcr.lstg_type_code in(10,12,15, -4) and  
+				! gcr.lstg_site_id in(223, -1, -2, -3) and  
+				! gcr.adj_type_id in( -7, -1,3,5) and gcr.slr_cntry_id in (3 ,77)
+			GROUP BY 1,2,3,4,5,6,7,8,9
+
+			UNION ALL 
+
+			SELECT  
+			  gcr.acct_trans_dt   ,gcr.slr_id   ,gcr.actn_code   ,gcr.leaf_categ_id   ,gcr.lstg_site_id   ,gcr.slr_cntry_id   ,gcr.lstg_type_code   ,gcr.blng_curncy_id   , 'Y' as INTMDT_PYMNT_MTHD_USED_IND,
+			  sum(cast ( gcr.amt_bc* -1 as FLOAT)) as amt_usd 
+			FROM ACCESS_VIEWS.DW_GEM2_CMN_ADJ_RVNU_I_ETRS gcr
+			WHERE  
+				gcr.acct_trans_dt >=  '2019-01-01' and  
+				! gcr.lstg_site_id in(223, -1, -2, -3) and  
+				! gcr.lstg_type_code in(10,12,15, -4) and  
+				! gcr.lstg_site_id in(223, -1, -2, -3) and  
+				! gcr.adj_type_id in( -7, -1,3,5) and 
+				gcr.iswacko_yn_id=1 and gcr.slr_cntry_id in (3 ,77)
+			 GROUP BY 1,2,3,4,5,6,7,8,9
+ 
+) as gem2
+inner join ACCESS_VIEWS.dw_category_groupings as cat on  ( (gem2.leaf_categ_id=cat.leaf_categ_id and gem2.lstg_site_id=cat.site_id) and  ! cat.sap_category_id in(5,7,23,41, -999))
+inner join ACCESS_VIEWS.dw_acct_actn_code_lkp as actn on gem2.actn_code=actn.actn_code
+inner join ACCESS_VIEWS.dw_action_codes as actncode on actn.actn_code=actncode.actn_code
+inner join ACCESS_VIEWS.dw_acct_lstg_rev_bkt_lkp as bkt on  (actn.rev_bkt_id=bkt.rev_bkt_id and  lower(rev_grp_code) like lower('%GEM%'))
+inner join ACCESS_VIEWS.ssa_curncy_plan_rate_dim as cr on cr.curncy_id=gem2.blng_curncy_id
+inner join ACCESS_VIEWS.dw_cal_dt as x on gem2.acct_trans_dt=x.cal_dt
+inner join seller s on s.seller_id = gem2.slr_id
+left join ACCESS_VIEWS.dw_usegm_hist as usegm_hist on  ( (usegm_hist.user_id=gem2.slr_id and usegm_hist.usegm_grp_id=48) and gem2.acct_trans_dt between  usegm_hist.beg_date and usegm_hist.end_date) 
+left join prs_restricted_v.dna_cust_seller_sgmntn_hist as hist on  ( (hist.slr_id=gem2.slr_id and current_date between  hist.cust_slr_sgmntn_beg_dt and hist.cust_slr_sgmntn_end_dt) and hist.cust_sgmntn_grp_cd between  36 and 41)
+left join prs_restricted_v.cust_sgmntn as lkp on hist.cust_sgmntn_cd=lkp.cust_sgmntn_cd
+/* left join 
+	(select USER_ID, EFCTV_START_DT, EFCTV_END_DT, ACTV_IND, SPRT_SITE_ID from PRS_RESTRICTED_V.SPL_ACCT_LMO_SELLER where SPRT_SITE_ID = 3 group by 1,2,3,4,5) sps on 
+		sps.user_id = gem2.slr_id and ( gem2.acct_trans_dt >= sps.EFCTV_START_DT and  gem2.acct_trans_dt <= sps.EFCTV_END_DT) 
+left join 
+	(select USER_ID, EFCTV_START_DT, EFCTV_END_DT, ACTV_IND, SPRT_SITE_ID from PRS_RESTRICTED_V.SPL_ACCT_LMO_SELLER where SPRT_SITE_ID = 3 group by 1,2,3,4,5) sps1 on 
+		sps1.user_id = gem2.slr_id and ( gem2.acct_trans_dt >= sps1.EFCTV_START_DT and sps1.ACTV_IND = 1) 	 */
+
+WHERE  
+RETAIL_YEAR >= 2021
+and age_for_rtl_week_id < 0
+and bkt.LSTG_REV_BKT_DESC in ('FValue Credit', 'FValue Fee')
+and gem2.blng_curncy_id = 3
+
+ GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18
+ 
+-- ==================================================================
+
+UNION ALL
+
+
+SELECT  
+	"Weekly" as DataType
+   ,x.WEEK_END_DT as cal_dt
+   ,x.retail_year
+   ,x.retail_week
+   ,ck.slr_cntry_id
+   ,s.seller_id
+   ,s.seller_name
+   ,"" AS  RVNU_BKT
+   ,"" as fee_type
+   ,"" as ACTN_CODE_TYPE_DESC2
+   ,"" as RVNU_CATEGORY
+   , "" as RVNU_GROUPS
+   ,"" as ACTN_CODE_DESC
+   ,case  when usegm_hist.usegm_id=206 then 'B2C' else 'C2C' end  as seller_segment
+	,cat.bsns_vrtcl_name as vertical
+   ,lkp.cust_sgmntn_desc as SELLER_TYPE
+   ,case when ck.INTMDT_PYMNT_MTHD_USED_IND = 'Y' then 'Y' else 'N' end as P2_INTERMEDIATED
+   ,CASE WHEN (ck.leaf_categ_id = 172036  AND ck.created_dt >='2016-01-01') OR (ck.seller_id = 2120087788 AND ck.created_dt >='2020-10-01' ) THEN 'N' ELSE 'Y' END AS  GMV_INCLD_YN -- THis is to remove NHS portal for the UK
+   ,sum(0) as revenue_usd
+   ,sum(0) as revenue_gbp
+   ,sum(ck.GMV_LC_AMT) as gmv_gbp
+FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS as ck
+inner join ACCESS_VIEWS.dw_category_groupings as cat on  ( (ck.leaf_categ_id=cat.leaf_categ_id and ck.site_id=cat.site_id) and  ! cat.sap_category_id in(5,7,23,41, -999))
+inner join ACCESS_VIEWS.ssa_curncy_plan_rate_dim as cr on cr.curncy_id=ck.lstg_curncy_id
+inner join ACCESS_VIEWS.dw_cal_dt as x on ck.GMV_DT=x.cal_dt
+inner join seller s on s.seller_id = ck.seller_id
+left join ACCESS_VIEWS.dw_usegm_hist as usegm_hist on  ( (usegm_hist.user_id=ck.SELLER_ID and usegm_hist.usegm_grp_id=48) and ck.GMV_DT between  usegm_hist.beg_date and usegm_hist.end_date) 
+left join prs_restricted_v.dna_cust_seller_sgmntn_hist as hist on  ( (hist.slr_id= ck.SELLER_ID and current_date between  hist.cust_slr_sgmntn_beg_dt and hist.cust_slr_sgmntn_end_dt) and hist.cust_sgmntn_grp_cd between  36 and 41)
+left join prs_restricted_v.cust_sgmntn as lkp on hist.cust_sgmntn_cd=lkp.cust_sgmntn_cd
+
+			
+WHERE  
+	RETAIL_YEAR >= 2021  and age_for_rtl_week_id < 0  
+and
+ 	! ck.SALE_TYPE in(10,15) and 
+	lower(ck.ck_wacko_yn)=lower('N') and 
+	x.cal_dt>=to_date('2018-01-01') and ck.slr_cntry_id in (3 ,77)
+
+ GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18;
+
