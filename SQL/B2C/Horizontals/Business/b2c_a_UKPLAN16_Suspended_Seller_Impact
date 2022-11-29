@@ -387,3 +387,73 @@ select count(distinct item_id) from p_uk_bc_t.suspended_slr_reinstate;
 --Export to Excel
 select * from p_uk_bc_t.suspended_slr_reinstate;
 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- FU from Cristian on 2022-11-29 looking to get all listing GMV from 2020 onwards in GBP
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Suspended seller GMV in GBP from all listings on UK site (Domestic & CBT) in 2020 to 2022RW47
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+create table p_uk_bc_t.suspended_slr_GMV_all_lstg as (
+select 
+cal.retail_year
+,cal.retail_week
+,cal.retail_wk_end_date
+,ck.item_id
+,case when t.item_id is not null then 1 else 0 end as target_lstg
+,lstg.auct_start_dt as listing_start_date
+,lstg.auct_end_dt as listing_end_date
+,lstg.auct_title as listing_title
+,cat.vertical
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+,case when ck.byr_cntry_id <> 3 then 'CBT' else 'DOM' end as CBT_DOM
+
+,sum(ck.GMV20_lc_amt) as tot_GMV_GBP
+,sum(ck.GMV20_plan) as tot_GMV_USD
+,sum(ck.GMV20_sold_quantity) AS tot_SI
+
+from prs_restricted_v.slng_trans_super_fact ck 
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on ck.item_id=lstg.item_id
+
+inner join (select meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id 
+,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl3_id in (260325) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+when categ_lvl2_id in (63, 29223) then 'Collectibles'
+else bsns_vrtcl_name end as vertical
+from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3 
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt
+and cal.age_for_rtl_year_id in (0,-1,-2) and cal.age_for_rtl_week_id<=-1--Till 2022RW47
+
+left join P_UK_BC_T.suspended_slr_lstg t
+on ck.item_id=t.item_id
+
+where 
+ck.seller_id=140764281
+and lstg.lstg_site_id=3
+and ck.iscore = 1
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+group by 1,2,3,4,5,6,7,8,9,10,11,12
+);
+
+--QC
+select * from p_uk_bc_t.suspended_slr_GMV_all_lstg
+where item_id in (113594226597,403729975692)
+order by retail_wk_end_date;
+
+--16746 rows
+select count(*) from p_uk_bc_t.suspended_slr_GMV_all_lstg;
+
+--Add to Excel Data Connection
+select * from p_uk_bc_t.suspended_slr_GMV_all_lstg;
