@@ -1,0 +1,328 @@
+-- DROP TABLE if exists P_OLWAND_T.fash_pt_seller ;
+-- create table P_OLWAND_T.fash_pt_seller as select USER_ID AS SELLER_ID, USER_SLCTD_ID from DW_USERS where user_slctd_id in ('divine-shoes','loudlook','legendfootwear','shu.mania','top-target-trading','fashionthirsty','buffshoes','modinshu','abhatsandaccessories','*eclectic-shoes*','shuperb','shoestation_direct','wynsors_shoes','fashion-footwear','qubetrainer','dms_001','fashion-setters','loz_trade','bargain_crazy','brit-safe','trueboypoole','rhp-footwear','inclothing2012','br_flipflops','rennaclothinguk','taskerinternationalltd','love.labels','qmi_fashion','rsfootwear','trendy_girl','toplabelsonline','shoealley20','pavers.shoes','urbantrendsuk','d.s.everson','pre_worn','we-are-thrift','worsleywear','allsortzuk-1','chicwhisper','beaute.outlet','undercover2005','thehighstreetstoreuk','haute-boutique','messina-hembry','braforme','rydalecountryclothing','lingerieoutletstore','lordcharlie1','lilyjune1','dressmewise','ro-rox','bargaindeals2012-uklimited','styles-world','ideal.online','thenightwearstore','romanoriginals','love-my-fashions','yourstyleoutlet1','u.kdispatch','lingerie0nline','sale-on-brand','rachaelf937','celebrity_fashion_store','secretlabel','bigbrandsclothing','newlife-bargain','weirdfishltd','adriannapapellukltd','closetlondon','wearesott','elliejames1','active-sportswears','apparel.direct','armyandworkwear','azbags','bargains4u_2019','beebizco12','clothing_deals','cloving.shop','eddyswardrobe','eyesoremerchbay','fbitrading','footballshoponline','fusion-travel','garmentprinting1','globalleisurewear','go-thrift','greenplanetclothing','jeansceneonline','jeans-clearance-outlet','klassyk07','kruzedenim','mad4toolsltd','m-and-h-trading','military_1st','myshoestore1','onestoplook','powcog-uk','premiumclothing1','richard-paul-menswear','rockstarmerch','roughandtoughwear','rpsclothing','ruffntuffx2','rzk_textiles','savile_row_company','sports_king','stand-out','stonerepublicclothing','streamisland','thehanshawspartnership','thetrnd','thevintagelockerstore','threadbare_outlet','toolmonkey-shop','topbrandclearence','topbrandoutlet-ltd','true_face','uk-underworld','ultimatebrandstore','underu','us_clothingltd','vintro-clothing','worn.again'
+-- );
+
+
+-- JOINS PROTRADER AND FOCUS
+DROP TABLE IF EXISTS P_OLWAND_T.FASH_MNGD_SELLERS;
+CREATE TABLE P_OLWAND_T.FASH_MNGD_SELLERS AS 
+SELECT user_id as SELLER_ID, USER_SLCTD_ID AS SELLER_NAME, 'PT' AS SELLER_FLAG FROM P_awang_opt_T.protrader_2021_Q2 where pt_category like '%FASH%'
+UNION ALL
+SELECT SELLER_ID,  SELLER_NAME,'FOCUS' AS SELLER_FLAG FROM P_awang_ops_T.seller_ops_83 WHERE seller_vertical in ('Fashion') ; -- updated quarter
+
+-- gmv table
+DROP TABLE IF EXISTS P_OLWAND_T.fashion_gmv;
+CREATE TABLE P_OLWAND_T.fashion_gmv AS
+(
+	SELECT   
+		CAL.RETAIL_YEAR,
+		CAL.RETAIL_WEEK,
+		cal.AGE_FOR_RTL_WEEK_ID,
+		SO.seller_id,
+		SO.seller_name,
+		SO.SELLER_FLAG, 
+		META_CATEG_NAME,
+		META_CATEG_ID,
+		CATEG_LVL2_NAME,
+		CATEG_LVL2_ID,
+		CATEG_LVL3_NAME,
+		CATEG_LVL3_ID,
+		case when CATEG_LVL4_ID in (63866,11484) then CATEG_LVL4_ID else 0 end as CATEG_LVL4_ID,
+		case when CATEG_LVL4_ID in (63866,11484) then CATEG_LVL4_NAME else 'Others' end as CATEG_LVL4_NAME,
+		CASE  WHEN item_cndtn_id = 1000 THEN 'New'  WHEN item_cndtn_id = 1500 THEN 'New Other (see details)' WHEN item_cndtn_id = 1750 THEN 'New With Defects' 
+WHEN item_cndtn_id = 2000 THEN 'Manufacturer Refurb' 
+WHEN item_cndtn_id = 2500 THEN 'Seller Refurb' 
+WHEN item_cndtn_id = 2750 THEN 'Like New' 
+WHEN item_cndtn_id = 3000 THEN 'Used' 
+WHEN item_cndtn_id = 4000 THEN 'Very Good' 
+WHEN item_cndtn_id = 5000 THEN 'Good' 
+WHEN item_cndtn_id = 6000 THEN 'Acceptable' 
+WHEN item_cndtn_id = 7000 THEN 'For parts or not working' 
+ELSE 'Not specified' 
+END AS Item_Condition_Type3,
+		BRAND,
+		SUM(gmv_plan_usd) AS GMV
+
+	FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS AS CK
+
+-- 		INNER JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+-- 			ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID
+
+		INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
+			ON CAL.CAL_DT = CK.gmv_dt 
+			and AGE_FOR_RTL_WEEK_ID <= -1 and AGE_FOR_RTL_WEEK_ID >= -5
+
+		INNER JOIN P_OLWAND_T.FASH_MNGD_SELLERS SO
+			on ck.seller_id = SO.seller_id
+
+	INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT 
+		ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+		AND CAT.SITE_ID = 3
+		AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+
+		left join
+			(select a.* from (
+			select
+			item_id,
+			auct_end_dt,
+			lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+			upper(ASPCT_VLU_NM) as BRAND,
+			ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute
+			FROM ACCESS_VIEWS.ITEM_ASPCT_CLSSFCTN ASPCT
+			where
+			lower(PRDCT_ASPCT_NM) in ('brand') and NS_TYPE_CD='df' )a
+			where RNum = 1
+			) t0
+			on  ck.ITEM_ID = t0.ITEM_ID
+			and ck.auct_end_dt = t0.auct_end_Dt
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS Cond
+        ON CK.ITEM_ID = cond.ITEM_ID
+	WHERE 1=1
+		AND CK.CK_WACKO_YN  =  'N'
+		AND CK.SALE_TYPE NOT IN (10,15)
+		AND CK.SITE_ID = 3
+		AND CK.SLR_CNTRY_ID = 3
+		AND ck.byr_cntry_id =3
+		AND CK.SLR_CNTRY_ID = ck.byr_cntry_id 
+		AND CAT.META_CATEG_ID = 11450
+
+	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+);
+-- live listing table
+DROP TABLE IF EXISTS P_OLWAND_T.fashion_LL;
+	CREATE TABLE P_OLWAND_T.fashion_LL AS
+
+	(SELECT
+		CAL.RETAIL_YEAR,
+		CAL.RETAIL_WEEK,
+		cal.AGE_FOR_RTL_WEEK_ID,
+		SO.seller_id,
+		SO.seller_name,
+		SO.SELLER_FLAG, 
+		META_CATEG_NAME,
+		META_CATEG_ID,
+		CATEG_LVL2_NAME,
+		CATEG_LVL2_ID,
+		CATEG_LVL3_NAME,
+		CATEG_LVL3_ID,
+		case when CATEG_LVL4_ID in (63866,11484) then CATEG_LVL4_ID else 0 end as CATEG_LVL4_ID,
+		case when CATEG_LVL4_ID in (63866,11484) then CATEG_LVL4_NAME else 'Others' end as CATEG_LVL4_NAME,
+		CASE  WHEN item_cndtn_id = 1000 THEN 'New'  WHEN item_cndtn_id = 1500 THEN 'New Other (see details)' WHEN item_cndtn_id = 1750 THEN 'New With Defects' 
+WHEN item_cndtn_id = 2000 THEN 'Manufacturer Refurb' 
+WHEN item_cndtn_id = 2500 THEN 'Seller Refurb' 
+WHEN item_cndtn_id = 2750 THEN 'Like New' 
+WHEN item_cndtn_id = 3000 THEN 'Used' 
+WHEN item_cndtn_id = 4000 THEN 'Very Good' 
+WHEN item_cndtn_id = 5000 THEN 'Good' 
+WHEN item_cndtn_id = 6000 THEN 'Acceptable' 
+WHEN item_cndtn_id = 7000 THEN 'For parts or not working' 
+ELSE 'Not specified' 
+END AS Item_Condition_Type3,
+		BRAND,
+		count(distinct(ck.item_id)) as LL
+
+	FROM DW_LSTG_ITEM CK 
+
+	 LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID,item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS Cond
+			ON CK.ITEM_ID = Cond.ITEM_ID
+			
+	INNER JOIN DW_LSTG_ITEM D 
+			ON ck.ITEM_ID = D.ITEM_ID 
+			AND ck.AUCT_END_DT = D.AUCT_END_DT
+			
+	INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+			ON CAT.LEAF_CATEG_ID = Ck.LEAF_CATEG_ID 
+			AND CAT.SITE_ID = CK.ITEM_SITE_ID 
+			and cat.site_id = 3 
+			
+	INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID
+	
+	INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID
+	
+	INNER JOIN DW_CAL_DT CAL
+			ON CK.AUCT_START_DT < CAL.CAL_DT
+			AND CK.AUCT_END_DT >= CAL.CAL_DT
+			and AGE_FOR_RTL_WEEK_ID <= -1 and AGE_FOR_RTL_WEEK_ID >= -5
+			
+	left outer join dw_users u
+			on ck.slr_id = u.user_id
+			
+		INNER JOIN P_OLWAND_T.FASH_MNGD_SELLERS SO
+			on ck.slr_id = SO.seller_id
+	
+			left join
+				(select a.* from (
+				select
+				item_id,
+				auct_end_dt,
+				lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+				upper(ASPCT_VLU_NM) as BRAND,
+				ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute
+				FROM ACCESS_VIEWS.ITEM_ASPCT_CLSSFCTN ASPCT
+				where
+				lower(PRDCT_ASPCT_NM) in ('brand') and NS_TYPE_CD='df' )a
+				where RNum = 1
+				) t0
+			on  ck.ITEM_ID = t0.ITEM_ID
+			and ck.auct_end_dt = t0.auct_end_Dt
+		
+	WHERE CK.AUCT_end_dt >= '2017-01-01'
+		and ck.WACKO_YN = 'N'                      
+		AND CK.AUCT_TYPE_CODE NOT IN (10,15)
+		AND CK.ITEM_SITE_ID = 3
+		AND CAT.META_CATEG_ID = 11450
+		and ck.auct_end_dt >= date '2018-01-01'
+		and ck.SLR_CNTRY_ID = 3
+		group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+	 );
+
+-- create views and impressions table
+DROP TABLE IF EXISTS P_OLWAND_T.fashion_vi_table;
+
+CREATE TABLE P_OLWAND_T.fashion_vi_table AS
+
+	(SELECT
+		CAL.RETAIL_YEAR,
+		CAL.RETAIL_WEEK, 		
+		cal.AGE_FOR_RTL_WEEK_ID,
+		SO.seller_id,
+		SO.seller_name,
+		SO.SELLEr_FLAG,
+		META_CATEG_NAME,
+		META_CATEG_ID,
+		CATEG_LVL2_NAME,
+		CATEG_LVL2_ID,
+		CATEG_LVL3_NAME,
+		CATEG_LVL3_ID,
+		case when CATEG_LVL4_ID in (63866,11484) then CATEG_LVL4_ID else 0 end as CATEG_LVL4_ID,
+		case when CATEG_LVL4_ID in (63866,11484) then CATEG_LVL4_NAME else 'Others' end as CATEG_LVL4_NAME,
+		CASE  WHEN item_cndtn_id = 1000 THEN 'New'  WHEN item_cndtn_id = 1500 THEN 'New Other (see details)' WHEN item_cndtn_id = 1750 THEN 'New With Defects' 
+WHEN item_cndtn_id = 2000 THEN 'Manufacturer Refurb' 
+WHEN item_cndtn_id = 2500 THEN 'Seller Refurb' 
+WHEN item_cndtn_id = 2750 THEN 'Like New' 
+WHEN item_cndtn_id = 3000 THEN 'Used' 
+WHEN item_cndtn_id = 4000 THEN 'Very Good' 
+WHEN item_cndtn_id = 5000 THEN 'Good' 
+WHEN item_cndtn_id = 6000 THEN 'Acceptable' 
+WHEN item_cndtn_id = 7000 THEN 'For parts or not working' 
+ELSE 'Not specified' 
+END AS Item_Condition_Type3,
+		BRAND,
+		sum(SRP_IMPRSN_CNT) as SRP_IMP,
+		SUM(SRP_VI_CNT) as SRP_VI,
+		SUM(other_SRC_VI_CNT) as otherVi,
+		SUM(watch_CNT) as Watches
+
+	 FROM PRS_restricted_V.SLNG_TRFC_SUPER_FACT ck
+
+		INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+			ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+			AND CK.SITE_ID = CAT.SITE_ID and cat.site_id = 3 
+			
+		left outer join dw_users u
+			on ck.SELLER_ID = u.user_id
+		
+		INNER JOIN P_OLWAND_T.FASH_MNGD_SELLERS SO
+			on ck.seller_id = SO.seller_id
+			
+		inner join dw_cal_dt cal 
+			on ck.CAL_DT = cal.cal_dt 
+			and AGE_FOR_RTL_WEEK_ID <= -1 and AGE_FOR_RTL_WEEK_ID >= -5
+		
+		left join
+			(select a.* from (
+			select
+			item_id,
+			auct_end_dt,
+			lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+			upper(ASPCT_VLU_NM) as BRAND,
+			ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute
+			FROM ACCESS_VIEWS.ITEM_ASPCT_CLSSFCTN ASPCT
+			where
+			lower(PRDCT_ASPCT_NM) in ('brand') and NS_TYPE_CD='df' )a
+			where RNum = 1
+			) t0
+			on  ck.ITEM_ID = t0.ITEM_ID
+		
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+		
+		WHERE 1=1
+			and ck.site_id = 3  
+			AND CAT.META_CATEG_ID = 11450
+			GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+	 )	;
+	 
+-- create tracker
+
+DROP TABLE IF EXISTS P_OLWAND_T.fashion_report_build;
+
+CREATE table P_OLWAND_T.fashion_report_build as
+
+ (SELECT g.retail_year, 
+ 		g.retail_week, 
+		g.AGE_FOR_RTL_WEEK_ID,
+		g.seller_id,
+		g.seller_name,
+		g.SELLER_FLAG, 
+		g.META_CATEG_NAME,
+		g.META_CATEG_ID,
+		g.CATEG_LVL2_NAME,
+		g.CATEG_LVL2_ID,
+		g.CATEG_LVL3_NAME,
+		g.CATEG_LVL3_ID,
+		g.CATEG_LVL4_NAME,
+		g.CATEG_LVL4_ID,
+		g.Item_Condition_Type3,
+		g.BRAND, 
+		GMV, 
+		LL,
+		SRP_IMP, 
+		SRP_VI,  
+		otherVi, 
+		Watches
+
+	FROM P_OLWAND_T.fashion_gmv g
+
+left outer join P_OLWAND_T.fashion_LL l
+		on l.retail_year = g.retail_year AND
+		l.retail_week = g.retail_week AND
+		l.age_for_rtl_week_id = g.age_for_rtl_week_id and 
+		l.seller_id = g.seller_id AND
+		l.categ_lvl3_id = g.categ_lvl3_id AND
+		l.categ_lvl4_id = g.categ_lvl4_id AND
+		l.Item_Condition_Type3 = g.Item_Condition_Type3 and
+		l.brand = g.brand 
+
+left outer join P_OLWAND_T.fashion_vi_table vi
+		on vi.retail_year = g.retail_year AND
+		vi.retail_week = g.retail_week AND
+		vi.age_for_rtl_week_id = g.age_for_rtl_week_id and 
+		vi.seller_id = g.seller_id AND
+		vi.categ_lvl3_id = g.categ_lvl3_id AND
+		vi.categ_lvl4_id = g.categ_lvl4_id AND
+		vi.Item_Condition_Type3 = g.Item_Condition_Type3 and
+		vi.brand = g.brand 
+
+GROUP BY g.retail_year, g.retail_week,g.AGE_FOR_RTL_WEEK_ID, g.seller_id,
+		g.seller_name, g.seller_flag,
+		g.META_CATEG_NAME,
+		g.META_CATEG_ID,
+		g.CATEG_LVL2_NAME,
+		g.CATEG_LVL2_ID,
+		g.CATEG_LVL3_NAME,
+		g.CATEG_LVL3_ID,
+		g.CATEG_LVL4_NAME,
+		g.CATEG_LVL4_ID,
+		g.Item_Condition_Type3,
+		g.BRAND, GMV, ll, SRP_IMP, SRP_VI,  otherVi, Watches
+ 
+ )
+ ; 
+ 
+--  drop table if exists P_OLWAND_T.fashion_report_build;
+--  create table P_OLWAND_T.fashion_report_build
+--  select * from P_OLWAND_T.fashion_report_build;
+
+
+-- select count(*) from P_OLWAND_T.fashion_report_build
