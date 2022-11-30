@@ -78,41 +78,46 @@ when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (15273) then 'Fitness R
 when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (31786) then 'Make-Up Focus'
 
 --Tech (2023 Q1 updated)
-when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) and cndtn.cndtn_rollup_id = 1 and cndtn.item_cndtn_id = 1000 then 'Appliances New Focus' 
-when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) and cndtn.cndtn_rollup_id = 2 and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Appliances Refurb Focus'
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) and cndtn.item_cndtn_id = 1000 then 'Appliances New Focus' 
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) and cndtn.item_cndtn_id in (1500,1750) then 'Appliances Open Box Focus'
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Appliances Refurb Focus'
 when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) then 'Appliances Non-New Other Focus'
 
-when new_vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) and cndtn.cndtn_rollup_id = 1 and cndtn.item_cndtn_id = 1000 then 'Audio & TVs New Focus' 
-when new_vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) and cndtn.cndtn_rollup_id = 2 and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Audio & TVs Refurb Focus'  
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) and cndtn.item_cndtn_id = 1000 then 'Audio & TVs New Focus'
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) and cndtn.item_cndtn_id in (1500,1750) then 'Audio & TVs Open Box Focus'
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Audio & TVs Refurb Focus'  
 when new_vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) then 'Audio & TVs Non-New Other Focus'  
 
-when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) and cndtn.cndtn_rollup_id = 1 and cndtn.item_cndtn_id = 1000 then 'Computing New Focus'
-when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) and cndtn.cndtn_rollup_id = 2 and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Computing Refurb Focus'
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) and cndtn.item_cndtn_id = 1000 then 'Computing New Focus'
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) and cndtn.item_cndtn_id in (1500,1750) then 'Computing Open Box Focus'
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Computing Refurb Focus'
 when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) then 'Computing Non-New Other Focus'
 
-when new_vertical = 'Electronics' and cat.categ_lvl3_id in (139971,139973) and cndtn.cndtn_rollup_id = 1 then 'Gaming New Focus' 
-when new_vertical = 'Electronics' and cat.categ_lvl3_id in (139971,139973) then 'Gaming Non-New Focus' 
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (139971,139973) and cndtn.item_cndtn_id <> 1000 then 'Gaming Non-New Focus' 
 
-when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn.cndtn_rollup_id = 1 and cndtn.item_cndtn_id = 1000 then 'Mobile New Focus' 
-when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn.cndtn_rollup_id = 2 and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Mobile Refurb Focus'
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn.item_cndtn_id = 1000 then 'Mobile New Focus' 
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn.item_cndtn_id in (1500,1750) then 'Mobile Open Box Focus' 
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Mobile Refurb Focus'
 when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) then 'Mobile Non-New Other Focus'
 
-when new_vertical = 'Electronics' and cat.categ_lvl2_id in (178893) and cndtn.cndtn_rollup_id = 1 and cndtn.item_cndtn_id = 1000 then 'Smart Watches New Focus' 
-when new_vertical = 'Electronics' and cat.categ_lvl2_id in (178893) and cndtn.cndtn_rollup_id = 2 and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Smart Watches Refurb Focus'
+when new_vertical = 'Electronics' and cat.categ_lvl2_id in (178893) and cndtn.item_cndtn_id = 1000 then 'Smart Watches New Focus' 
+when new_vertical = 'Electronics' and cat.categ_lvl2_id in (178893) and cndtn.item_cndtn_id in (1500,1750) then 'Smart Watches Open Box Focus' 
+when new_vertical = 'Electronics' and cat.categ_lvl2_id in (178893) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Smart Watches Refurb Focus'
 when new_vertical = 'Electronics' and cat.categ_lvl2_id in (178893) then 'Smart Watches Non-New Other Focus'
 
-when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) and cndtn.cndtn_rollup_id = 1 and cndtn.item_cndtn_id = 1000 then 'Tablets & Network Hardware New Focus'  
-when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) and cndtn.cndtn_rollup_id = 2 and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Tablets & Network Hardware Refurb Focus' 
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) and cndtn.item_cndtn_id = 1000 then 'Tablets & Network Hardware New Focus'  
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) and cndtn.item_cndtn_id in (1500,1750) then 'Tablets & Network Hardware Open Box Focus'  
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Tablets & Network Hardware Refurb Focus' 
 when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) then 'Tablets & Network Hardware Non-New Other Focus'
 
 --Media (2023 Q1 updated)
-when new_vertical = 'Media' and cat.categ_lvl2_id in (280,29792,171243,182882,184644,261186) and cndtn.cndtn_rollup_id = 1 then 'Book New Focus' 
+when new_vertical = 'Media' and cat.categ_lvl2_id in (280,29792,171243,182882,184644,261186) and cndtn.item_cndtn_id = 1000 then 'Book New Focus' 
 when new_vertical = 'Media' and cat.categ_lvl2_id in (280,29792,171243,182882,184644,261186) then 'Book Non-New Focus' 
 
-when new_vertical = 'Media' and cat.categ_lvl2_id in (617) and cndtn.cndtn_rollup_id = 1 then 'Film New Focus'    
+when new_vertical = 'Media' and cat.categ_lvl2_id in (617) and cndtn.item_cndtn_id = 1000 then 'Film New Focus'    
 when new_vertical = 'Media' and cat.categ_lvl2_id in (617) then 'Film Non-New Focus'  
 
-when new_vertical = 'Media' and cat.categ_lvl2_id in (176984, 176985) and cndtn.cndtn_rollup_id = 1 then 'Music New Focus'
+when new_vertical = 'Media' and cat.categ_lvl2_id in (176984, 176985) and cndtn.item_cndtn_id = 1000 then 'Music New Focus'
 when new_vertical = 'Media' and cat.categ_lvl2_id in (176984, 176985) then 'Music Non-New Focus'
 
 else 'OTHERS' 
