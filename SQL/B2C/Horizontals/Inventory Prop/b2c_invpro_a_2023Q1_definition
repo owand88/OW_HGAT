@@ -93,7 +93,7 @@ when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or ca
 when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Computing Refurb Focus'
 when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) then 'Computing Non-New Other Focus'
 
-when new_vertical = 'Electronics' and cat.categ_lvl3_id in (139971,139973) and cndtn.item_cndtn_id <> 1000 then 'Gaming Non-New Focus' 
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (139971,139973) and cndtn.item_cndtn_id <> 1000 then 'Gaming Better Than New Focus' 
 
 when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn.item_cndtn_id = 1000 then 'Mobile New Focus' 
 when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn.item_cndtn_id in (1500,1750) then 'Mobile Open Box Focus' 
@@ -112,13 +112,13 @@ when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat
 
 --Media (2023 Q1 updated)
 when new_vertical = 'Media' and cat.categ_lvl2_id in (280,29792,171243,182882,184644,261186) and cndtn.item_cndtn_id = 1000 then 'Book New Focus' 
-when new_vertical = 'Media' and cat.categ_lvl2_id in (280,29792,171243,182882,184644,261186) then 'Book Non-New Focus' 
+when new_vertical = 'Media' and cat.categ_lvl2_id in (280,29792,171243,182882,184644,261186) then 'Book Better Than New Focus' 
 
 when new_vertical = 'Media' and cat.categ_lvl2_id in (617) and cndtn.item_cndtn_id = 1000 then 'Film New Focus'    
-when new_vertical = 'Media' and cat.categ_lvl2_id in (617) then 'Film Non-New Focus'  
+when new_vertical = 'Media' and cat.categ_lvl2_id in (617) then 'Film Better Than New Focus'  
 
 when new_vertical = 'Media' and cat.categ_lvl2_id in (176984, 176985) and cndtn.item_cndtn_id = 1000 then 'Music New Focus'
-when new_vertical = 'Media' and cat.categ_lvl2_id in (176984, 176985) then 'Music Non-New Focus'
+when new_vertical = 'Media' and cat.categ_lvl2_id in (176984, 176985) then 'Music Better Than New Focus'
 
 else 'OTHERS' 
 end as inventory_prop
