@@ -1,0 +1,399 @@
+/*
+Task: Analysis on PLS cost, PLS revenue, conversion, FVF revenue, CSAT of Mobile Phone sellers
+Objective: Determine 2/3 scenarios which optimises PL, EDLP and coupon participation in order to drive consistent velocity in the mobile phone category
+
+On 2022-11-29, Matt confirmed following asks:
+
+-	Do sellers put up their prices for coupons?
+-	Are sellers that don’t take part in coupons better priced than sellers that do take part? i.e. are coupon sellers permanently higher priced?
+-	If we find that the sellers that don’t take part are cheaper. Do they have better conversion outside of coupon compared to the more expensive coupon sellers? 
+Ultimately, It would be good to know how much we spend on coupons for phones, and the impact it has. 
+We can then look at scenarios such as, no phones in coupons for Q1, but instead spend the coupon budget on a sitewite mobiles coupon, ebay funded. 
+In theory this would mean a coupon on top of an already more competitive market place.
+
+Mark confirmed following asks:
+-    Aim to get more velocity, have right price consistently. Top EPIDS' pricing in and out of coupon, priced up during coupon? 
+-    What's the cost of coupon and return from coupon
+PLS invest also drives up cost (propose capping spend of PL to 10% instead of 3%, high price doesn’t surface). 
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- YTD seller coupon description
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.2022_coupon_desc;
+create table p_uk_bc_t.2022_coupon_desc as (
+select 
+retail_year
+,retail_week
+,promotion_type
+,coupon_name
+,coupon_desc
+,discount_offer
+,cast(start_date as date) as coupon_start_dt
+,cast(end_date as date) as coupon_end_dt
+,datediff(end_date, start_date)+1 as promo_duration_day
+,sum(B2C_GMB_USD_PLAN) as GMB
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 a
+where 
+promotion_type in ('seller coupon')
+and retail_year=2022
+group by 1,2,3,4,5,6,7,8,9
+having GMB>1000 
+--and promo_duration_day<100--remove outlier data (VIP access coupons set up with extended dates)
+);
+
+--Note there are 24 hour coupons with end date the same as start date of another coupon
+select 
+distinct
+coupon_name
+,coupon_desc
+,discount_offer
+,coupon_start_dt
+,coupon_end_dt
+,promo_duration_day
+from p_uk_bc_t.2022_coupon_desc
+order by coupon_start_dt;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- SKU level Mobile Transactions (of 2 largest mobile sellers that participate in coupons (musicmagpie, cheapest_electrical)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.mobile_mm_ce;
+create table p_uk_bc_t.mobile_mm_ce as (
+select
+cal.retail_week
+,cal.retail_wk_end_date
+,cal.age_for_rtl_week_id
+,ck.GMV_dt
+,ck.transaction_id
+,ck.item_id
+,ck.item_vrtn_id
+,coalesce(eps.prod_ref_id,epms.prod_ref_id) as EPID
+,lstg.auct_titl
+,lstg.auct_start_dt
+,lstg.auct_end_dt
+,lstg.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+	  
+,sum(ck.GMV_plan_usd) as GMV_USD
+,sum(ck.GMV_lc_amt) as GMV_GBP
+,sum(ck.quantity) AS tot_SI
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt and cal.age_for_rtl_year_id=0 and cal.age_for_rtl_week_id <= -1--Till 2022RW47
+    
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5)as hist 																						
+on hist.user_id = ck.seller_id	and ck.GMV_dt between hist.beg_date and hist.end_date	
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+left join access_views.ctlg_item_fact eps
+on ck.item_id=eps.item_id
+
+left join access_views.ctlg_vrtn_fact epms
+on ck.item_id=epms.item_id and ck.item_vrtn_id=epms.item_vrtn_id
+
+where 
+cat.categ_lvl2_id=9355--mobile only
+and lstg.slr_id in (1046392160,35198216)
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+);
+
+--QC
+select transaction_id,item_id,count(*) from p_uk_bc_t.mobile_mm_ce
+group by 1,2
+having count(*)>1;
+
+select * from p_uk_bc_t.mobile_mm_ce;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Top 3 Mobile EPID by musicmagpie, cheapest_electrical
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.mobile_mm_ce_epid;
+create table p_uk_bc_t.mobile_mm_ce_epid as (
+select 
+seller_id
+,seller_name
+,item_cndtn_id
+,item_condition
+,EPID
+,sum(GMV_USD) as tot_GMV_USD
+from p_uk_bc_t.mobile_mm_ce
+group by 1,2,3,4,5
+qualify (row_number() over (partition by seller_id order by tot_GMV_USD desc))<=3
+);
+
+--Get description of EPID from SKU listing title
+select * from p_uk_bc_t.mobile_mm_ce
+--where EPID=12049274306--Apple iPhone 13 128GB Blue
+--where EPID=17049280668--Apple iPhone 13 128GB Midnight
+
+--where EPID=22034217345--Apple iPhone 11 64GB Black
+--where EPID=8034218244--Apple iPhone 11 Pro 64GB Space Grey
+where EPID=26034221360--Apple iPhone 11 Pro Max 64GB Space Grey
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Top Mobile EPID transactions 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.mobile_strategy;
+create table p_uk_bc_t.mobile_strategy as (
+with slr_cou as (
+	select 
+	red.transaction_id
+	,red.item_id
+	,coalesce(cou.coupon_name,red.incntv_cd) as coupon_name
+	,cou.discount_offer
+	,red.redmd_date
+	,red.contra_usd_plan as total_cost_USD
+	,red.cost_to_ebay_usd_plan as cost_to_ebay_USD
+	,red.contra_usd_plan-red.cost_to_ebay_usd_plan as cost_to_seller_USD
+	,red.GMB_usd_plan-(red.contra_usd_plan-red.cost_to_ebay_usd_plan) as net_return_to_seller_USD
+	
+	,total_cost_USD * 0.7782 as total_cost_GBP
+	,cost_to_ebay_USD * 0.7782 as cost_to_ebay_GBP
+	,cost_to_seller_USD * 0.7782 as cost_to_seller_GBP
+	,net_return_to_seller_USD * 0.7782 as net_return_to_seller_GBP
+	,red.seller_share as seller_cost_share
+	--,red.GMB_usd_plan as buyer_paid_amount
+	--,red.qty_bght
+	
+	from P_Plan_PPatel_T.IC_CouponAll red
+	inner join 
+			(select 
+			distinct
+			coupon_name
+			,discount_offer
+			from p_uk_bc_t.2022_coupon_desc) cou--include only redemptions for seller coupon
+	on red.incntv_cd=cou.coupon_name
+)
+select 
+txn.*
+,case when top.EPID=12049274306 then 'Apple iPhone 13 128GB Blue'
+      when top.EPID=17049280668 then 'Apple iPhone 13 128GB Midnight'
+	  when top.EPID=22034217345 then 'Apple iPhone 11 64GB Black'
+	  when top.EPID=8034218244 then 'Apple iPhone 11 Pro 64GB Space Grey'
+	  when top.EPID=26034221360 then 'Apple iPhone 11 Pro Max 64GB Space Grey'
+	  else 'N/A'
+	  end as EPID_desc
+,case when txn.item_vrtn_id=-999 then 0 else 1 end as MSKU_lstg
+,round(txn.GMV_USD/txn.tot_SI) as ASP_USD
+,round(txn.GMV_GBP/txn.tot_SI) as ASP_GBP
+,coalesce(round(GMV_USD/(1-slr_cou.discount_offer)),GMV_USD) as Price_Before_Discount_USD
+,coalesce(round(GMV_GBP/(1-slr_cou.discount_offer)),GMV_GBP) as Price_Before_Discount_GBP
+,Price_Before_Discount_USD/txn.tot_SI as ASP_Before_Discount_USD
+,Price_Before_Discount_GBP/txn.tot_SI as ASP_Before_Discount_GBP
+,slr_cou.coupon_name
+,slr_cou.discount_offer
+,slr_cou.redmd_date
+,slr_cou.total_cost_USD
+,slr_cou.cost_to_ebay_USD
+,slr_cou.cost_to_seller_USD
+,case when slr_cou.redmd_date is null then ASP_USD else slr_cou.net_return_to_seller_USD end as net_return_to_seller_USD
+,slr_cou.total_cost_GBP
+,slr_cou.cost_to_ebay_GBP
+,slr_cou.cost_to_seller_GBP
+,case when slr_cou.redmd_date is null then ASP_GBP else slr_cou.net_return_to_seller_GBP end as net_return_to_seller_GBP
+,slr_cou.seller_cost_share
+--,slr_cou.buyer_paid_amount
+--,slr_cou.qty_bght
+from p_uk_bc_t.mobile_mm_ce txn
+inner join p_uk_bc_t.mobile_mm_ce_epid top
+on txn.epid=top.epid and txn.item_cndtn_id=top.item_cndtn_id and txn.seller_id=top.seller_id
+left join slr_cou 
+on txn.transaction_id=slr_cou.transaction_id and txn.item_id=slr_cou.item_id
+);
+
+
+--Export to Excel
+select * from p_uk_bc_t.mobile_mm_ce_epid;
+--Add to Excel connection
+select * from p_uk_bc_t.mobile_strategy;
+
+
+--QC
+--Earlier months' coupons have no seller share?? Ask Oli and use GMV dates from start of Q4
+select * from P_Plan_PPatel_T.IC_CouponAll 
+where item_id=393803881730 and seller_share<0;
+
+--Cost don't add up
+select * from p_uk_bc_t.mobile_strategy
+where EPID=12049274306 and GMV_dt='2022-11-15';
+
+select * from P_Plan_PPatel_T.IC_CouponAll
+where transaction_id=1250553347026 and item_id=393620692122;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Top 3 EPID + Conidtion from cheapest_electrical
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Top 1
+select 
+seller_name
+,EPID
+,EPID_desc
+,item_condition
+,GMV_dt
+,coupon_name
+,case when coupon_name is not null then 1 else 0 end as coupon_flag
+,discount_offer
+,avg(ASP_GBP) as daily_ASP_GBP
+,avg(ASP_Before_Discount_GBP) as daily_ASP_Before_Discount_GBP
+from p_uk_bc_t.mobile_strategy
+where EPID=12049274306
+and GMV_dt>'2022-10-01'
+group by 1,2,3,4,5,6,7,8
+qualify (row_number() over (partition by GMV_dt order by coupon_flag desc))=1
+order by GMV_dt;
+
+--Top 2
+select 
+seller_name
+,EPID
+,EPID_desc
+,item_condition
+,GMV_dt
+,coupon_name
+,case when coupon_name is not null then 1 else 0 end as coupon_flag
+,discount_offer
+,avg(ASP_GBP) as daily_ASP_GBP
+,avg(ASP_Before_Discount_GBP) as daily_ASP_Before_Discount_GBP
+from p_uk_bc_t.mobile_strategy
+where EPID=17049280668 and item_cndtn_id=1500
+and GMV_dt>'2022-10-01'
+group by 1,2,3,4,5,6,7,8
+qualify (row_number() over (partition by GMV_dt order by coupon_flag desc))=1
+order by GMV_dt;
+
+
+--Top 3
+select 
+seller_name
+,EPID
+,EPID_desc
+,item_condition
+,GMV_dt
+,coupon_name
+,case when coupon_name is not null then 1 else 0 end as coupon_flag
+,discount_offer
+,avg(ASP_GBP) as daily_ASP_GBP
+,avg(ASP_Before_Discount_GBP) as daily_ASP_Before_Discount_GBP
+from p_uk_bc_t.mobile_strategy
+where EPID=17049280668 and item_cndtn_id=2010
+and GMV_dt>'2022-10-01'
+group by 1,2,3,4,5,6,7,8
+qualify (row_number() over (partition by GMV_dt order by coupon_flag desc))=1
+order by GMV_dt;
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Top 3 EPID + Conidtion from musicmagpie
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Top 1
+select
+seller_name
+,EPID
+,EPID_desc
+,item_condition
+,GMV_dt
+,coupon_name
+,case when coupon_name is not null then 1 else 0 end as coupon_flag
+,discount_offer
+,avg(ASP_GBP) as daily_ASP_GBP
+,avg(ASP_Before_Discount_GBP) as daily_ASP_Before_Discount_GBP
+from p_uk_bc_t.mobile_strategy
+where EPID=22034217345
+and GMV_dt>'2022-10-01'
+group by 1,2,3,4,5,6,7,8
+qualify (row_number() over (partition by GMV_dt order by coupon_flag desc))=1
+order by GMV_dt;
+
+
+--Top 2
+select
+seller_name
+,EPID
+,EPID_desc
+,item_condition
+,GMV_dt
+,coupon_name
+,case when coupon_name is not null then 1 else 0 end as coupon_flag
+,discount_offer
+,avg(ASP_GBP) as daily_ASP_GBP
+,avg(ASP_Before_Discount_GBP) as daily_ASP_Before_Discount_GBP
+from p_uk_bc_t.mobile_strategy
+where EPID=8034218244
+and GMV_dt>'2022-10-01'
+group by 1,2,3,4,5,6,7,8
+qualify (row_number() over (partition by GMV_dt order by coupon_flag desc))=1
+order by GMV_dt;
+
+
+--Top 3
+select
+seller_name
+,EPID
+,EPID_desc
+,item_condition
+,GMV_dt
+,coupon_name
+,case when coupon_name is not null then 1 else 0 end as coupon_flag
+,discount_offer
+,avg(ASP_GBP) as daily_ASP_GBP
+,avg(ASP_Before_Discount_GBP) as daily_ASP_Before_Discount_GBP
+from p_uk_bc_t.mobile_strategy
+where EPID=26034221360
+and GMV_dt>'2022-10-01'
+group by 1,2,3,4,5,6,7,8
+qualify (row_number() over (partition by GMV_dt order by coupon_flag desc))=1
+order by GMV_dt;
