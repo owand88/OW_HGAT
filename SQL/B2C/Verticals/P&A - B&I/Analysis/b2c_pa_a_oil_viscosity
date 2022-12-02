@@ -1,0 +1,119 @@
+---Aspect completion: SAE viscosity categ_lvl2_id in (179487, 179496) 
+
+---select sum(ll) ll from   p_ichan_t.oil_category_ll where  USER_SLCTD_ID='m_and_p'
+
+Drop table if exists   p_ichan_t.oil_category_ll ;
+create table  p_ichan_t.oil_category_ll as 
+(
+select 
+
+lst.Slr_ID,
+U.USER_SLCTD_ID,
+CAT.meta_categ_id, 
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name, 
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name, 
+ count( distinct lst.item_id) as ll
+	-- site_id
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id 
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and cat.site_id =3 -- select distinct site_id from 
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID AND  COND.CNDTN_ROLLUP_ID =  1  /*THEN 'Used' */  
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 	ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >=2022 -- and AGE_FOR_RTL_WEEK_ID <= -1 
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+INNER JOIN (select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE
+	from DW_USEGM_HIST
+	where USEGM_GRP_ID = 48
+    AND USEGM_ID = 206 --B2C only sellers
+    AND END_DATE >= '2015-12-30'
+	group by 1,2,3,4,5) HIST
+    	ON HIST.USER_ID = lst.slr_id
+
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.ITEM_CNTRY_ID=3
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+
+and CATEG_LVL3_ID in (179496) -- select * from  DW_CATEGORY_GROUPINGS where  CATEG_LVL3_ID in (179496) or   CATEG_LVL2_ID in (179496) or  CATEG_LVL4_ID in (179496)
+and lst.AUCT_end_dt >=CURRENT_DATE
+---between '2022-01-01' and   '2022-12-31'
+group by 1,2,3,4,5,6,7);
+
+
+SELECT SLR_ID, SUM(LL) LL FROM  p_ichan_t.oil_category_ll WHERE LL >=100 GROUP BY 1 ;
+
+
+--- SAE_viscosity
+Drop table if exists   p_ichan_t.oil_SAE_viscosity ;
+create table  p_ichan_t.oil_SAE_viscosity as 
+(
+select 
+SAE_viscosity,
+lst.Slr_ID,
+U.USER_SLCTD_ID,
+CAT.meta_categ_id, 
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name, 
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name, 
+lst.item_id
+--	 count( distinct lst.item_id) as ll
+	-- site_id
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id 
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and cat.site_id =3 -- select distinct site_id from 
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID AND  COND.CNDTN_ROLLUP_ID =  1  /*THEN 'Used' */  
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 	ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >=2022 -- and AGE_FOR_RTL_WEEK_ID <= -1 
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+INNER JOIN (select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE
+	from DW_USEGM_HIST
+	where USEGM_GRP_ID = 48
+    AND USEGM_ID = 206 --B2C only sellers
+    AND END_DATE >= '2015-12-30'
+	group by 1,2,3,4,5) HIST
+    	ON HIST.USER_ID = lst.slr_id
+LEFT join (select item_id, max(sae_viscosity) as sae_viscosity  from ( select 
+						upper(ASPCT_VLU_NM) as sae_viscosity,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('sae viscosity' )and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt >=  date '2022-01-01' group by 1,2,3,4) group by 1 )  base
+						 on base.item_id=lst.item_id
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.ITEM_CNTRY_ID=3
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+--- 	and  CATEG_LVL3_ID in (33743)
+-- and CATEG_LVL3_ID in (177599,33743)
+and CATEG_LVL3_ID in (179496) -- select * from  DW_CATEGORY_GROUPINGS where  CATEG_LVL3_ID in (179496) or   CATEG_LVL2_ID in (179496) or  CATEG_LVL4_ID in (179496)
+and lst.AUCT_end_dt >=CURRENT_DATE
+---between '2022-01-01' and   '2022-12-31'
+group by 1,2,3,4,5,6,7,8,9);
+-- 4277
+select * from p_ichan_t.oil_SAE_viscosity where  SAE_viscosity is null ; 
+-- 
+select * from p_ichan_t.oil_SAE_viscosity WHERE SLR_ID = 2314960683;
+
+select slr_id, USER_SLCTD_ID,SAE_viscosity ,count(distinct item_id)  ll  from  p_ichan_t.oil_SAE_viscosity group by 1,2 ,3 order by slr_id  ; 
+
+select  SAE_viscosity ,sum(ll) ll  from  p_ichan_t.oil_SAE_viscosity group by 1  order by ll desc  ; 
+
+  DROP TABLE if exists   p_InventoryPlanning_t.pa_oil_SAE_viscosity ;
+ CREATE TABLE  p_InventoryPlanning_t.pa_oil_SAE_viscosity AS  (
+ SELECT SLR_ID, 
+ USER_SLCTD_ID,
+ categ_lvl2_name,
+ categ_lvl2_ID,
+  categ_lvl3_name,
+ categ_lvl3_ID,
+ COUNT( DISTINCT ITEM_ID) AS LL,
+ SUM(SAE_viscosity_Y) SAE_viscosity_Y, 
+  SUM(SAE_viscosity_N) SAE_viscosity_N
+  FROM ( SELECT 
+CASE WHEN SAE_viscosity IS NOT NULL THEN  1  ELSE 0 END  SAE_viscosity_Y,
+CASE WHEN SAE_viscosity IS  NULL THEN  1 ELSE 0 END  AS SAE_viscosity_N, *  FROM  p_ichan_t.oil_SAE_viscosity )
+group by 1,2,3,4,5,6 ); 
+select * from  p_InventoryPlanning_t.pa_oil_SAE_viscosity
