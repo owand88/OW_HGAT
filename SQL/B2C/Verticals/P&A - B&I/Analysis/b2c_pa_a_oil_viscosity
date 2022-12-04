@@ -1,3 +1,4 @@
+-- UKPLAN-28
 ---Aspect completion: SAE viscosity categ_lvl2_id in (179487, 179496) 
 
 ---select sum(ll) ll from   p_ichan_t.oil_category_ll where  USER_SLCTD_ID='m_and_p'
