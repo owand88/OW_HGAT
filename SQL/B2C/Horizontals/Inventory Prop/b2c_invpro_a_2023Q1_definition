@@ -26,17 +26,16 @@ when new_vertical = 'Fashion' and ck.seller_id in (2093879780,1534266810,1161124
 when new_vertical = 'Fashion' and ck.seller_id in (305587902,844826217,1417329361,565791012,807642762,56677594,2090615526,1140031384,76395263,1485367886) THEN 'Preloved Sellers Focus'
 
 -- P&A
-when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (179448)) then 'Car Care Focus'
-when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (179421)) then 'Car Paint Focus'
+when new_vertical = 'Parts & Accessories' and (cat.categ_lvl2_id in (107059)) then 'Car Tuning and Styling Focus'
 when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33743)) then 'Tyres & Wheels Focus'
 when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (180035)) then 'Tyres & Wheels Focus'
 when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33637,33694,33612,33707,33579,33726,33549,33559,33572,9886,33605,262215,33599,180143,33542,33687,262440,262064)) then 'Car Parts Focus Shared'
 when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=3 and cat.categ_lvl2_id in (6030)) then 'Green Parts Focus'
-when new_vertical = 'Parts & Accessories' and (cat.categ_lvl2_id in (46576)) then 'Hand tools Focus'
-when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (3244,43990)) then 'Hand tools Focus'
-when new_vertical = 'Parts & Accessories' and (cat.categ_lvl2_id in (179487)) then 'Engine Oil & Lubricant Focus'
 when new_vertical = 'Parts & Accessories' and (cat.categ_lvl2_id in (10063,25622)) then 'Motorcycle Parts Focus'
 when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (183504,261272,177075)) then 'Motorcycle Parts Focus'
+when new_vertical = 'Parts & Accessories' and (cat.categ_lvl2_id in (179487)) then 'Engine Oil & Lubricant Focus'
+when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (183745,179474)) then 'Garage Equipment & Tool Focus'
+when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (177701)) then 'Electric Vehicles Parts Focus'
 
 -- Collectibles
 when new_vertical = 'Collectibles' and cat.categ_lvl3_id in (183454,	183456,	261044,	183457,	2535,	183455,	183460,	183459,	183458,	261045,	261337) then 'Collectable Card Game Focus'
@@ -48,7 +47,7 @@ when new_vertical = 'Collectibles' and cat.categ_lvl2_id in (3499, 4742, 65174) 
 when new_vertical = 'Collectibles' and cat.categ_lvl3_id in (7921) then 'Stamp Focus'
 
 --B&I 
-when new_vertical = 'Business & Industrial' and cat.categ_lvl2_id in (109471, 41498, 92074, 183900, 11897, 64808) then 'Building Materials & Trade Supplies Focus'
+when new_vertical = 'Business & Industrial' and cat.categ_lvl2_id in (25298,26221) then 'Office Supplies & Material Handling Focus'
 
 --H&G
 when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (32254, 131588, 131598, 32878, 38199, 103430, 114397) then 'Bedroom Furniture Focus'
