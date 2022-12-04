@@ -1,0 +1,839 @@
+
+CREATE OR REPLACE TEMPORARY VIEW stx  
+AS 
+(
+    SELECT
+        stx.item_id
+        ,stx.ck_trans_id AS transaction_id  
+        ,stx.sme_cmpgn_id
+        ,stx.sme_bndl_id
+		,case when flags01 in (2,3) then 1 else 0 end as is_applied
+        /*,CASE WHEN td_sysfnlib.BITAND(CAST(stx.flags01 AS BIGINT), 2) <> 0 THEN 1 ELSE 0 END AS is_applied  --That means offer was applied*/
+    
+    FROM ACCESS_VIEWS.sme_dscnt_trans_dtls stx  /*--offer_type_cd can be used to calssify to promotion types but we discovered it is not reliable.*/
+    
+    WHERE 1=1
+        AND stx.trans_cre_dt >= DATE_SUB(CURRENT_DATE,120));
+
+/*
+COLLECT STATISTICS
+    COLUMN(item_id, transaction_id)
+    ,COLUMN(sme_cmpgn_id)
+    ,COLUMN(sme_bndl_id)
+ON stx;
+
+select distinct flags01 from ACCESS_VIEWS.sme_dscnt_trans_dtls where trans_cre_dt >= DATE_SUB(CURRENT_DATE,120)*/
+
+
+CREATE OR REPLACE TEMPORARY VIEW cmp AS
+(
+    SELECT
+        sme_cmpgn_id 
+        ,cmpgn_type_cd  /*--to classify promotion types, we need to use cmpgn_type_cd in this table, instead of offer_type_cd in sme_dscnt_trans_dtls. confirmed by jetty, sudheer babu <sjetty@ebay.com>.*/
+    ,cmpgn_name
+  
+    FROM ACCESS_VIEWS.sme_cmpgn
+	
+);
+
+/*
+select count(*),count(distinct sme_cmpgn_id),count(distinct cmpgn_name) from cmp;
+
+COLLECT STATISTICS
+    COLUMN(sme_cmpgn_id)
+ON cmp;*/
+
+CREATE OR REPLACE TEMPORARY VIEW bnd AS
+(
+    SELECT 
+        sme_bndl_id
+        ,bndl_type_cd 
+    FROM ACCESS_VIEWS.sme_bndl
+);
+
+/*COLLECT STATISTICS
+    COLUMN(sme_bndl_id)
+ON bnd;
+select count(*),count(distinct sme_bndl_id),count(distinct bndl_type_cd) from bnd;
+*/
+
+CREATE OR REPLACE TEMPORARY VIEW pmm AS
+(
+    SELect
+        stx.item_id
+        ,stx.transaction_id
+        ,case when CMPGN_TYPE_CD = 17 then 'coded coupon' else 'Other SME' end as CMPGN_TYPE
+		,cmpgn_name
+        /*--All of the statements below were confirmed by Jetty, Sudheer Babu <sjetty@ebay.com>*/
+        
+        ,CASE WHEN stx.sme_cmpgn_id=5 THEN 1 ELSE 0 END AS legacy_shipping  /*--Include promotional shipping only. Doesn't include flat rate shipping, calculated shipping and carrier specific shipping.*/
+        ,CASE WHEN stx.sme_cmpgn_id=5 AND stx.is_applied=1 THEN 1 ELSE 0 END AS legacy_shipping_applied
+        
+        ,CASE WHEN stx.sme_cmpgn_id IS NOT NULL AND cmp.cmpgn_type_cd=5 THEN 1 ELSE 0 END AS pm_shipping_discount
+        ,CASE WHEN stx.sme_cmpgn_id IS NOT NULL AND cmp.cmpgn_type_cd=5 AND stx.is_applied=1 THEN 1 ELSE 0 END AS pm_shipping_discount_applied
+        
+        ,CASE WHEN stx.sme_cmpgn_id IS NOT NULL AND cmp.cmpgn_type_cd=3 THEN 1 ELSE 0 END AS pm_order_discount
+        ,CASE WHEN stx.sme_cmpgn_id IS NOT NULL AND cmp.cmpgn_type_cd=3 AND stx.is_applied=1 THEN 1 ELSE 0 END AS pm_order_discount_applied
+        
+        ,CASE WHEN stx.sme_cmpgn_id IS NOT NULL AND cmp.cmpgn_type_cd=9 THEN 1 ELSE 0 END AS pm_codeless_coupon
+        ,CASE WHEN stx.sme_cmpgn_id IS NOT NULL AND cmp.cmpgn_type_cd=9 AND stx.is_applied=1 THEN 1 ELSE 0 END AS pm_codeless_coupon_applied
+        
+        ,CASE WHEN bnd.sme_bndl_id IS NOT NULL AND bnd.bndl_type_cd=3 THEN 1 ELSE 0 END AS pm_epid_acc_discount
+        ,CASE WHEN bnd.sme_bndl_id IS NOT NULL AND bnd.bndl_type_cd=3 AND stx.is_applied=1 THEN 1 ELSE 0 END AS pm_epid_acc_discount_applied
+        
+        ,CASE WHEN bnd.sme_bndl_id IS NOT NULL AND bnd.bndl_type_cd<>3 THEN 1 ELSE 0 END AS pm_acc_discount
+        ,CASE WHEN bnd.sme_bndl_id IS NOT NULL AND bnd.bndl_type_cd<>3 AND stx.is_applied=1 THEN 1 ELSE 0 END AS pm_acc_discount_applied
+        
+        ,CASE WHEN stx.sme_cmpgn_id=6 THEN 1 ELSE 0 END AS pm_sale_clearence
+        ,CASE WHEN stx.sme_cmpgn_id=6 AND stx.is_applied=1 THEN 1 ELSE 0 END AS pm_sale_clearence_applied
+        
+        ,CASE WHEN stx.sme_cmpgn_id IS NOT NULL AND cmp.cmpgn_type_cd=4 THEN 1 ELSE 0 END AS pm_sale_event
+        ,CASE WHEN stx.sme_cmpgn_id IS NOT NULL AND cmp.cmpgn_type_cd=4 AND stx.is_applied=1 THEN 1 ELSE 0 END AS pm_sale_event_applied
+        
+        ,CASE WHEN stx.sme_cmpgn_id IS NOT NULL AND cmp.cmpgn_type_cd=14 THEN 1 ELSE 0 END AS pm_volume_discount
+        ,CASE WHEN stx.sme_cmpgn_id IS NOT NULL AND cmp.cmpgn_type_cd=14 AND stx.is_applied=1 THEN 1 ELSE 0 END AS pm_volume_discount_applied,
+       is_applied
+        
+    FROM stx
+        
+        LEFT JOIN cmp cmp
+            ON stx.sme_cmpgn_id=cmp.sme_cmpgn_id
+        
+        LEFT JOIN bnd bnd
+            ON stx.sme_bndl_id=bnd.sme_bndl_id
+);
+
+-- select * from P_SLR_TRACKER_T.pmm2
+CREATE OR REPLACE TEMPORARY VIEW pmm2 AS
+(
+    SELECT
+        item_id
+        ,transaction_id
+        ,is_applied
+		,CMPGN_TYPE
+        ,cmpgn_name
+        
+        /*--All of the statements below were confirmed by Jetty, Sudheer Babu <sjetty@ebay.com>*/
+        
+        ,MAX(legacy_shipping) AS legacy_shipping  /**--Include promotional shipping only. Doesn't include flat rate shipping, calculated shipping and carrier specific shipping**/
+        ,MAX(legacy_shipping_applied) AS legacy_shipping_applied
+        
+        ,MAX(pm_shipping_discount) AS pm_shipping_discount
+        ,MAX(pm_shipping_discount_applied) AS pm_shipping_discount_applied
+        
+        ,MAX(pm_order_discount) AS pm_order_discount
+        ,MAX(pm_order_discount_applied) AS pm_order_discount_applied
+        
+        ,MAX(pm_codeless_coupon) AS pm_codeless_coupon
+        ,MAX(pm_codeless_coupon_applied) AS pm_codeless_coupon_applied
+        
+        ,MAX(pm_epid_acc_discount) AS pm_epid_acc_discount
+        ,MAX(pm_epid_acc_discount_applied) AS pm_epid_acc_discount_applied
+        
+        ,MAX(pm_acc_discount) AS pm_acc_discount
+        ,MAX(pm_acc_discount_applied) AS pm_acc_discount_applied
+        
+        ,MAX(pm_sale_clearence) AS pm_sale_clearence
+        ,MAX(pm_sale_clearence_applied) AS pm_sale_clearence_applied
+        
+        ,MAX(pm_sale_event) AS pm_sale_event
+        ,MAX(pm_sale_event_applied) AS pm_sale_event_applied
+        
+        ,MAX(pm_volume_discount) AS pm_volume_discount
+        ,MAX(pm_volume_discount_applied) AS pm_volume_discount_applied
+        
+    FROM pmm
+    
+    GROUP BY 1,2,3,4,5
+);
+
+-- select is_applied,CMPGN_TYPE from P_SLR_TRACKER_T.pmm2 group by 1,2;
+
+/* select DEAL_TYPE,retail_year,retail_week,sum(Triggered_GMV),sum(all_GMV)
+from P_SLR_TRACKER_T.SME_GMV 
+where DEAL_TYPE = 'CODED COUPONS' group by 1,2,3 */
+
+DROP TABLE if exists P_SLR_TRACKER_T.SME_GMV;
+CREATE TABLE P_SLR_TRACKER_T.SME_GMV as
+(
+SELECT 
+retail_year,
+retail_week,
+AGE_FOR_RTL_WEEK_ID,
+cmpgn_name,
+cat.LEAF_CATEG_ID,
+categ_lvl2_name,
+categ_lvl2_id,
+categ_lvl3_name,
+categ_lvl3_id,
+categ_lvl4_name,
+categ_lvl4_id,
+'SME' DEAL_TYPE,
+seller_id, /*---added here to join on focus seller flag in extraction*/
+USER_SLCTD_ID as seller_name, /*-- added here to bring back seller name*/
+bsns_vrtcl_name as vertical,
+a.item_id,
+inv.new_vertical as new_vertical,  
+SUM( CK.GMV_PLAN_USD) AS Covered_GMV,
+-- SUM(case when is_applied = 1 then CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE else 0 end) as Triggered_sme_GMV,
+-- SUM(case when is_applied = 1 and CMPGN_TYPE  in ('coded coupon')  then CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE else 0 end) as Triggered_CC_GMV,
+SUM(case when is_applied = 1 then CK.GMV_PLAN_USD else 0 end) as Triggered_GMV,
+SUM(CK.GMV_PLAN_USD) as all_GMV
+FROM 
+             (select * from pmm2 where CMPGN_TYPE not in ('coded coupon')) a 
+INNER JOIN
+              ACCESS_VIEWS.DW_CHECKOUT_TRANS CK ON ck.item_id = a.item_id and ck.transaction_id = a.transaction_id 
+INNER  JOIN 
+                ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR ON 
+                CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN 
+                ACCESS_VIEWS.DW_CAL_DT CAL ON 
+                CAL.CAL_DT = CK.GMV_DT AND 
+                RETAIL_YEAR >= 2020  
+                /*--AND AGE_FOR_RTL_WEEK_ID in (-1,-2,-53,-54)*/
+INNER JOIN 
+                ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT ON 
+                CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID AND 
+                ck.site_id = cat.site_id AND                                                                    
+                CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+ON a.ITEM_ID = INV.ITEM_ID
+				
+LEFT JOIN 
+                (Select user_id,USER_SLCTD_ID  from   dw_users group by 1,2 )  b on 
+                CK.seller_id=b.user_id        
+                
+/*--LEFT JOIN DW_LSTG_ITEM_COLD C ON C.ITEM_ID = ck.ITEM_ID AND C.AUCT_END_DT = ck.AUCT_END_DT */
+WHERE 
+CK.GMV_DT >= '2017-08-18'  AND
+CK.CK_WACKO_YN  =  'N' AND 
+CK.SALE_TYPE NOT IN (10,15)  AND 
+CK.BYR_CNTRY_ID = 3 and
+CK.SLR_CNTRY_ID = 3 and
+/* --   retail_week >= 30 and*/
+CK.AUCT_END_DT >= '2017-08-18'   and 
+cat.site_id = 3 
+/*--    categ_lvl2_id = 3270 and */
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+
+UNION ALL
+
+SELECT 
+retail_year,
+retail_week,
+AGE_FOR_RTL_WEEK_ID,
+cmpgn_name,
+cat.LEAF_CATEG_ID,
+categ_lvl2_name,
+categ_lvl2_id,
+categ_lvl3_name,
+categ_lvl3_id,
+categ_lvl4_name,
+categ_lvl4_id,
+'CODED COUPONS' DEAL_TYPE,
+seller_id, /*---added here to join on focus seller flag in extraction*/
+USER_SLCTD_ID as seller_name, /*-- added here to bring back seller name*/
+bsns_vrtcl_name as vertical,
+a.item_id,
+inv.new_vertical as new_vertical, 
+SUM(CK.GMV_PLAN_USD) AS Covered_GMV,
+-- SUM(case when is_applied = 1 then CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE else 0 end) as Triggered_sme_GMV,
+-- SUM(case when is_applied = 1 and CMPGN_TYPE  in ('coded coupon')  then CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE else 0 end) as Triggered_CC_GMV,
+SUM(case when is_applied = 1 then CK.GMV_PLAN_USD else 0 end) as Triggered_GMV,
+SUM(CK.GMV_PLAN_USD) as all_GMV
+FROM 
+             (select * from pmm2 where CMPGN_TYPE in ('coded coupon')) a 
+INNER JOIN
+              ACCESS_VIEWS.DW_CHECKOUT_TRANS CK ON ck.item_id = a.item_id and ck.transaction_id = a.transaction_id 
+INNER  JOIN 
+                ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR ON 
+                CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN 
+                ACCESS_VIEWS.DW_CAL_DT CAL ON 
+                CAL.CAL_DT = CK.GMV_DT AND 
+                RETAIL_YEAR >= 2020  
+                /*--AND AGE_FOR_RTL_WEEK_ID in (-1,-2,-53,-54)*/
+INNER JOIN 
+                ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT ON 
+                CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID AND 
+                ck.site_id = cat.site_id AND                                                                    
+                CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+ON a.ITEM_ID = INV.ITEM_ID
+LEFT JOIN 
+                (Select user_id,USER_SLCTD_ID  from   dw_users group by 1,2 )  b on 
+                CK.seller_id=b.user_id        
+                
+/*--LEFT JOIN DW_LSTG_ITEM_COLD C ON C.ITEM_ID = ck.ITEM_ID AND C.AUCT_END_DT = ck.AUCT_END_DT */
+WHERE 
+CK.GMV_DT >= '2017-08-18'  AND
+CK.CK_WACKO_YN  =  'N' AND 
+CK.SALE_TYPE NOT IN (10,15)  AND 
+CK.BYR_CNTRY_ID = 3 and
+CK.SLR_CNTRY_ID = 3 and
+/* --   retail_week >= 30 and*/
+CK.AUCT_END_DT >= '2017-08-18'   and 
+cat.site_id = 3 
+/*--    categ_lvl2_id = 3270 and */
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+
+/* SELECT SUM(Triggered_CC_GMV) AS Triggered_CC_GMV,
+SUM(Triggered_GMV) AS Triggered_GMV
+FROM P_SLR_TRACKER_T.SME_GMV;
+
+SELECT RETAIL_YEAR,RETAIL_WEEK,DEAL_TYPE,SUM(Triggered_GMV) AS Triggered_GMV
+FROM P_SLR_TRACKER_T.SME_GMV WHERE RETAIL_YEAR=2021 GROUP BY 1,2,3;
+
+select DEAL_TYPE,retail_year,retail_week,sum(Triggered_GMV)
+from P_SLR_TRACKER_T.SME_SUMMARY 
+where DEAL_TYPE = 'CODED COUPONS' group by 1,2,3;
+
+*/
+
+
+
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.SME_SUMMARY;
+CREATE TABLE P_SLR_TRACKER_T.SME_SUMMARY as
+(
+select
+D.retail_year,
+d.retail_Week,
+new_vertical,
+cmpgn_name,
+DEAL_TYPE,
+d.seller_name,
+d.categ_lvl2_name,
+d.categ_lvl2_id,
+d.categ_lvl3_name,
+d.categ_lvl3_id,
+d.categ_lvl4_name,
+d.categ_lvl4_id,
+seller_id, 
+d.inv_prop_flag,
+inventory_prop,
+focus_seller_flag,
+count(distinct(item_id)) as listings_cnt,
+SUM( Covered_GMV) AS Covered_GMV,
+SUM(Triggered_GMV) as Triggered_GMV
+from 
+(
+select 
+C.retail_year,
+c.retail_Week,
+new_vertical,
+c.inv_prop_flag,
+focus_seller_flag,
+rpp.item_id as rpp_flag,
+c.categ_lvl2_name,
+c.categ_lvl2_id,
+c.categ_lvl3_name,
+c.categ_lvl3_id,
+c.categ_lvl4_name,
+c.categ_lvl4_id,
+c.item_id,
+cmpgn_name,
+DEAL_TYPE,
+c.seller_name,
+c.seller_id, 
+c.inventory_prop,
+Covered_GMV,
+Triggered_GMV
+from
+(
+select
+a.*,
+CASE WHEN a.INVENTORY_PROP LIKE ('%Focus%') THEN 'Focused'
+WHEN a.INVENTORY_PROP LIKE ('%Scal%') THEN 'Scaling'
+WHEN a.INVENTORY_PROP LIKE ('%Other%') THEN 'ROVertical'
+WHEN a.INVENTORY_PROP LIKE ('%Protrader%') THEN 'Protrader'
+ELSE 'NA'
+END AS INV_PROP_FLAG
+
+from (
+select 
+AGE_FOR_RTL_WEEK_ID,
+sme.retail_year,
+sme.retail_Week,
+sme.seller_id,
+cmpgn_name,
+DEAL_TYPE,
+sme.seller_name,
+sme.item_id,
+sme.categ_lvl2_name,
+sme.categ_lvl2_id,
+sme.categ_lvl3_name,
+sme.categ_lvl3_id,
+sme.categ_lvl4_name,
+sme.categ_lvl4_id,
+sme.new_vertical,
+Covered_GMV,
+Triggered_GMV,
+case when focused_flag is not null then 'focus' else 'other' end as focus_seller_flag,
+inv.INVENTORY_PROP  AS INVENTORY_PROP 
+from  P_SLR_TRACKER_T.SME_GMV sme 
+
+   LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON sme.ITEM_ID = CNDTN.ITEM_ID
+    INNER JOIN ( select meta_categ_id,CATEG_LVL2_ID,categ_lvl3_id,categ_lvl4_id,LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS group by 1,2,3,4,5,6,7 )  AS CAT
+        ON SME.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CAT.SITE_ID = 3
+LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+ON sme.ITEM_ID = INV.ITEM_ID
+left join P_awang_ops_t.seller_ops_83 c 
+on sme.seller_id=c.seller_id and sme.new_vertical=c.seller_vertical 
+)a
+where a.retail_year>=2020 and a.AGE_FOR_RTL_WEEK_ID=-1
+)c
+left outer  join P_SLR_TRACKER_T.rh_sello_2_gmvout2_coup rpp 
+on c.item_id=rpp.item_id and c.retail_week=rpp.retail_week and new_vertical=vertical
+and c.seller_id=rpp.seller_id and rpp.INVENTORY_PROP=c.INVENTORY_PROP and rpp.focused_flag=c.focus_seller_flag 
+ )d
+  where rpp_flag is null 
+ group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+   );
+
+
+/* SELECT DEAL_TYPE,SUM(Triggered_GMV) AS Triggered_GMV
+FROM P_SLR_TRACKER_T.SME_SUMMARY group by 1;
+
+SELECT SUM(Triggered_GMV) AS Triggered_GMV
+FROM P_SLR_TRACKER_T.SME_SUMMARY; */
+
+DROP TABLE IF EXISTS  P_SLR_TRACKER_T.SME_FINAL ;
+CREATE TABLE P_SLR_TRACKER_T.SME_FINAL 
+AS (
+select 
+x.retail_year,
+x.retail_Week,
+x.new_vertical as Vertical,
+case when x.INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end as INVENTORY_PROP,
+x.inv_prop_flag,
+-- x.DEAL_TYPE,
+/* --case when focus_seller_flag is not null then 'focus' else 'other' end as seller_flag,*/
+SUM(Triggered_GMV) SME_GMV,
+SUM(case when DEAL_TYPE='CODED COUPONS' THEN Triggered_GMV ELSE 0 END) AS SME_CODEDCPNS_GMV
+from 
+(
+selECT 
+r.*
+/*--case when  inv_prop_flag like ('%focus%') and focus_seller_flag is not null then Triggered_GMV else 0 end as SME_GMV*/
+FROM P_SLR_TRACKER_T.SME_SUMMARY r
+) x
+GROUP BY 1,2,3,4,5
+);
+
+
+/*
+SELECT DEAL_TYPE,SUM(SME_GMV) AS SME_GMV
+FROM P_SLR_TRACKER_T.SME_FINAL group by 1;
+
+SELECT 
+SUM(SME_GMV) AS SME_GMV
+FROM P_SLR_TRACKER_T.SME_FINAL; */
+
+DROP TABLE IF EXISTS  P_SLR_TRACKER_T.SME_Focus ;
+CREATE TABLE P_SLR_TRACKER_T.SME_Focus
+AS( 
+selECT 
+x.retail_year,
+x.retail_Week,
+x.new_vertical as Vertical,
+x.INVENTORY_PROP,
+SUM(SME_GMV) SME_GMV,
+SUM(SME_CODEDCPNS_GMV) SME_CODEDCPNS_GMV
+from 
+(
+selECT 
+r.*,
+case when  inv_prop_flag like ('%Focus%') and focus_seller_flag is not null then Triggered_GMV else 0 end as SME_GMV,
+case when inv_prop_flag like ('%Focus%') and focus_seller_flag is not null AND DEAL_TYPE='CODED COUPONS' THEN Triggered_GMV ELSE 0 END AS SME_CODEDCPNS_GMV
+FROM P_SLR_TRACKER_T.SME_SUMMARY r
+) x
+GROUP BY 1,2,3,4);
+
+/* SELECT SUM(CC_GMV) AS CC_GMV,
+SUM(SME_GMV) AS SME_GMV
+FROM P_SLR_TRACKER_T.SME_Focus;
+
+SELECT 
+SUM(SME_GMV) AS SME_GMV
+FROM P_SLR_TRACKER_T.SME_Focus; */
+
+/*
+SELECT sum(SME_GMV) FROM P_SLR_TRACKER_T.SME_Focus;
+select inventory_prop,Vertical,sum(SME_GMV) from P_SLR_TRACKER_T.SME_Focus group by 1,2;*/
+
+/*--------------------------2. extraction for sme campaign by seller tab (NEW)*/
+/*SELECT SUM(Triggered_GMV) AS Triggered_GMV
+FROM (selECT a.* 
+from P_SLR_TRACKER_T.SME_SUMMARY a 
+where 1=1
+AND cmpgn_name is not null 
+and Triggered_GMV>0)A
+GROUP BY 1;*/
+
+
+
+
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.SME_CAMPAIGN;
+CREATE TABLE P_SLR_TRACKER_T.SME_CAMPAIGN
+AS(
+
+selECT 
+RETAIL_YEAR,
+RETAIL_WEEK,
+new_vertical,
+categ_lvl2_name,
+x.categ_lvl2_id,
+categ_lvl3_name,
+x.categ_lvl3_id,
+categ_lvl4_name,
+x.categ_lvl4_id,
+CMPGN_NAME,
+seller_name,
+x.seller_id,
+inv_prop_flag,
+DEAL_TYPE,
+CASE WHEN INV_PROP_FLAG = 'NA' THEN 'NA' ELSE INVENTORY_PROP END AS INVENTORY_PROP,
+/*--case when focus_seller_flag  like any ('%focus%') then 'focus' 
+--when  focus_seller_flag  like any ('%not%', '%scale%') then 'other' else null 
+--end as focus_seller_flag,*/
+case when focus_seller_flag is not null then 'focus' else 'other' end as focus_seller_flag,
+listings_cnt,
+Covered_GMV,
+Triggered_GMV,
+GMV as store_GMV
+from 
+(
+selECT a.* 
+from P_SLR_TRACKER_T.SME_SUMMARY a 
+where 1=1
+-- and cmpgn_name is not null 
+and Triggered_GMV>0
+)x
+left outer join 
+
+(SELECT Z.* FROM 
+(
+SELECT
+        /*--CAL.RETAIL_YEAR
+       -- ,retail_week*/
+        seller_id
+        ,categ_lvl2_id
+        ,categ_lvl3_id
+		,categ_lvl4_id
+      /* -- ,RTL_QTR_OF_RTL_year_id*/
+,inv.new_vertical as vertical, 
+/*--SUM(CK.QUANTITY) AS BI*/
+    SUM(CK.GMV_PLAN_USD) AS GMV
+   /*-- GMV/BI as ASP*/
+    
+    FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS AS CK
+    INNER JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID     
+    INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT  AND CAL.age_for_rtl_week_id=-1
+        AND CAL.RETAIL_YEAR >=2020
+	LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+ON ck.ITEM_ID = INV.ITEM_ID	
+		
+    INNER JOIN DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 /*--B2C only sellers*/
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2015-12-30'        
+    INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+    WHERE 1=1
+        AND CK.SLR_CNTRY_ID = 3 
+        AND CK.BYR_CNTRY_ID = 3 
+        AND CK.SLR_CNTRY_ID = CK.BYR_CNTRY_ID /*--DOM*/
+        AND CK.RPRTD_WACKO_YN = 'N'
+        AND CK.AUCT_END_DT >= '2015-12-30'
+        AND CK.GMV_DT >= '2015-12-30'        
+    GROUP BY 1,2,3,4,5 ) Z
+    WHERE VERTICAL NOT IN ('Vehicles', 'Unknown', 'Real Estate') /*--Add Media from EU_FUNNEL below*/)R
+	on x.new_vertical=r.vertical and x.seller_id=r.seller_id and x.categ_lvl3_id=r.categ_lvl3_id and x.categ_lvl2_id=r.categ_lvl2_id and x.categ_lvl4_id=r.categ_lvl4_id);
+   
+  /*update  P_awang_ops_T.SME_CAMPAIGN   set INVENTORY_PROP='NA'  where   INV_PROP_FLAG   ='NA';*/
+-- select distinct INVENTORY_PROP from P_SLR_TRACKER_T.SME_CAMPAIGN where categ_lvl2_id IN (177074) and categ_lvl3_id IN (177099, 177075, 177112);
+/*
+--HISTORY
+
+
+CREATE MULTISET TABLE P_awang_ops_T.SME_FINAL_HIST
+AS 
+(
+SELECT * FROM P_awang_ops_T.SME_FINAL 
+GROUP BY 1,2,3,4,5
+)
+WITH DATA PRIMARY INDEX (INVENTORY_PROP,retail_week, retail_year);
+
+-----------note: from wk 2 2019 SME is released for all seller with focus category flag
+*/
+
+/*
+CREATE TABLE P_SLR_TRACKER_T.SME_FINAL_HIST AS (
+SELECT
+CAST(RETAIL_YEAR AS DECIMAL(4,0)) AS RETAIL_YEAR,
+CAST(RETAIL_WEEK AS DECIMAL(4,0)) AS RETAIL_WEEK,
+Vertical,
+INVENTORY_PROP,
+inv_prop_flag ,
+CAST(SME_GMV AS  DECIMAL(38,7)) AS SME_GMV
+FROM ZETA_DEV_WORKING.SME_FINAL_HIST );
+
+DESCRIBE P_SLR_TRACKER_T.SME_FINAL_HIST;
+
+DROP TABLE P_SLR_TRACKER_T.SME_CAMPAIGN_HIST;
+CREATE TABLE P_SLR_TRACKER_T.SME_CAMPAIGN_HIST AS (
+SELECT
+      CAST(RETAIL_YEAR AS  DECIMAL(4,0))  AS RETAIL_YEAR,
+	  CAST(RETAIL_WEEK AS  DECIMAL(4,0))  AS RETAIL_WEEK,
+      new_vertical,
+      CATEG_LVL2_NAME,
+      CATEG_LVL3_NAME,
+      CMPGN_NAME,
+      seller_name,
+      CAST(seller_id AS  INTEGER) AS seller_id,
+      inv_prop_flag,
+      INVENTORY_PROP,
+      focus_seller_flag,
+      CAST(listings_cnt AS  INTEGER) AS listings_cnt,
+      CAST(Covered_GMV AS DECIMAL(38,7)) AS Covered_GMV,
+      CAST(Triggered_GMV AS  DECIMAL(38,7)) AS Triggered_GMV,
+      CAST(store_GMV AS  DECIMAL(32,18)) AS store_GMV
+FROM ZETA_DEV_WORKING.SME_CAMPAIGN_HIST );
+
+DESCRIBE P_SLR_TRACKER_T.SME_CAMPAIGN_HIST;
+
+DROP TABLE P_SLR_TRACKER_T.SME_FOCUS_HIST;
+CREATE TABLE P_SLR_TRACKER_T.SME_FOCUS_HIST AS (
+SELECT
+CAST(RETAIL_YEAR AS DECIMAL(4,0)) AS RETAIL_YEAR,
+CAST(RETAIL_WEEK AS DECIMAL(4,0)) AS RETAIL_WEEK,
+Vertical,
+INVENTORY_PROP,
+CAST(SME_GMV AS  DECIMAL(38,7)) AS SME_GMV
+FROM ZETA_DEV_WORKING.SME_FOCUS_HIST );
+
+DESCRIBE P_SLR_TRACKER_T.SME_FOCUS_HIST;
+SELECT COUNT(*) FROM P_SLR_TRACKER_T.SME_CAMPAIGN_HIST;
+SELECT COUNT(*) FROM P_SLR_TRACKER_T.SME_FINAL_HIST;
+SELECT MAX(RETAIL_WEEK) FROM P_SLR_TRACKER_T.SME_CAMPAIGN_HIST WHERE RETAIL_YEAR=2020 ;
+SELECT RETAIL_WEEK,COUNT(*) FROM P_SLR_TRACKER_T.SME_CAMPAIGN_HIST;
+
+SELECT MAX(RETAIL_WEEK) FROM P_SLR_TRACKER_T.SME_FOCUS_HIST WHERE RETAIL_YEAR=2020 ;
+SELECT COUNT(*) FROM P_SLR_TRACKER_T.SME_FOCUS_HIST;
+*/
+
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.SME_FINAL_HIST_TEMP ;
+CREATE TABLE P_SLR_TRACKER_T.SME_FINAL_HIST_TEMP AS (
+SELECT 
+A.* from 
+P_SLR_TRACKER_T.SME_FINAL_HIST a
+LEFT JOIN ACCESS_VIEWS.DW_CAL_DT B
+ON A.RETAIL_YEAR=B.RETAIL_YEAR
+AND A.RETAIL_WEEK=B.RETAIL_WEEK AND AGE_FOR_RTL_WEEK_ID=-1
+WHERE 
+B.RETAIL_WEEK IS NULL);
+
+/*
+DELETE FROM P_awang_ops_T.SME_FINAL_HIST 
+WHERE 
+(
+RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+);
+select retail_year,retail_week,count(*) from P_SLR_TRACKER_T.SME_FINAL_HIST group by 1,2
+*/
+
+
+INSERT OVERWRITE TABLE P_SLR_TRACKER_T.SME_FINAL_HIST 
+SELECT * FROM P_SLR_TRACKER_T.SME_FINAL_HIST_TEMP;
+
+
+INSERT INTO TABLE P_SLR_TRACKER_T.SME_FINAL_HIST 
+SELECT retail_year,
+retail_Week,
+Vertical,
+INVENTORY_PROP,
+inv_prop_flag,
+SME_GMV FROM P_SLR_TRACKER_T.SME_FINAL A
+WHERE
+(
+RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+)
+GROUP BY 1,2,3,4,5,6;
+
+
+
+/*
+--HISTORY
+CREATE MULTISET TABLE P_awang_ops_T.SME_CAMPAIGN_HIST
+AS 
+(
+SELECT * FROM P_awang_ops_T.SME_CAMPAIGN 
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+)
+WITH DATA PRIMARY INDEX (INVENTORY_PROP,retail_week, retail_year);*/
+
+
+
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.SME_CAMPAIGN_HIST_TEMP ;
+CREATE TABLE P_SLR_TRACKER_T.SME_CAMPAIGN_HIST_TEMP AS (
+SELECT 
+A.* from 
+P_SLR_TRACKER_T.SME_CAMPAIGN_HIST a
+LEFT JOIN ACCESS_VIEWS.DW_CAL_DT B
+ON A.RETAIL_YEAR=B.RETAIL_YEAR
+AND A.RETAIL_WEEK=B.RETAIL_WEEK AND AGE_FOR_RTL_WEEK_ID=-1
+WHERE 
+B.RETAIL_WEEK IS NULL);
+
+/*
+DELETE FROM P_awang_ops_T.SME_FINAL_HIST 
+WHERE 
+(
+RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+);
+*/
+
+
+INSERT OVERWRITE TABLE P_SLR_TRACKER_T.SME_CAMPAIGN_HIST 
+SELECT * FROM P_SLR_TRACKER_T.SME_CAMPAIGN_HIST_TEMP;
+
+
+INSERT INTO TABLE P_SLR_TRACKER_T.SME_CAMPAIGN_HIST 
+SELECT 
+RETAIL_YEAR,
+RETAIL_WEEK,
+new_vertical,
+categ_lvl2_name,
+categ_lvl3_name,
+CMPGN_NAME,
+seller_name,
+seller_id,
+inv_prop_flag,
+INVENTORY_PROP,
+focus_seller_flag,
+listings_cnt,
+Covered_GMV,
+Triggered_GMV,
+store_GMV FROM P_SLR_TRACKER_T.SME_CAMPAIGN A
+WHERE
+(
+RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+)
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15;
+
+
+
+/*
+--HISTORY
+
+CREATE MULTISET TABLE P_awang_ops_T.SME_FOCUS_HIST
+AS 
+(
+SELECT * FROM P_awang_ops_T.SME_FOCUS 
+GROUP BY 1,2,3,4,5)
+WITH DATA PRIMARY INDEX (INVENTORY_PROP,retail_week, retail_year);
+
+------SME focus seller focus category history build as of week 2
+*/
+
+
+ 
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.SME_FOCUS_HIST_TEMP ;
+CREATE TABLE P_SLR_TRACKER_T.SME_FOCUS_HIST_TEMP AS (
+SELECT 
+A.* from 
+P_SLR_TRACKER_T.SME_FOCUS_HIST a
+LEFT JOIN ACCESS_VIEWS.DW_CAL_DT B
+ON A.RETAIL_YEAR=B.RETAIL_YEAR
+AND A.RETAIL_WEEK=B.RETAIL_WEEK AND AGE_FOR_RTL_WEEK_ID=-1
+WHERE 
+B.RETAIL_WEEK IS NULL);
+
+/*
+DELETE FROM P_awang_ops_T.SME_FINAL_HIST 
+WHERE 
+(
+RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+);
+*/
+
+
+INSERT OVERWRITE TABLE P_SLR_TRACKER_T.SME_FOCUS_HIST 
+SELECT * FROM P_SLR_TRACKER_T.SME_FOCUS_HIST_TEMP;
+
+
+INSERT INTO TABLE P_SLR_TRACKER_T.SME_FOCUS_HIST 
+SELECT retail_year,
+retail_Week,
+Vertical,
+INVENTORY_PROP,
+SME_GMV FROM P_SLR_TRACKER_T.SME_Focus A
+WHERE
+(
+RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+)
+GROUP BY 1,2,3,4,5;
+
+
+/*SELECT RETAIL_WEEK,COUNT(*),SUM(store_GMV)
+FROM P_SLR_TRACKER_T.SME_CAMPAIGN_HIST WHERE RETAIL_YEAR = 2020 GROUP BY 1 ORDER BY 1 DESC;*/
+
+/*
+describe P_SLR_TRACKER_T.aw_sello_1_gmvout4;
+describe P_SLR_TRACKER_T.PP_CouponHist__subset;
+
+select count(*) from P_SLR_TRACKER_T.PP_CouponHist__subset
+
+select distinct retail_week_final from  P_SLR_TRACKER_T.SME_FINAL;
+select b.* from  P_SLR_TRACKER_T.aw_sello_1_gmvout4 a
+left join P_SLR_TRACKER_T.PP_CouponHist__subset
+on a.;
+
+drop table if exists P_SLR_TRACKER_T.PP_CouponHist__subset; 
+create table P_SLR_TRACKER_T.PP_CouponHist__subset as (
+      select cast(RETAIL_YEAR as  DECIMAL(4,0)) as RETAIL_YEAR,
+	  cast(RETAIL_WEEK as  DECIMAL(4,0)) as RETAIL_WEEK,
+      case when vertical = 'lifestyle' then 'Lifestyle' else vertical end as vertical,
+      case when INVENT_PROP ='Tools focus' then 'Tools Focus'
+	   when INVENT_PROP ='Home Furnishings focus' then 'Home Furnishings Focus'
+	   when INVENT_PROP ='Pets focus' then 'Pets Focus'
+	   when INVENT_PROP ='Tools focus' then 'Tools Focus'
+	   when INVENT_PROP ='Furniture focus' then 'Furniture Focus'
+	   when INVENT_PROP ='Garden focus' then 'Garden Focus'
+	   when INVENT_PROP ='DIY Materials focus' then 'DIY Materials Focus' else INVENT_PROP end as INVENT_PROP,
+      FOCUS_FLAG ,
+      cast(coupon_gmb as  DECIMAL(38,8))  as coupon_gmb,
+	  cast(QTY_BGHT as  DECIMAL(38,8))  as QTY_BGHT,
+	  cast(coupon_spend as  DECIMAL(38,8))  as coupon_spend
+       from zeta_dev_working.PP_CouponHist__subset);
+
+select INVENT_PROP from P_SLR_TRACKER_T.PP_CouponHist__subset;
+
+select distinct vertical from P_SLR_TRACKER_T.PP_CouponHist__subset
+
+describe p_slr_tracker_t.sme_focus
+
+*/

@@ -1,0 +1,183 @@
+/* 1. Pull all events at a transactional and events level */
+
+drop table if exists p_olwand_t.fashion_events;
+CREATE TABLE p_olwand_t.fashion_events AS 
+
+with traffic as
+(select 
+item_id
+,TRFC.CAL_DT
+,sum(srp_imprsn_cnt + store_imprsn_cnt) as IMP
+,sum(TTL_VI_CNT) as VI
+FROM PRS_restricted_V.SLNG_TRFC_SUPER_FACT TRFC
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = TRFC.cal_dt
+         AND CAL.AGE_FOR_RTL_YEAR_ID >= -1 
+		and AGE_FOR_DT_ID <= -1
+where SITE_ID = 3
+group by 1,2)
+
+, checkout_trans as ( 
+select 
+ck.item_id
+,GMV_TIME
+,GMV_DT
+,ck.TRANSACTION_ID
+,ck.SELLER_ID
+,SUM(CK.QUANTITY) AS BI
+,SUM(gmv_plan_usd) AS GMV
+,sum(ck.quantity) as SI
+,sum(trfc.VI) as VI
+,sum(trfc.IMP) as IMP
+  	FROM  access_views.DW_CHECKOUT_TRANS ck  
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.gmv_dt
+        AND CAL.AGE_FOR_RTL_YEAR_ID >= -1 
+		and AGE_FOR_DT_ID <= -1
+inner join  (select USEGM_GRP_ID
+,USEGM_ID
+,END_DATE
+,USER_ID,BEG_DATE 
+from access_views.DW_USEGM_HIST 
+where USEGM_GRP_ID = 48 
+AND USEGM_ID = 206 
+AND END_DATE >= '2015-12-30') AS HIST ON HIST.USER_ID = CK.SELLER_ID AND CK.gmv_dt BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+left join traffic trfc on ck.item_id = trfc.item_id and trfc.cal_dt = cal.CAL_DT
+group by 1,2,3,4,5
+		)
+		
+
+select
+re.rpp_event_id
+,re.event_name
+,cal.week_beg_dt
+,cal.week_end_dt
+,cal.retail_year
+,cal.retail_week
+,cat.new_vertical
+,cat.META_CATEG_NAME
+,cat.categ_lvl2_name
+,cat.categ_lvl3_name
+,START_TS
+,END_TS
+,cal.CAL_DT
+,ck.TRANSACTION_ID
+,ri.item_id
+,max(ck.gmv) as max_gmv
+,max(ck.SI) as MAX_SI
+,max(ck.VI) as MAX_VI
+,max(ck.IMP) as MAX_IMP
+
+from ACCESS_VIEWS.rpp_event re
+inner join ACCESS_VIEWS.RPP_ITEM ri on ri.rpp_crtn_id = re.rpp_crtn_id
+inner join ACCESS_VIEWS.rpp_event_group reg ON re.rpp_event_grp_id = reg.rpp_event_grp_id
+inner join ACCESS_VIEWS.DW_LSTG_ITEM lstg on ri.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3
+    INNER JOIN ( select META_CATEG_NAME
+	,meta_categ_id
+	,CATEG_LVL2_ID
+	,categ_lvl2_name
+	,categ_lvl3_name
+	,categ_lvl3_id
+	,categ_lvl4_id
+	,categ_lvl4_name
+	,LEAF_CATEG_ID
+	,SITE_ID
+	, leaf_categ_name
+	,case   when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+ 		when meta_categ_id in (26395) then 'Lifestyle'
+ 		when categ_lvl3_id in (260325) then 'Lifestyle'
+ 		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+ 		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+ 		when categ_lvl3_id in (3244) then 'Parts & Accessories'
+ 		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+ 		when categ_lvl2_id in (46576) then 'Parts & Accessories'
+ 		else bsns_vrtcl_name end as new_vertical
+
+	from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS where SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) )  AS CAT ON lstg.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID AND cat.site_id = 3 
+left join checkout_trans ck on ri.item_id = ck.item_id and ck.gmv_time between re.start_ts and re.end_ts 
+-- inner join access_views.DW_CAL_DT cal on cal.cal_dt=cast(re.START_TS as date)
+inner join access_views.DW_CAL_DT cal on cal.cal_dt=ck.gmv_dt
+inner join p_awang_ops_t.item_invent_lstg focus on focus.item_id = ck.ITEM_ID
+-- and focus.seller_vertical = cat.new_vertical
+where 1=1
+and re.DLT_IND = 0
+and ri.dlt_ind = 0
+and re.SITE_ID = 3
+and cal.AGE_FOR_DT_ID <= -1
+and cal.AGE_FOR_RTL_YEAR_ID >= -1
+-- and (cal.AGE_FOR_RTL_WEEK_ID between -5 and 0
+-- or cal.AGE_FOR_RTL_WEEK_ID between -57 and -52)
+-- and cast(END_TS as date) <= DATE_ADD(week_beg_dt, 120)
+-- and re.rpp_event_id = '6350215c0ee45a048239fd5c'
+ and re.RPP_EVENT_ID in ('633c006b698c24043769f191','633c01a06728bd042b55bc17','628c979efbe447045b59d0e4','633c03a0e65efa04349d62c7','636e2b1bdb47f452ac696132','633c0108f8f95e04179450ca','6372321be45d8add0c3fd563'
+ ,'637cf274a0f52c043bfbc5a3','637b89d59719999534b519db','637bb34971f23ec572e24484','6373adab36bc8f867b7ce633','63628c2bff6c707b34605291','637386813ed76b80997c0e32','6373892f683199987719bcbe','637244e9c38ea009d61c309d','6026594574f577a1419b5cb3'
+ ,'63738b42512b45a1829aa8ac','637e31cc761145042cf839b5'
+ )
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+;
+/*
+2. GMV at event level
+*/
+drop table if exists p_olwand_t.fashion_events_lvl;
+CREATE TABLE p_olwand_t.fashion_events_lvl AS 
+select 
+retail_year
+,retail_week
+,new_vertical
+,META_CATEG_NAME
+,categ_lvl2_name
+,categ_lvl3_name
+,cal_dt
+,START_TS
+,END_TS
+,rpp_event_id
+,event_name
+,count(distinct item_id) as event_items
+,count(distinct TRANSACTION_ID) as ttl_transactions
+,sum(max_gmv) as gmv
+,sum(MAX_SI) as SI
+,sum(MAX_VI) as VI
+,sum(MAX_IMP) as IMP
+from p_olwand_t.fashion_events
+group by 1,2,3,4,5,6,7,8,9,10,11
+;
+
+/*
+3. GMV by date
+*/
+
+drop table if exists p_olwand_t.fashion_events_overall;
+CREATE TABLE p_olwand_t.fashion_events_overall AS 
+select
+retail_year
+,retail_week
+,new_vertical
+,META_CATEG_NAME
+,categ_lvl2_name
+,categ_lvl3_name
+,cal_dt
+,count(distinct item_id) as event_items
+,count(distinct TRANSACTION_ID) as ttl_transactions
+,sum(gmv) as gmv
+,sum(SI) as SI
+,sum(VI) as VI
+,sum(IMP) as IMP
+from (
+select
+retail_year
+,retail_week
+,new_vertical
+,META_CATEG_NAME
+,categ_lvl2_name
+,categ_lvl3_name
+,cal_dt
+,item_id
+,TRANSACTION_ID
+,max(max_gmv) as gmv
+,max(MAX_SI) as SI
+,max(MAX_VI) as VI
+,max(MAX_IMP) as IMP
+from p_olwand_t.fashion_events
+group by 1,2,3,4,5,6,7,8,9 )
+group by 1,2,3,4,5,6,7
+;

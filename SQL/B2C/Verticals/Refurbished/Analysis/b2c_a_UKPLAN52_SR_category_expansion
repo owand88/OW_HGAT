@@ -1,0 +1,125 @@
+/* 
+Task: Analyse old SR GMV in categories that are not part of the SR program at granular level
+Objective: Identify which categories to be enabled for 2023 category expansion in the SR program
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- GMV of LY and TY YTD
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table P_InventoryPlanning_T.SR_GMV_TY_LY;
+create table P_InventoryPlanning_T.SR_GMV_TY_LY as
+(
+select
+cal.retail_year 
+,cal.retail_week	
+,cal.retail_wk_end_date
+,cal.age_for_rtl_week_id
+,cat.original_vertical
+,cat.new_vertical
+,cat.meta_categ_id
+,cat.meta_categ_name
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+,cat.categ_lvl4_id
+,cat.categ_lvl4_name
+,sr.launch_category as SR_launch_category
+,sr.launch_date as SR_launch_date
+,u.user_slctd_id as seller_name
+,ck.seller_id
+,case when lstg.item_cndtn_id = 1000 then 'New'
+	  when lstg.item_cndtn_id = 1500 then 'New - Other'
+	  when lstg.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when ck.GMV_dt < '2021-02-15' and lstg.item_cndtn_id = 2000 then 'Refurb - Manufacturer'
+	  when lstg.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when sr.launch_category is not null and ck.GMV_dt < sr.launch_date and lstg.item_cndtn_id in (2010,2020,2030,2500) then 'Refurb - Seller'
+	  when sr.launch_category is not null and ck.GMV_dt >= sr.launch_date and lstg.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when sr.launch_category is not null and ck.GMV_dt >= sr.launch_date and lstg.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when sr.launch_category is not null and ck.GMV_dt >= sr.launch_date and lstg.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when lstg.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when lstg.item_cndtn_id = 3000 then 'Used'
+	  when lstg.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when lstg.item_cndtn_id = 5000 then 'Used - Good'
+	  when lstg.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when lstg.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+	  
+,case when lstg.cndtn_rollup_id = 1 then 'New'
+	  when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+	  when lstg.cndtn_rollup_id = 3 then 'Used'
+	  else 'Other' end as condition_rollup
+	  
+,sum(ck.GMV20_plan) as tot_GMV
+,sum(ck.GMV20_sold_quantity) AS tot_BI
+,count(distinct ck.item_id) as converted_lstg
+
+from prs_restricted_v.slng_trans_super_fact ck 
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on ck.item_id=lstg.item_id
+
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as new_vertical from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt
+and cal.age_for_rtl_year_id in (-1,0) and cal.age_for_rtl_week_id <= -1--Till RW46
+    
+inner join access_views.dw_users u 
+on ck.seller_id = u.user_id
+
+left join (select * from p_uk_bc_t.SR_categories where launch_date < current_date) sr
+on cat.categ_lvl2_id=sr.categ_lvl2_id and cat.categ_lvl3_id=sr.categ_lvl3_id and cat.categ_lvl4_id=sr.categ_lvl4_id
+		
+where 
+ck.EU_B2C_C2C_flag='B2C'
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.lstg_site_id = 3 
+and ck.iscore = 1
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- YTD GMV of items not part of SR categories, and of old SR condition
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select 
+retail_year 
+,retail_week	
+,retail_wk_end_date
+,original_vertical
+,new_vertical
+,meta_categ_id
+,meta_categ_name
+,categ_lvl2_id
+,categ_lvl2_name
+,categ_lvl3_id
+,categ_lvl3_name
+,categ_lvl4_id
+,categ_lvl4_name
+,sum(tot_GMV) as ttl_GMV
+,sum(tot_BI) AS ttl_BI
+from P_InventoryPlanning_T.SR_GMV_TY_LY
+where 
+SR_launch_category is null
+and item_condition='Refurb - Seller' 
+and retail_year=2022
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13;

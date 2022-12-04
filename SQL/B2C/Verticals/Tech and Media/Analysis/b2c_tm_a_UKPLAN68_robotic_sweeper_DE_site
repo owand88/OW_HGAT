@@ -1,0 +1,89 @@
+/*
+Task: Identify the robotic sweeper listing that sold out on DE site on Black Friday.	 
+Objective: Acquire further info on this top selling item and the period of sales.
+*/
+
+--Lack of context from a cropped screenshot supplied by stakeholder
+select * from access_views.dw_users
+where user_slctd_id='gshopperstore'
+
+--user_cntry_id=45 (China)
+select * from access_views.dw_countries
+
+
+select * from access_views.dw_lstg_item
+where 
+qty_avail=qty_sold 
+and qty_avail > 10200 
+and item_site_id=77
+and seller_id=1686036383
+
+select * from access_views.dw_lstg_item
+where lower(auct_titl) like 'black friday roborock s7 vacuum cleaner%'and item_site_id=77
+
+--Listing identified to be: https://www.ebay.de/itm/274711839322
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- All GMV from the listing of interest
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select
+cal.retail_year
+,cal.retail_week
+
+,ck.GMV_time as GMV_timestamp
+,date(GMV_timestamp) as GMV_date
+,hour(GMV_timestamp) as GMV_hour
+
+,ck.GMV_time + interval 8 hours as DE_timestamp
+,date(DE_timestamp) as DE_date
+,hour(DE_timestamp) as DE_hour
+
+,u.user_slctd_id as seller_name
+,ck.seller_id
+,lstg.item_id
+,lstg.auct_titl as listing_title
+,lstg.auct_start_dt as listing_start_dt
+,lstg.auct_end_dt as listing_end_dt
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+	  
+,sum(ck.GMV_PLAN_USD) as tot_GMV
+,sum(ck.quantity) AS tot_BI
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt
+    
+inner join access_views.dw_users u 
+on ck.seller_id = u.user_id
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+where 
+lstg.item_id=274711839322
+and lstg.item_site_id = 77
+and ck.rprtd_wacko_yn = 'N'
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17;

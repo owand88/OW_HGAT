@@ -1,0 +1,378 @@
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- STEP 2- PRICE TAKE OVER ADDITONAL LISTINGS - Restricting base tables -------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- These tables restrict base tables to exclude coupon sellers & look at high impression/low conversion 
+
+--- Listings are filtered to only include those who: 
+----         1. Have more the 5 QTY available 
+----         2. Sellers with good standards 
+----         3. Listed on UK site
+----         4. Listing price between £50-100
+----         5. Currently live 
+
+--- Tables are split by vertical 
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- Create a table of sellers who have been in coupons in 2021  -------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+	
+DROP TABLE  P_RHARRUS_T.PTO2021_COUPONSELLERS;
+
+CREATE TABLE P_RHARRUS_T.PTO2021_COUPONSELLERS AS 
+(select seller_id from (select seller_id from  P_MDALL_V.SFDC_HIVE_Coupon_Co_Invest
+where cpn_site_mlt in ('ebay.co.uk')
+AND CPN_STAGE not IN ('Seller Declined')
+and  
+cofund_end_date BETWEEN current_date -1 AND current_date + 10
+group by 1)
+union ALL
+(select seller_id from P_rharrus_T.amn_fullfilment_sellers_may21))
+;
+
+select count(*) from P_RHARRUS_T.PTO2021_COUPONSELLERS;
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- JOIN ALL BASE TABLES TOGETHER  _ 5 percent -------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+DROP TABLE IF EXISTS P_RHARRUS_T.PTO2021_5PERCENT_BASE;
+
+CREATE TABLE  P_RHARRUS_T.PTO2021_5PERCENT_BASE AS (
+select
+a.*,
+b.LEAF_CATEG_ID                 ,
+b.slr_id,
+cat.categ_lvl3_id,
+cat.categ_lvl3_name,
+CASE 
+WHEN cond.CNDTN_ROLLUP_ID = 1 THEN 'New' 
+WHEN cond.CNDTN_ROLLUP_ID = 2 THEN 'Refurbished' 
+WHEN cond.CNDTN_ROLLUP_ID = 3 THEN 'Used' 
+ELSE 'Not Specified' 
+END AS Item_Condition_Type1
+from
+(
+-- select
+-- *
+-- from
+-- P_Plan_PPatel_T.PP_PRODUCT5_2_elec
+
+-- union all
+
+select
+*
+from
+P_Plan_PPatel_T.PP_PRODUCT5_2_hg
+
+union all 
+
+select
+*
+from
+P_Plan_PPatel_T.PP_PRODUCT5_2_lifestyle
+
+union all
+
+select
+*
+from
+P_Plan_PPatel_T.PP_PRODUCT5_2_media
+
+union all
+
+select
+*
+from
+P_Plan_PPatel_T.PP_PRODUCT5_2_fash
+
+union all
+
+select
+*
+from
+P_Plan_PPatel_T.PP_PRODUCT5_2_pa) a
+
+inner join
+ACCESS_VIEWS.DW_LSTG_ITEM b
+on a.item_id = b.item_id
+and b.auct_end_dt > current_date() -1
+
+left JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN COND 
+ON COND.ITEM_SITE_ID = b.ITEM_SITE_ID 
+AND COND.ITEM_ID = a.ITEM_ID 
+and cond.auct_end_dt > current_date() - 1
+
+inner join
+ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT 
+ON CAT.LEAF_CATEG_ID = b.LEAF_CATEG_ID                  
+and cat.site_id = 3
+and CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)) ;
+
+select count(*) from P_RHARRUS_T.PTO2021_5PERCENT_BASE;
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- LIMITS LISTINGS TO LOW CONVERSION RATES -------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- FORYOU5 BASE  -------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS P_RHARRUS_T.PTO2021_FORYOU5; 
+
+CREATE TABLE P_RHARRUS_T.PTO2021_FORYOU5 AS 
+(select 
+item_id,
+ttl_imp
+
+from (
+
+select
+item_id,
+auct_end_dt,
+CAT_VI_IMP,
+CAT_bi_vi,
+ttl_imp,
+sum(COALESCE( TTL_VI/TTL_IMP,0)) as VI_IMP,
+sum(COALESCE( TTL_BI/ttl_VI,0)) as BI_VI
+
+from 
+
+P_RHARRUS_T.PTO2021_5PERCENT_BASE base
+
+left join ( select categ_lvl3_id, sum(COALESCE( TTL_VI/TTL_IMP,0)) as cat_VI_IMP, sum(COALESCE( TTL_BI/ttl_VI,0)) as cat_BI_VI 
+from  P_RHARRUS_T.PTO2021_5PERCENT_BASE
+group by 1 ) CAT ON BASE.CATEG_LVL3_ID = CAT.CATEG_LVL3_ID
+
+where 
+
+slr_id not in (select seller_id from  P_RHARRUS_T.PTO2021_COUPONSELLERS group by 1)
+
+and leaf_categ_id not in (67025, 11905, 67027, 67026, 53151, 257807, 257818, 116724, 75034, 75035, 184573, 82592, 11779, 180932, 177663, 260234, 260236, 259621, 259347, 29509, 161648, 260133, 129609, 179199, 259019, 179203, 179204, 20624, 300, 36432, 180918, 180924, 26268, 45456, 181405, 75036, 104233, 177663, 179204, 75075, 11905, 75075, 257994, 257818, 155667, 117026, 32876, 104233, 180918, 62118, 166126, 11837, 20403, 180918, 180924, 11838, 36432, 180918
+)
+
+group by 1,2,3,4,5 ) a
+
+where cat_bi_vi >= bi_vi
+and vi_imp >= 0.005 -- stays
+
+group by 1,2
+order by ttl_imp desc --limit 20000
+);
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- SAVEFIVE BASE  -------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS P_RHARRUS_T.PTO2021_SAVEFIVE; 
+
+CREATE TABLE P_RHARRUS_T.PTO2021_SAVEFIVE AS 
+(select 
+item_id,
+ttl_imp
+
+from (
+
+select
+item_id,
+auct_end_dt,
+CAT_VI_IMP,
+CAT_bi_vi,
+ttl_imp,
+sum(COALESCE( TTL_VI/TTL_IMP,0)) as VI_IMP,
+sum(COALESCE( TTL_BI/ttl_VI,0)) as BI_VI
+
+from 
+
+P_RHARRUS_T.PTO2021_5PERCENT_BASE base
+
+left join ( select categ_lvl3_id, sum(COALESCE( TTL_VI/TTL_IMP,0)) as cat_VI_IMP, sum(COALESCE( TTL_BI/ttl_VI,0)) as cat_BI_VI 
+from  P_RHARRUS_T.PTO2021_5PERCENT_BASE
+group by 1 ) CAT ON BASE.CATEG_LVL3_ID = CAT.CATEG_LVL3_ID
+
+where 
+
+slr_id not in (select seller_id from  P_RHARRUS_T.PTO2021_COUPONSELLERS
+group by 1)
+
+and leaf_categ_id not in (67025, 11905, 67027, 67026, 53151, 257807, 257818, 116724, 75034, 75035, 184573, 82592, 11779, 180932, 177663, 260234, 260236, 259621, 259347, 29509, 161648, 260133, 129609, 179199, 259019, 179203, 179204, 20624, 300, 36432, 180918, 180924, 26268, 45456, 181405, 75036, 104233, 177663, 179204, 75075, 11905, 75075, 257994, 257818, 155667, 117026, 32876, 104233, 180918, 62118, 166126, 11837, 20403, 180918, 180924, 11838, 36432, 180918
+)
+
+group by 1,2,3,4,5 ) a
+
+where cat_bi_vi >= bi_vi
+and vi_imp >= 0.005
+
+group by 1,2
+order by ttl_imp asc --limit 20000
+);
+
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- 8% PTO - UNION BASE TABLES -------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+--- PICK8 BASE -------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS P_RHARRUS_T.PTO2021_8PERCENT_BASE;
+
+CREATE TABLE P_RHARRUS_T.PTO2021_8PERCENT_BASE AS
+(
+select
+a.*,
+b.LEAF_CATEG_ID                 ,
+b.slr_id,
+cat.categ_lvl3_id,
+cat.categ_lvl3_name,
+CASE 
+WHEN cond.CNDTN_ROLLUP_ID = 1 THEN 'New' 
+WHEN cond.CNDTN_ROLLUP_ID = 2 THEN 'Refurbished' 
+WHEN cond.CNDTN_ROLLUP_ID = 3 THEN 'Used' 
+ELSE 'Not Specified' 
+END AS Item_Condition_Type1
+from
+(
+select
+*
+from
+P_Plan_PPatel_T.PP_PRICE8_2_hg 
+
+union all
+
+select
+*
+from
+P_Plan_PPatel_T.PP_PRICE8_2_lifestyle
+
+union all
+
+select
+*
+from
+P_Plan_PPatel_T.PP_PRICE8_2_media
+
+union all
+
+select
+*
+from
+P_Plan_PPatel_T.PP_PRICE8_2_fash
+
+union all
+
+select
+*
+from
+P_Plan_PPatel_T.PP_PRICE8_2_pa) a
+
+inner join
+ACCESS_VIEWS.DW_LSTG_ITEM b
+on a.item_id = b.item_id
+and b.auct_end_dt > current_date() -1
+
+left JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN COND 
+ON COND.ITEM_SITE_ID = b.ITEM_SITE_ID 
+AND COND.ITEM_ID = a.ITEM_ID 
+and cond.auct_end_dt > current_date() - 1
+
+inner join
+ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT 
+ON CAT.LEAF_CATEG_ID = b.LEAF_CATEG_ID                  
+and cat.site_id = 3
+and CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+);
+
+select count(*) from P_RHARRUS_T.PTO2021_8PERCENT_BASE;
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+---  PICK8 BASE -------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+	
+/*DROP TABLE IF EXISTS P_RHARRUS_T.PTO2021_8PERCENT_TOPUP;
+
+CREATE TABLE P_RHARRUS_T.PTO2021_8PERCENT_TOPUP AS 
+(select 
+item_id,
+ttl_imp
+
+from (
+
+select
+item_id,
+auct_end_dt,
+CAT_VI_IMP,
+CAT_bi_vi,
+ttl_imp,
+sum(COALESCE( TTL_VI/TTL_IMP,0)) as VI_IMP,
+sum(COALESCE( TTL_BI/ttl_VI,0)) as BI_VI
+
+from 
+
+P_RHARRUS_T.PTO2021_8PERCENT_BASE base
+
+left join ( select categ_lvl3_id, sum(COALESCE( TTL_VI/TTL_IMP,0)) as cat_VI_IMP, sum(COALESCE( TTL_BI/ttl_VI,0)) as cat_BI_VI 
+from  P_RHARRUS_T.PTO2021_8PERCENT_BASE
+group by 1 ) CAT ON BASE.CATEG_LVL3_ID = CAT.CATEG_LVL3_ID
+
+where 
+
+slr_id not in (select seller_id from  P_RHARRUS_T.PTO2021_COUPONSELLERS
+group by 1)
+
+and leaf_categ_id not in (67025, 11905, 67027, 67026, 53151, 257807, 257818, 116724, 75034, 75035, 184573, 82592, 11779, 180932, 177663, 260234, 260236, 259621, 259347, 29509, 161648, 260133, 129609, 179199, 259019, 179203, 179204, 20624, 300, 36432, 180918, 180924, 26268, 45456, 181405, 75036, 104233, 177663, 179204, 75075, 11905, 75075, 257994, 257818, 155667, 117026, 32876, 104233, 180918, 62118, 166126, 11837, 20403, 180918, 180924, 11838, 36432, 180918
+)
+
+group by 1,2,3,4,5 ) a
+
+where cat_bi_vi >= bi_vi
+and vi_imp >= 0.005
+
+group by 1,2
+order by ttl_imp desc --limit 20000
+);
+*/
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+---  TAKE8 BASE -------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_RHARRUS_T.PTO2021_8PERCENT;
+CREATE TABLE P_RHARRUS_T.PTO2021_8PERCENT AS 
+(select 
+item_id,
+ttl_imp
+
+from (
+
+select
+item_id,
+auct_end_dt,
+CAT_VI_IMP,
+CAT_bi_vi,
+ttl_imp,
+sum(COALESCE( TTL_VI/TTL_IMP,0)) as VI_IMP,
+sum(COALESCE( TTL_BI/ttl_VI,0)) as BI_VI
+
+from 
+
+P_RHARRUS_T.PTO2021_8PERCENT_BASE base
+
+left join ( select categ_lvl3_id, sum(COALESCE( TTL_VI/TTL_IMP,0)) as cat_VI_IMP, sum(COALESCE( TTL_BI/ttl_VI,0)) as cat_BI_VI 
+from  P_RHARRUS_T.PTO2021_8PERCENT_BASE
+group by 1 ) CAT ON BASE.CATEG_LVL3_ID = CAT.CATEG_LVL3_ID
+
+where 
+
+slr_id not in (select seller_id from  P_RHARRUS_T.PTO2021_COUPONSELLERS group by 1)
+
+and leaf_categ_id not in (67025, 11905, 67027, 67026, 53151, 257807, 257818, 116724, 75034, 75035, 184573, 82592, 11779, 180932, 177663, 260234, 260236, 259621, 259347, 29509, 161648, 260133, 129609, 179199, 259019, 179203, 179204, 20624, 300, 36432, 180918, 180924, 26268, 45456, 181405, 75036, 104233, 177663, 179204, 75075, 11905, 75075, 257994, 257818, 155667, 117026, 32876, 104233, 180918, 62118, 166126, 11837, 20403, 180918, 180924, 11838, 36432, 180918
+)
+
+group by 1,2,3,4,5 ) a
+
+where cat_bi_vi >= bi_vi
+and vi_imp >= 0.005 
+
+group by 1,2
+order by ttl_imp desc 
+);

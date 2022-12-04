@@ -1,0 +1,247 @@
+/*
+Task: Compare performance of Non-New inventory with last year's Black Friday (BF) Week.	 
+Objective: Understand effectiveness of the Better Than New proposition in 2022 BF by looking specifically at Non-New items. Current reporting shows inventory prop performance as a whole.
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- GMV, BI
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table p_uk_bc_t.non_new_wk45_47;
+create table p_uk_bc_t.non_new_wk45_47 as
+(
+select
+cal.retail_year
+,cal.retail_week
+,cal.age_for_rtl_week_id
+,cat.vertical
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+,u.user_slctd_id as seller_name
+,ck.seller_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+	  
+,case when cndtn.cndtn_rollup_id = 1 then 'New'
+	  when cndtn.cndtn_rollup_id = 2 then 'Refurbished'
+	  when cndtn.cndtn_rollup_id = 3 then 'Used'
+	  else 'Other' end as condition_rollup
+	  
+,case when cndtn.cndtn_rollup_id <> 1 then 1 else 0 end as Non_New_flag
+	  
+,sum(ck.GMV_PLAN_USD) as tot_GMV
+,sum(ck.quantity) AS tot_BI
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt
+and cal.retail_year in (2021,2022) and cal.retail_week in (45,46,47)
+    
+inner join access_views.dw_users u 
+on ck.seller_id = u.user_id
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5)as hist 																						
+on hist.user_id = ck.seller_id	and ck.GMV_dt between hist.beg_date and hist.end_date	
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+where 
+vertical in ('Electronics','Media')
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13
+);
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- View
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+create table p_uk_bc_t.non_new_wk45_47_view as (
+select
+cal.retail_year
+,cal.retail_week
+,cal.age_for_rtl_week_id
+,cat.vertical
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+	  
+,case when cndtn.cndtn_rollup_id = 1 then 'New'
+	  when cndtn.cndtn_rollup_id = 2 then 'Refurbished'
+	  when cndtn.cndtn_rollup_id = 3 then 'Used'
+	  else 'Other' end as condition_rollup
+	  
+,case when cndtn.cndtn_rollup_id <> 1 then 1 else 0 end as Non_New_flag
+
+,sum(views) as view
+
+from access_views.dw_lstg_item lstg
+
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5)as hist 																						
+on hist.user_id = lstg.slr_id and lstg.auct_start_date between hist.beg_date and hist.end_date	
+	
+inner join 
+	(select
+	cal_dt
+	,item_id
+	,sum(VI) as views
+	from p_uk_iac_t.UK_VI view
+	group by 1,2
+	) vi
+on lstg.item_id=vi.item_id
+
+inner join access_views.dw_cal_dt as cal
+on vi.cal_dt = cal.cal_dt 
+and cal.retail_year in (2021,2022) and cal.retail_week in (45,46,47)
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+where 
+vertical in ('Electronics','Media')
+and lstg.slr_cntry_id = 3 --UK sellers
+and lstg.item_site_id = 3--UK site
+and lstg.auct_end_dt > '2018-12-29'
+and lstg.auct_type_code not in (10,15)
+group by 1,2,3,4,5,6,7,8,9,10,11
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Combine
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+create table p_uk_bc_t.non_new_wk45_47_combine as (
+select 
+a.*
+,view 
+from
+	(select 
+	retail_year
+	,retail_week
+	,age_for_rtl_week_id
+	,vertical
+	,categ_lvl2_id
+	,categ_lvl2_name
+	,categ_lvl3_id
+	,categ_lvl3_name
+	,item_condition
+	,condition_rollup
+	,non_new_flag
+	
+	,case when categ_lvl2_id in (20710) or categ_lvl3_id in (185114,260508)--Appliance
+     or categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058)--Audio & TVs
+     or categ_lvl2_id in (54968,171961) or categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)--Computing
+     or categ_lvl3_id in (139971,139973)--Gaming
+     or categ_lvl3_id in (9355)--Mobile
+     or categ_lvl2_id in (178893)--Smart Watches
+     or categ_lvl2_id in (3676,162497) or categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)--Tablets & Network Hardware
+     or categ_lvl2_id in (280,29792,171243,182882,184644,261186)--Books (Media)
+     or categ_lvl2_id in (617)--Film (Media)
+     or categ_lvl2_id in (176984, 176985)--Music (Media) 
+	 then 1 else 0 end as Inv_Prop_Focus_Cat--2022Q4 Tech/Media focus categories
+	 
+	,sum(tot_GMV) as ttl_GMV
+	,sum(tot_BI) as ttl_BI
+	from p_uk_bc_t.non_new_wk45_47
+	group by 1,2,3,4,5,6,7,8,9,10,11,12)a
+
+left join p_uk_bc_t.non_new_wk45_47_view b
+on a.age_for_rtl_week_id=b.age_for_rtl_week_id
+and a.vertical=b.vertical
+and a.categ_lvl2_id=b.categ_lvl2_id
+and a.categ_lvl2_name=b.categ_lvl2_name
+and a.categ_lvl3_id=b.categ_lvl3_id
+and a.categ_lvl3_name=b.categ_lvl3_name
+and a.item_condition=b.item_condition
+and a.condition_rollup=b.condition_rollup
+);
+
+
+--QC
+select * from p_uk_bc_t.non_new_wk45_47_combine
+where age_for_rtl_week_id=-1 and categ_lvl3_id=9355;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--FU from Mark on 2022-11-29 that only item condition <> 1000 should be non-new.
+--He is happy with using the item_condition as filter in the output instead of the non-new flag which flags cndtn_rollup_id <> 1. 
+--With the clarified definition, BTN share of Tech focus categories’ GMV is 63% for RW47 and this is up 8% YoY.
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

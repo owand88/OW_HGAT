@@ -1,0 +1,8 @@
+--STEP 1
+INSERT INTO P_SLR_TRACKER_T.SLR_COUPON_CONTRA 
+select cpn_id as COUPON_NAME, null as EBAY_CONTRA_USD from P_MDALL_V.SFDC_HIVE_Coupon_Co_Invest 
+where cpn_site_mlt in ('ebay.co.uk')
+AND CPN_STAGE not IN ('Seller Declined')
+and COFUND_START_DATE between CURRENT_DATE() -5 and CURRENT_DATE() +2
+group by 1,2;
+
