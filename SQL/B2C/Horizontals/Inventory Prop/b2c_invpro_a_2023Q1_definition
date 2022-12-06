@@ -1,0 +1,176 @@
+/*
+Task: 2023 Q1 inventory prop focus groups for Trading verticals
+Objective: Quarterly update to include focus groups in regular report tracking	
+*/
+
+select
+cal.retail_year
+,cal.retail_week
+,cal.rtl_qtr_of_rtl_year_id
+,case when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+      when cat.meta_categ_id in (26395) then 'Lifestyle'
+      when cat.categ_lvl3_id in (260325) then 'Lifestyle'
+      when cat.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+      when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+      when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
+      when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+      when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
+      when cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
+      else cat.bsns_vrtcl_name end as new_vertical
+
+,case
+-- Fashion 
+when new_vertical = 'Fashion' and ck.seller_id in (2046232928,295921530,2200461040,2272728376,1770304695,1004518967,1305944975,1116359067,2230844235,2116751100,1055749680,1009683250,401545409,1393163493,2131028358,2379093200,2218694613,860480031,2323118335) THEN 'Large Brands Focus'
+when new_vertical = 'Fashion' and ck.seller_id in (105889204,341779737,1135436168,912116825,1993029237,874193483,342506678,1099662071,995395391,111510900,610344306,210364435,259068058,1909398786,967443711,355090148,45344114,768627758,162385026,1599568314,1182672747,853761550,138458180,181394076,132708603,141590080,2101324404,753612360,1696178586,146370340,139292398,1019508212,503512974,1106157718,1199345580,1000798981,875853658,103159216,1071897512,272203723,1110537792,197683561,112599084) THEN 'Large Resellers Focus'
+when new_vertical = 'Fashion' and ck.seller_id in (2093879780,1534266810,1161124858,2211386878,1017786302,921304420,1970767757,923080567,320515737,1306673682,136497125,2299144657,2391579720,1936088739,2332518936,2336826505,2347243954,2338195479,2306665688,2307990561,2208289404,2015049389,2029720769,1813944635,1267463842,1050673299,506722441,1154701832,2052062494,1026266931,1061091565,1033934866,1035256612,2365962033,2355559139) THEN 'Medium Brands Focus'
+when new_vertical = 'Fashion' and ck.seller_id in (305587902,844826217,1417329361,565791012,807642762,56677594,2090615526,1140031384,76395263,1485367886) THEN 'Preloved Sellers Focus'
+
+-- P&A
+when new_vertical = 'Parts & Accessories' and (cat.categ_lvl2_id in (107059)) then 'Car Tuning and Styling Focus'
+when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33743)) then 'Tyres & Wheels Focus'
+when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (180035)) then 'Tyres & Wheels Focus'
+when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33637,33694,33612,33707,33579,33726,33549,33559,33572,9886,33605,262215,33599,180143,33542,33687,262440,262064)) then 'Car Parts Focus Shared'
+when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=3 and cat.categ_lvl2_id in (6030)) then 'Green Parts Focus'
+when new_vertical = 'Parts & Accessories' and (cat.categ_lvl2_id in (10063,25622)) then 'Motorcycle Parts Focus'
+when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (183504,261272,177075)) then 'Motorcycle Parts Focus'
+when new_vertical = 'Parts & Accessories' and (cat.categ_lvl2_id in (179487)) then 'Engine Oil & Lubricant Focus'
+when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (183745,179474)) then 'Garage Equipment & Tool Focus'
+when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (177701)) then 'Electric Vehicles Parts Focus'
+
+-- Collectibles
+when new_vertical = 'Collectibles' and cat.categ_lvl2_id = 2536 then 'Collectable Card Game Focus'
+when new_vertical = 'Collectibles' and cat.meta_categ_id = 64482 then 'Sports Collectible Focus'
+when new_vertical = 'Collectibles' and cat.categ_lvl2_id = 20091 then 'Antique Interiors Focus'
+when new_vertical = 'Collectibles' and cat.categ_lvl2_id in (551, 360) then 'Fine Art Focus'
+when new_vertical = 'Collectibles' and cat.meta_categ_id = 870 then 'Pottery, Ceramics & Glass Focus '
+when new_vertical = 'Collectibles' and cat.categ_lvl2_id in (58520, 39482) then 'Coin Focus'
+when new_vertical = 'Collectibles' and cat.categ_lvl2_id in (3499, 4742, 65174) then 'Stamp Focus'
+when new_vertical = 'Collectibles' and cat.categ_lvl3_id in (7921) then 'Stamp Focus' 
+
+--B&I 
+when new_vertical = 'Business & Industrial' and cat.categ_lvl2_id in (25298,26221) then 'Office Supplies & Material Handling Focus'
+
+-- H&G updated 06DEC2022
+when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (32254, 131588, 131598, 32878, 38199, 103430, 114397) and item_cndtn_id in (1000) then 'Bedroom Furniture New Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (32254, 131588, 131598, 32878, 38199, 103430, 114397) then 'Bedroom Furniture Other Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (41989, 180979, 180981, 259207) then 'Decorative Home Improvement Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (3201, 20702, 20708, 36027, 112581, 116022, 116880, 117503) then 'Decorative Lighting & Dine Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl2_id in (20727, 25863, 29521, 177017, 181003, 181027,43560,29518) then 'Garden Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl2_id in (10033,20563,262975) then 'Home Decor & Rugs Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (175749,45510) then 'Home Decor & Rugs Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl2_id in (631, 61573) then 'Home Improvement Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (98989, 259482) then 'Home Improvement Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (3199, 20488, 38204, 38208, 88057, 107578, 183322) and item_cndtn_id in (1000) then 'Living Room Furniture New Focus'
+when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (3199, 20488, 38204, 38208, 88057, 107578, 183322) then 'Living Room Furniture Other Focus'
+
+
+--Lifestyle
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (11854, 31762, 31769, 36447) and cat.categ_lvl3_id in (260773, 260783, 260774, 36449) and cndtn_rollup_id=2 then 'Personal Electrical Refurb Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (11854, 31762, 31769, 36447) and cat.categ_lvl3_id in (260773, 260783, 260774, 36449) and cndtn_rollup_id not in (2) then 'Personal Electrical Non-Refurb Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (180345) then 'Fragrances Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (180959) then 'Vitamins & Lifestyle Supplements Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (67588) and cat.categ_lvl3_id in (261973) then 'Pharmacy Medicines Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (7294) and cndtn_rollup_id=2 then 'Cycling Refurb Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (7294) and cndtn_rollup_id not in (2) then 'Cycling Non-Refurb Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (1513) then 'Golf Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (11778)  and cndtn_rollup_id=2 then 'Independent Living Refurb Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (11778) and cndtn_rollup_id not in (2) then'Independent Living Non-Refurb Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (67659) and cat.categ_lvl3_id in (262436) then 'CBD Products Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (67588) and cat.categ_lvl3_id in (30115) and cat.categ_lvl4_id in (263022) then 'Covid-19 Self Tests Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (15273) then 'Fitness Running & Yoga Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (31786) then 'Make-Up Focus'
+
+--Tech (2023 Q1 updated)
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) and cndtn.item_cndtn_id = 1000 then 'Appliances New Focus' 
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) and cndtn.item_cndtn_id in (1500,1750) then 'Appliances Open Box Focus'
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Appliances Refurb Focus'
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) then 'Appliances Non-New Other Focus'
+
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) and cndtn.item_cndtn_id = 1000 then 'Audio & TVs New Focus'
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) and cndtn.item_cndtn_id in (1500,1750) then 'Audio & TVs Open Box Focus'
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Audio & TVs Refurb Focus'  
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) then 'Audio & TVs Non-New Other Focus'  
+
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) and cndtn.item_cndtn_id = 1000 then 'Computing New Focus'
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) and cndtn.item_cndtn_id in (1500,1750) then 'Computing Open Box Focus'
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Computing Refurb Focus'
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) then 'Computing Non-New Other Focus'
+
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (139971,139973) and cndtn.item_cndtn_id <> 1000 then 'Gaming Better Than New Focus' 
+
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn.item_cndtn_id = 1000 then 'Mobile New Focus' 
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn.item_cndtn_id in (1500,1750) then 'Mobile Open Box Focus' 
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Mobile Refurb Focus'
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) then 'Mobile Non-New Other Focus'
+
+when new_vertical = 'Electronics' and cat.categ_lvl2_id in (178893) and cndtn.item_cndtn_id = 1000 then 'Smart Watches New Focus' 
+when new_vertical = 'Electronics' and cat.categ_lvl2_id in (178893) and cndtn.item_cndtn_id in (1500,1750) then 'Smart Watches Open Box Focus' 
+when new_vertical = 'Electronics' and cat.categ_lvl2_id in (178893) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Smart Watches Refurb Focus'
+when new_vertical = 'Electronics' and cat.categ_lvl2_id in (178893) then 'Smart Watches Non-New Other Focus'
+
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) and cndtn.item_cndtn_id = 1000 then 'Tablets & Network Hardware New Focus'  
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) and cndtn.item_cndtn_id in (1500,1750) then 'Tablets & Network Hardware Open Box Focus'  
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) and cndtn.item_cndtn_id in (2000,2010,2020,2030) then 'Tablets & Network Hardware Refurb Focus' 
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) then 'Tablets & Network Hardware Non-New Other Focus'
+
+--Media (2023 Q1 updated)
+when new_vertical = 'Media' and cat.categ_lvl2_id in (280,29792,171243,182882,184644,261186) and cndtn.item_cndtn_id = 1000 then 'Book New Focus' 
+when new_vertical = 'Media' and cat.categ_lvl2_id in (280,29792,171243,182882,184644,261186) then 'Book Better Than New Focus' 
+
+when new_vertical = 'Media' and cat.categ_lvl2_id in (617) and cndtn.item_cndtn_id = 1000 then 'Film New Focus'    
+when new_vertical = 'Media' and cat.categ_lvl2_id in (617) then 'Film Better Than New Focus'  
+
+when new_vertical = 'Media' and cat.categ_lvl2_id in (176984, 176985) and cndtn.item_cndtn_id = 1000 then 'Music New Focus'
+when new_vertical = 'Media' and cat.categ_lvl2_id in (176984, 176985) then 'Music Better Than New Focus'
+
+else 'OTHERS' 
+end as inventory_prop
+
+,case when inventory_prop like ('%Focus%') then 'Focused'
+when inventory_prop like ('%Scal%') then 'Scaling'
+when inventory_prop like ('%Protrader%') then 'Protrader'
+when inventory_prop like ('%Other%') then 'ROnew_vertical'
+else 'NA'
+end as focus_flag
+
+,sum(ck.GMV_PLAN_USD) as GMV
+,sum(ck.quantity) AS BI
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+        
+inner join (select meta_categ_id,categ_lvl2_id,categ_lvl3_id,categ_lvl4_id,leaf_categ_id,site_id,bsns_vrtcl_name 
+	        from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,41,23,-999) 
+			group by 1,2,3,4,5,6,7)  as cat
+on lstg.leaf_categ_id=cat.leaf_categ_id
+and lstg.item_site_id=cat.site_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal
+on cal.cal_dt=ck.GMV_dt
+--and cal.age_for_rtl_year_id=0 and cal.age_for_rtl_week_id<=-1
+and cal.age_for_rtl_week_id=-1
+
+inner join (select usegm_grp_id,usegm_id,end_date,user_id,beg_date 
+		    from access_views.dw_usegm_hist 
+	        where usegm_grp_id = 48 																						
+	        and usegm_id = 206 																								
+	        and end_date >= '2015-12-30' 
+			group by 1,2,3,4,5) as hist 																						
+on hist.user_id=lstg.slr_id and lstg.auct_start_dt between hist.beg_date and hist.end_date	
+        
+left join (select item_id,cndtn_rollup_id,item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id=cndtn.item_id
+
+and ck.slr_cntry_id=3 
+and ck.byr_cntry_id=3 
+and ck.slr_cntry_id=ck.byr_cntry_id 
+and ck.rprtd_wacko_yn='N'
+and ck.auct_end_dt>'2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+
+group by 1,2,3,4,5,6
+;
