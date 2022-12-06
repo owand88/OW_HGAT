@@ -1,0 +1,98 @@
+-- analyse the listings data of the sellers who were in Large Merchant segment in 2021 and migrated to other lower segments in 2022. For example, listed items, SI, the GMV generated from those items, ASP, etc. The hypothesis is that those sellers, who were in Large Merchant segment in 2021, are now listing different kind of inventory with lower ASP in 2022.
+
+-- LL
+-- SI
+-- Number of Categories Listed
+-- GMV
+
+select count(distinct seller_id) from p_macheung_t.seller_tag_GMV where 2021_cust_sgmntn_desc = 'Large Merchant' and 2022_cust_sgmntn_desc in ('Merchant','Entrepreneur','Occasional','Regular');
+
+-- LL
+SELECT
+retail_year,
+new_vertical,
+-- meta_categ_name,
+-- categ_lvl2_name,
+-- categ_lvl2_id,
+-- categ_lvl3_name,
+-- categ_lvl3_id,
+seller_id, 
+user_slctd_id,
+2021_cust_sgmntn_desc, 
+2022_cust_sgmntn_desc,
+count(distinct categ_lvl2_id) as nbr_L2_categories,
+count(distinct(ck.item_id)) as LL
+FROM DW_LSTG_ITEM CK
+inner join (select distinct seller_id, 2021_cust_sgmntn_desc, 2022_cust_sgmntn_desc  
+	from p_macheung_t.seller_tag_GMV where 2021_cust_sgmntn_desc = 'Large Merchant' and 2022_cust_sgmntn_desc in ('Merchant','Entrepreneur','Occasional','Regular')) s 
+	on ck.slr_id = s.seller_id
+inner JOIN DW_USEGM_HIST HIST ON HIST.USER_ID= CK.Slr_ID AND HIST.USEGM_GRP_ID  = 48 
+ LEFT JOIN p_awang_ops_t.item_invent_lstg i on ck.item_id = i.item_id
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = Ck.LEAF_CATEG_ID AND CAT.SITE_ID = CK.ITEM_SITE_ID and cat.site_id = 3 
+INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID
+INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
+INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT  
+	inner join dw_users u on s.seller_id = u.user_id
+
+where ck.auct_end_dt >= '2018-01-01'
+--and ck.auct_end_dt >= current_date
+and CK.WACKO_YN = 'N'                      
+AND CK.AUCT_TYPE_CODE NOT IN (10,15)
+AND CK.ITEM_SITE_ID = 3
+and CK.SLR_CNTRY_ID = 3  
+AND cal.RETAIL_YEAR in (2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1
+group by 1,2,3,4,5,6;
+
+--GMV
+SELECT
+retail_year,
+new_vertical,
+meta_categ_name,
+categ_lvl2_name,
+categ_lvl2_id,
+ck.seller_id, 
+user_slctd_id,
+2021_cust_sgmntn_desc, 
+2022_cust_sgmntn_desc,
+SUM(CK.QUANTITY) AS BI,
+Sum(GMV_PLAN_USD) AS  GMV
+
+FROM DW_CHECKOUT_TRANS CK
+
+INNER join (select distinct seller_id, 2021_cust_sgmntn_desc, 2022_cust_sgmntn_desc  
+	from p_macheung_t.seller_tag_GMV where 2021_cust_sgmntn_desc = 'Large Merchant' and 2022_cust_sgmntn_desc in ('Merchant','Entrepreneur','Occasional','Regular')) s 
+	on ck.seller_id = s.seller_id
+
+LEFT JOIN p_awang_ops_t.item_invent_lstg i on ck.item_id = i.item_id
+
+INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS SSA 
+     ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID     
+        
+INNER JOIN ( select meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id, LEAF_CATEG_ID, SITE_ID, leaf_categ_name, BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS where SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) group by 1,2,3,4,5,6,7,8,9 )  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+        
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+        AND CAL.RETAIL_YEAR in (2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+        
+-- INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+--         USEGM_GRP_ID = 48 
+--         AND USEGM_ID <> 206
+--         AND END_DATE >= '2015-12-30' group by 1,2,3,4,5   )AS HIST 
+--         ON HIST.USER_ID = CK.SELLER_ID
+--         AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+
+inner join dw_users u on ck.seller_id = u.user_id
+
+WHERE 1=1
+	
+		and  ck.SLR_CNTRY_ID = 3 --UK sellers
+        AND ck.BYR_CNTRY_ID = 3 --UK buyers
+        AND ck.SLR_CNTRY_ID = ck.BYR_CNTRY_ID --DOM
+        AND RPRTD_WACKO_YN = 'N'
+        AND ck.AUCT_END_DT >= '2017-01-01'
+        AND CREATED_DT >= '2017-01-01'    
+	    
+	
+    GROUP BY 1,2, 3, 4,5,6,7,8,9;
