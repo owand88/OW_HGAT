@@ -38,13 +38,14 @@ when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (183745,1794
 when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (177701)) then 'Electric Vehicles Parts Focus'
 
 -- Collectibles
-when new_vertical = 'Collectibles' and cat.categ_lvl3_id in (183454,	183456,	261044,	183457,	2535,	183455,	183460,	183459,	183458,	261045,	261337) then 'Collectable Card Game Focus'
-when new_vertical = 'Collectibles' and cat.categ_lvl2_id in (212,	141755,	6093,	53597,	53621,	53656,	68362,	430,	27391) then 'Sports Collectible Focus'
-when new_vertical = 'Collectibles' and cat.categ_lvl2_id in (20091, 4707) then 'Antique Interiors Focus'
+when new_vertical = 'Collectibles' and cat.categ_lvl2_id = 2536 then 'Collectable Card Game Focus'
+when new_vertical = 'Collectibles' and cat.meta_categ_id = 64482 then 'Sports Collectible Focus'
+when new_vertical = 'Collectibles' and cat.categ_lvl2_id = 20091 then 'Antique Interiors Focus'
 when new_vertical = 'Collectibles' and cat.categ_lvl2_id in (551, 360) then 'Fine Art Focus'
+when new_vertical = 'Collectibles' and cat.meta_categ_id = 870 then 'Pottery, Ceramics & Glass Focus '
 when new_vertical = 'Collectibles' and cat.categ_lvl2_id in (58520, 39482) then 'Coin Focus'
 when new_vertical = 'Collectibles' and cat.categ_lvl2_id in (3499, 4742, 65174) then 'Stamp Focus'
-when new_vertical = 'Collectibles' and cat.categ_lvl3_id in (7921) then 'Stamp Focus'
+when new_vertical = 'Collectibles' and cat.categ_lvl3_id in (7921) then 'Stamp Focus' 
 
 --B&I 
 when new_vertical = 'Business & Industrial' and cat.categ_lvl2_id in (25298,26221) then 'Office Supplies & Material Handling Focus'
