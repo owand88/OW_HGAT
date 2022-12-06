@@ -30,14 +30,7 @@ when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_l
  when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (183504,261272,177075)) then 'Motorcycle Parts Focus'
 */
 
---select distinct CM, user_id as seller_id , sellers  from   P_Ichan_T.dec_seller_report_list  where sellers in ('arnoldclarkoem' ,'eska.london')
---select distinct user_id, user_slctd_id from DW_USERs where  lower(user_slctd_id) like '%arnoldclark%' or   lower(user_slctd_id)  like '%eska%london%';
---select distinct user_id, user_slctd_id from DW_USERs where  lower(user_slctd_id)  in ( 'exosltd','tooltopiauk');
---select distinct user_id, user_slctd_id from DW_USERs where  user_id in ( 1108922409,1269469270,1489424404) ;
 
--- 1489424404
---select * from   P_Ichan_T.dec_seller_report_list where    user_id in ( 1108922409,1269469270,1489424404,1269469270) ;
---1489424404
 --0. seller list
 --select * from   P_Ichan_T.dec_seller_report_list  order by 2,5;
 
