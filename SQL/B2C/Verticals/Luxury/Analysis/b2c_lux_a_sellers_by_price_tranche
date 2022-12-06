@@ -1,0 +1,113 @@
+Select MODIFIED_ITEM
+,case when 100_125 > 0 and 125_150 = 0 and 150_plus = 0 then 'Only 100-125'
+	when 100_125 > 0 and (125_150 > 0 or 150_plus > 0) then '100-125 and others'
+	else 'non 100-125' end as class
+,count(distinct seller_id) as sellers
+
+From
+	(select
+	ck.seller_id
+	,CASE WHEN UPPER(BRND.ASPCT_VLU_NM_BRAND) IN ('MODIFIED', 'CUSTOMIZED','YES') THEN 'MODIFIED' ELSE 'NO' end AS MODIFIED_ITEM
+	,sum(CASE WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 100 and Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) < 125  THEN ck.QUANTITY else 0 End) as 100_125
+	,sum(CASE WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 125 and Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) < 150  THEN ck.QUANTITY else 0 End) as 125_150
+	,sum(CASE WHEN Cast(CK.ITEM_PRICE AS DECIMAL(18,2)) >= 150 THEN ck.QUANTITY else 0 End) as 150_plus
+
+
+	-- 	ck.seller_id,
+	-- 	u.user_slctd_id as seller_name,
+	-- 	categ_lvl4_name,categ_lvl4_id,categ_lvl3_name, categ_lvl3_id,
+	-- 	CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Not Specified' END AS Item_Cond,
+-- 			case when U.USER_DSGNTN_ID=2  then 'B2C' else 'C2C' end as seller_type,
+-- 			case when ck.BYR_CNTRY_ID = ck.SLR_CNTRY_ID then 'Dom' else 'CBT' End as trade_type,
+
+-- 		SUM(CK.gmv_plan_usd) AS GMV, 
+-- 		SUM(QUANTITY) AS BI
+	-- 	count(distinct (buyer_id)) as byr_cnt,
+	-- 	count(distinct SELLER_ID) as slr_cnt
+
+	FROM DW_CHECKOUT_TRANS AS CK
+
+	LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+			ON CK.ITEM_ID = CNDTN.ITEM_ID
+	LEFT JOIN (select item_id, auct_titl, AUCT_END_DT from DW_LSTG_ITEM where item_site_id = 3 group by 1,2,3) as i on i.item_id = ck.item_id and i.auct_end_dt = ck.AUCT_END_DT
+
+	LEFT JOIN 
+						(
+						SELECT ITEM_ID,
+							   AUCT_END_DT,
+							   COALESCE(MAX(ASPCT.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+								FROM
+								ITEM_ASPCT_CLSSFCTN ASPCT
+								WHERE
+								UPPER(ASPCT.NS_TYPE_CD) IN ('NF','DF') 
+								AND ASPCT.AUCT_END_DT>='2018-12-26'
+								AND UPPER(ASPCT.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+								GROUP BY 1,2
+
+							UNION 
+
+							SELECT  ITEM_ID,
+							   AUCT_END_DT,
+							  COALESCE(MAX(ASPCT_COLD.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
+							FROM
+							ITEM_ASPCT_CLSSFCTN_COLD ASPCT_COLD
+							WHERE UPPER(ASPCT_COLD.NS_TYPE_CD) IN ('NF','DF') 
+							AND ASPCT_COLD.AUCT_END_DT>='2018-12-26'
+							AND UPPER(ASPCT_COLD.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')
+							GROUP BY 1,2
+						) BRND ON CK.ITEM_ID = BRND.ITEM_ID AND CK.AUCT_END_DT = BRND.AUCT_END_DT
+
+
+	-- inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+	-- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+	INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
+		ON CAL.CAL_DT = CK.gmv_dt 
+		and retail_year in (2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+
+	-- left join 
+	-- (select a.* from (
+	-- select
+	-- item_id,
+	-- auct_end_dt,
+	-- lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+	-- upper(ASPCT_VLU_NM) as BRAND,
+	-- ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to to contain only 1 aspect value per attribute  
+	-- FROM ITEM_ASPCT_CLSSFCTN ASPCT
+	-- where 
+	-- lower(PRDCT_ASPCT_NM) in ('brand') and NS_TYPE_CD='df' )a
+	-- where RNum = 1
+	-- ) bbase
+	-- 					ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+
+	-- left join 
+	-- (select a.* from (
+	-- select
+	-- item_id,
+	-- auct_end_dt,
+	-- lower(PRDCT_ASPCT_NM) as lcase_aspect_name,
+	-- upper(ASPCT_VLU_NM) as MODEL,
+	-- ROW_NUMBER() over  ( partition by  aspct.item_id, lcase_aspect_name order by lcase_aspect_name ) as RNum -- To avoid duplicate results, this condition partitions the attribute to contain only 1 aspect value per attribute  
+	-- FROM ITEM_ASPCT_CLSSFCTN ASPCT
+	-- where 
+	-- lower(PRDCT_ASPCT_NM) in ('model') and NS_TYPE_CD='df' )a
+	-- where RNum = 1
+	-- ) bbase1
+	-- 					ON ck.ITEM_ID = bbase1.ITEM_ID AND ck.AUCT_END_dt = bbase1.AUCT_END_DT
+
+	left outer join dw_users u
+		on ck.seller_id = u.user_id
+
+	INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+		ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+		AND CAT.SITE_ID = 3
+		AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+
+	WHERE 1=1
+	AND CK.AUCT_end_dt >= '2018-01-01'                    
+	AND CK.SITE_ID in (3)
+	AND cat.CATEG_LVL4_ID in (15709,95672)
+	AND ck.slr_CNTRY_ID in (3)
+	and item_price >= 100
+
+	GROUP BY 1,2)
+Group by 1,2
