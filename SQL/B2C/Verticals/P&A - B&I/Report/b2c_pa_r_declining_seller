@@ -34,9 +34,7 @@ when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_l
 --select distinct user_id, user_slctd_id from DW_USERs where  lower(user_slctd_id) like '%arnoldclark%' or   lower(user_slctd_id)  like '%eska%london%';
 --select distinct user_id, user_slctd_id from DW_USERs where  lower(user_slctd_id)  in ( 'exosltd','tooltopiauk');
 --select distinct user_id, user_slctd_id from DW_USERs where  user_id in ( 1108922409,1269469270,1489424404) ;
---1108922409 workshop.essentials.store
---1269469270 gazz221269
---108321091 buyanycarpart
+
 -- 1489424404
 --select * from   P_Ichan_T.dec_seller_report_list where    user_id in ( 1108922409,1269469270,1489424404,1269469270) ;
 --1489424404
