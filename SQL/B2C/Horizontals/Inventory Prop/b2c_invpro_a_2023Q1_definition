@@ -50,7 +50,7 @@ when new_vertical = 'Collectibles' and cat.categ_lvl3_id in (7921) then 'Stamp F
 --B&I 
 when new_vertical = 'Business & Industrial' and cat.categ_lvl2_id in (25298,26221) then 'Office Supplies & Material Handling Focus'
 
--- H&G updated 06DEC2022
+-- H&G 2023Q1 Updated
 when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (32254, 131588, 131598, 32878, 38199, 103430, 114397) and item_cndtn_id in (1000) then 'Bedroom Furniture New Focus'
 when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (32254, 131588, 131598, 32878, 38199, 103430, 114397) then 'Bedroom Furniture Other Focus'
 when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (41989, 180979, 180981, 259207) then 'Decorative Home Improvement Focus'
