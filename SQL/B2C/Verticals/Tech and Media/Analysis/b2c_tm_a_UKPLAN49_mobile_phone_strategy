@@ -163,7 +163,7 @@ select * from p_uk_bc_t.mobile_mm_ce;
 --Earlier months' coupons have no seller share (Before Sep2022) 
 --due to no data prior to Sep2022 in P_MDALL_V.SFDC_HIVE_Coupon_Co_Invest (base dataset used to create P_Plan_PPatel_T.IC_CouponAll)
 
---This example shows eBay taking all cost and 0 cost to seller
+--This example shows eBay taking all cost and £0 cost contributed by seller
 --seller_id=35198216 (cheapest_electricial)
 select * from P_Plan_PPatel_T.IC_CouponAll 
 where item_id=353741004496
