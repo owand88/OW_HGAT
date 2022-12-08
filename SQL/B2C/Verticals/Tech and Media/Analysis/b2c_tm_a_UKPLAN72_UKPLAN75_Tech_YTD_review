@@ -1,0 +1,256 @@
+/*
+UKPLAN-75 Tech Annual Review
+Objective: Tech & Media 2022 Review with Kumaran
+
+Task: Acquire monthly view of below
+YoY
+Against Finance Forecast 
+BTN share throughout the year
+
+
+Same query can fullfill UKPLAN-72 task:
+Task: Identify sellers with high GMV / high YoY growth in Non-New sales in Q4TD.	 
+Objective: Reward sellers that embraced the Better Than New initiative with eBay merchandise.
+
+*/
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- 2021 and 2022YTD Tech GMV
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_InventoryPlanning_T.tech_2022_review;
+create table P_InventoryPlanning_T.tech_2022_review as (
+select
+cal.year_id
+,cal.month_id
+,cal.month_of_year_id
+,cal.retail_year
+,cal.retail_week
+,concat('Q',cal.rtl_qtr_of_rtl_year_id) as retail_quarter
+,cal.retail_wk_end_date
+,cal.age_for_rtl_week_id
+,lstg.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+,case when cat.vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) and cndtn_rollup_id = 1 and item_cndtn_id = 1000 then 'Appliances New Focus' 
+      when cat.vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) and cndtn_rollup_id = 2 then 'Appliances Refurb Focus'
+      when cat.vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) then 'Appliances Other Focus'
+      
+      when cat.vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) and cndtn_rollup_id = 1 and item_cndtn_id = 1000 then 'Audio & TVs New Focus' 
+      when cat.vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) and cndtn_rollup_id = 2 then 'Audio & TVs Refurb Focus'  
+      when cat.vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) then 'Audio & TVs Other Focus'  
+      
+      when cat.vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) and cndtn_rollup_id = 1 and item_cndtn_id = 1000 then 'Computing New Focus'
+      when cat.vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) and cndtn_rollup_id = 2 then 'Computing Refurb Focus'
+      when cat.vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) then 'Computing Other Focus'
+      
+      when cat.vertical = 'Electronics' and cat.categ_lvl3_id in (139971,139973) and cndtn_rollup_id <> 1 then 'Gaming Non-New Focus' 
+      
+      when cat.vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn_rollup_id = 1 and item_cndtn_id = 1000 then 'Mobile New Focus' 
+      when cat.vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn_rollup_id = 1 and item_cndtn_id = 1500 then 'Mobile New-Other Focus' 
+      when cat.vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn_rollup_id = 2 then 'Mobile Refurb Focus'
+      when cat.vertical = 'Electronics' and cat.categ_lvl3_id in (9355) and cndtn_rollup_id = 3 then 'Mobile Used Focus'
+      when cat.vertical = 'Electronics' and cat.categ_lvl3_id in (9355) then 'Mobile Other Focus'
+      
+      when cat.vertical = 'Electronics' and cat.categ_lvl2_id in (178893) and cndtn_rollup_id = 1 and item_cndtn_id = 1000 then 'Smart Watches New Focus' 
+      when cat.vertical = 'Electronics' and cat.categ_lvl2_id in (178893) and cndtn_rollup_id= 2 then 'Smart Watches Refurb Focus'
+      when cat.vertical = 'Electronics' and cat.categ_lvl2_id in (178893) then 'Smart Watches Other Focus'
+      
+      when cat.vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) and cndtn_rollup_id = 1 and item_cndtn_id = 1000 then 'Tablets & Network Hardware New Focus'  
+      when cat.vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) and cndtn_rollup_id = 2 then 'Tablets & Network Hardware Refurb Focus' 
+      when cat.vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) then 'Tablets & Network Hardware Other Focus'
+	  end as Tech_Q4_Inv_Prop
+	  
+,case when Tech_Q4_Inv_Prop is not null then 'Focused' else 'Core' end as Tech_Q4_Focus_Flag
+
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+,case when cndtn.item_cndtn_id <> 1000 then 1 else 0 end as BetterThanNew_Flag
+	  
+,sum(ck.GMV_plan_usd) as tot_GMV
+,sum(ck.quantity) AS tot_SI
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt and ck.GMV_dt>'2020-12-26' and cal.age_for_rtl_week_id <= -1--Till 2022RW48 (03Dec2022)
+    
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5)as hist 																						
+on hist.user_id = ck.seller_id	and ck.GMV_dt between hist.beg_date and hist.end_date	
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+where 
+cat.vertical='Electronics' 
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
+);
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- UKPLAN-75 Tech Annual Review
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--QC dataset
+
+--$34,655,212.79 in my dataset and $34,658,289.48 in WBR (0.009% difference)
+select 
+sum(tot_GMV)
+from P_InventoryPlanning_T.tech_2022_review
+where retail_year=2022 and retail_week=48;
+
+
+
+Task: Acquire monthly view of below
+YoY
+Against Finance Forecast 
+BTN share throughout the year
+
+--YoY (Overall Tech vertical)
+select 
+month_of_year_id
+,Tech_Q4_Focus_Flag
+,BetterThanNew_Flag
+,sum(case when year_id=2021 then tot_GMV end) as 2021_GMV
+,sum(case when year_id=2022 then tot_GMV end) as 2022_GMV
+from P_InventoryPlanning_T.tech_2022_review
+group by 1,2,3;
+
+
+
+--Finance Forecast by retail week
+select 
+a.vertical
+,a.retail_quarter
+,a.retail_week
+,a.GMV_Forecast
+,b.2022_GMV
+from 
+(select 
+vertical
+,case when retail_week between 1 and 13 then 'Q1'
+	  when retail_week between 14 and 26 then 'Q2'
+	  when retail_week between 27 and 39 then 'Q3'
+	  else 'Q4' end as retail_quarter
+,retail_week
+,GMV_Forecast 
+from P_WAJ_T.Forecast_UK_Verticals1_v1 
+where vertical='Electronics'
+and forecast_period >=20220101
+and retail_week<=48) a
+
+left join 
+
+(select 
+retail_week
+,sum(tot_GMV) as 2022_GMV
+from P_InventoryPlanning_T.tech_2022_review
+where retail_year=2022
+group by 1) b
+
+on a.retail_week=b.retail_week;
+
+
+
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- UKPLAN-72 Task: Identify BTN sellers to send merchandise
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Top 100 BTN Tech Sellers QTD (RW40-RW48)
+--Export to Excel
+with base as (
+select 
+seller_name
+,seller_id
+,sum(case when retail_year=2022 then tot_GMV end) as 2022_GMV
+,sum(case when retail_year=2021 then tot_GMV end) as 2021_GMV
+from P_InventoryPlanning_T.tech_2022_review
+where retail_year in (2021,2022) and retail_week between 40 and 48
+and BetterThanNew_Flag=1
+group by 1,2)
+select * from base
+qualify (row_number() over ( order by 2022_GMV desc))<=100
+
+
+--Find an appropriate threshold for Q4TD BTN GMV ($41767.48 for top 2%)
+with base as (
+select 
+seller_name
+,seller_id
+,sum(case when retail_year=2022 then tot_GMV end) as 2022_GMV
+,sum(case when retail_year=2021 then tot_GMV end) as 2021_GMV
+from P_InventoryPlanning_T.tech_2022_review
+where retail_year in (2021,2022) and retail_week between 40 and 48
+and BetterThanNew_Flag=1
+group by 1,2)
+select percentile(cast(2022_GMV as bigint), 0.98) as media from base;
+
+--Sellers with the top 2% Q4TD BTN GMV with the highest YoY growth
+--Export to Excel
+with base as (
+select 
+seller_name
+,seller_id
+,sum(case when retail_year=2022 then tot_GMV end) as 2022_GMV
+,sum(case when retail_year=2021 then tot_GMV end) as 2021_GMV
+from P_InventoryPlanning_T.tech_2022_review
+where retail_year in (2021,2022) and retail_week between 40 and 48
+and BetterThanNew_Flag=1
+group by 1,2)
+select 
+seller_name
+,seller_id
+,2022_GMV
+,2021_GMV
+,round((2022_GMV/2021_GMV)-1) as YoY
+from base
+where 2022_GMV >= (select percentile(cast(2022_GMV as bigint), 0.98) as media from base)
+qualify (row_number() over ( order by YoY desc, 2022_GMV desc))<=100;
