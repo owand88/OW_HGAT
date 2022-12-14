@@ -1,0 +1,408 @@
+-- Track GMV uplift for sellers with personalisation in Car Touch-Up Materials Category
+
+--Conversion
+--GMV
+--Dispatch & delivery times 
+
+
+drop table if exists  p_InventoryPlanning_t.pa_personalisation_seller ;   -- select * from P_Ichan_T.dec_seller_report_ll ;  
+create table  p_InventoryPlanning_t.pa_personalisation_seller  as (
+select distinct user_id as seller_id, user_slctd_id from DW_USERs 
+where user_slctd_id in (
+'xtremeautos',
+'motor_world_direct',
+'turtlewaxeurope',
+'online-automotive-01604666170',
+'rtgroup11',
+'vacwashsparesonline',
+'hsd-online'));
+
+/*
+o	Car Touch-Up Materials 
+L2: Car Care, Utility & Trailers
+L3:Car Care & Cleaning Products
+L4:Car Touch-Up Materials 180134
+
+L3:179448 
+
+The elements I would like to track are:
+Conversion
+GMV
+Dispatch & delivery times 
+
+*/
+ 
+ --- 2..--- GMV
+ 
+ 
+Drop table if exists  p_InventoryPlanning_t.pa_personalisation_gmv ;
+CREATE TABLE  p_InventoryPlanning_t.pa_personalisation_gmv  as
+( 
+SELECT 
+CASE WHEN Retail_year  IN (2018,2019) AND RETAIL_WEEK =1 THEN 2019
+WHEN Retail_year  IN (2019,2020) AND RETAIL_WEEK =1 THEN 2020
+WHEN Retail_year  IN (2020,2021) AND RETAIL_WEEK =53 THEN 2020
+WHEN Retail_year  IN (2021,2022) AND RETAIL_WEEK =52 THEN 2021
+ELSE Retail_year end as Retail_year ,
+case 
+when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (179448)) then 'Car Care Focus'
+ when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (179421)) then 'Car Paint Focus'
+ when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33743)) then 'Tyres & Wheels Focus'
+when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (180035)) then 'Tyres & Wheels Focus'
+ when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33637,33694,33612,33707,33579,33726,33549,33559,33572,9886,33605,262215,33599,180143,33542,33687,262440,262064)) then 'Car Parts Focus Shared'
+ when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=3 and cat.categ_lvl2_id in (6030)) then 'Green Parts Focus'
+ when new_vertical = 'Parts & Accessories' and (cat.categ_lvl2_id in (46576)) then 'Hand tools Focus'
+ when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (3244,43990)) then 'Hand tools Focus'
+ when new_vertical = 'Parts & Accessories' and (cat.categ_lvl2_id in (179487)) then 'Engine Oil & Lubricant Focus'
+ when new_vertical = 'Parts & Accessories' and (cat.categ_lvl2_id in (10063,25622)) then 'Motorcycle Parts Focus'
+ when new_vertical = 'Parts & Accessories' and (cat.categ_lvl3_id in (183504,261272,177075)) then 'Motorcycle Parts Focus'
+else 'Other' end as Inventory_prop,
+ cal.QTR_OF_YEAR_ID,
+retail_week,
+
+USER_SLCTD_ID,
+ck.seller_id,
+new_vertical,
+cat.CATEG_LVL2_ID,
+cat.CATEG_LVL2_name,
+cat.CATEG_LVL3_ID,
+cat.CATEG_LVL3_name,	
+cat.CATEG_LVL4_ID,
+cat.CATEG_LVL4_name,	
+CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Other' END AS Item_Condition,
+
+SUM(CK.GMV_PLAN_USD) AS Total_GMV, 
+SUM(QUANTITY) AS BI
+FROM DW_CHECKOUT_TRANS AS CK
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL        ON CAL.CAL_DT = CK.GMV_DT        AND CAL.RETAIL_YEAR >= 2022 and cal_dt >='2022-09-01'
+INNER JOIN DW_USEGM_HIST AS HIST          ON HIST.USER_ID = CK.SELLER_ID         AND HIST.USEGM_GRP_ID = 48          AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2015-12-25'       
+INNER JOIN PRS_RESTRICTED_V.USER_DNA_DIM AS RB 
+        ON RB.USER_ID = CK.BUYER_ID         
+inner join ( select distinct  seller_id   from   p_InventoryPlanning_t.pa_personalisation_seller ) dec on ck.seller_id=dec.seller_id
+LEFT JOIN LSTG_ITEM_CNDTN COND 
+ON COND.ITEM_SITE_ID = CK.SITE_ID 
+AND COND.ITEM_ID = CK.ITEM_ID 
+ INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID and cat.site_id =3
+		LEFT JOIN 	
+				(SELECT
+				LEAF_CATEG_ID,
+				CATEG_LVL2_ID,
+				CATEG_LVL3_ID,
+				CATEG_LVL4_ID,
+               META_CATEG_NAME,
+				CATEG_LVL3_NAME,
+				CATEG_LVL2_NAME,
+				CATEG_LVL4_NAME,
+case when a.categ_lvl2_id in (20710, 69197) then 'Electronics'
+when a.meta_categ_id in (26395) then 'lifestyle'
+when a.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573) then 'Home & Garden'
+when a.categ_lvl3_id in (35000) then 'Home & Garden'
+when a.categ_lvl3_id in (3244) then 'Parts & Accessories'
+when a.categ_lvl2_id in (46576) then 'Parts & Accessories'
+when a.categ_lvl3_id in (124982, 259225,180969, 260509)  then 'Business & Industrial'
+else bsns_vrtcl_name end as new_vertical 
+				from 				DW_CATEGORY_GROUPINGS a 
+				where  				site_id = 3 and
+				(case when a.categ_lvl2_id in (20710, 69197) then 'Electronics'
+when a.meta_categ_id in (26395) then 'lifestyle'
+when a.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573) then 'Home & Garden'
+when a.categ_lvl3_id in (35000) then 'Home & Garden'
+when a.categ_lvl3_id in (3244) then 'Parts & Accessories'
+when a.categ_lvl2_id in (46576) then 'Parts & Accessories'
+when a.categ_lvl3_id in (124982, 259225,180969, 260509)  then 'Business & Industrial'
+else bsns_vrtcl_name end) in('Parts & Accessories','Business & Industrial', 'Electronics','lifestyle', 'Home & Garden','Collectibles') and
+				SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+				) rcat on
+				rcat.leaf_categ_id = cat.LEAF_CATEG_ID
+INNER  JOIN DW_USERs U ON U.USER_ID= CK.SELLER_ID 
+WHERE 1=1
+AND CK.CK_WACKO_YN  =  'N'
+AND CK.SALE_TYPE NOT IN (10,15)
+AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+AND CAT.site_id = 3 
+AND CK.SLR_CNTRY_ID = 3
+and ck.byr_cntry_id =3
+and HIST.USEGM_ID = 206--- = 'b2c'
+AND CAL.age_for_rtl_week_id<0
+and cat.categ_lvl3_id =179448 
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14) ;
+
+--
+select * from   p_InventoryPlanning_t.pa_personalisation_gmv ;
+
+
+
+-- 2 -- Funnel VI
+
+ DROP TABLE IF EXISTS     p_InventoryPlanning_t.pa_personalisation_vi ;
+ CREATE TABLE p_InventoryPlanning_t.pa_personalisation_vi  AS
+
+(select 
+cal.retail_year,
+cal.retail_week,
+new_vertical,  
+ck.seller_id,
+USER_SLCTD_ID,
+CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Other' END AS Item_Condition_Type1,
+cat.categ_lvl4_id,
+CAT.categ_lvl4_name,
+--CAT.categ_lvl2_id,
+--CAT.categ_lvl3_id,
+--CAT.categ_lvl3_name,
+--categ_lvl4_id,
+--categ_lvl4_name,
+sum(SRP_IMPRSN_CNT) as SRP_IMP,
+SUM(SRP_VI_CNT) as SRP_VI,
+SUM(other_SRC_VI_CNT) as otherVi,
+SUM(watch_CNT) as Watches,
+SUM(STORE_IMPRSN_CNT) as Store_IMP,
+SUM(OFF_EBAY_VI_CNT) as OFF_EBAY_SRP,
+SUM(STORE_VI_CNT) as Store_VI,
+SUM(HOME_VI_CNT) as OFF_EBAY_VI,
+SUM(MYEBAY_VI_CNT) as MYEBAY_VI,
+SUM(DRCT_VI_CNT) DRCT_VI,
+SUM(TTL_VI_CNT) as TTL_VI
+FROM
+
+ PRS_restricted_V.SLNG_TRFC_SUPER_FACT ck --- select * from   PRS_restricted_V.SLNG_TRFC_SUPER_FACT where site_id = 3  limit 1000;
+     INNER JOIN ( select meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_name, categ_lvl4_id, LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME  ,SAP_CATEGORY_ID,
+					case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' -- added smart home
+					when meta_categ_id in (26395) then 'Lifestyle'
+					when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573) then 'Home & Garden'
+					when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+					when categ_lvl3_id in (3244) then 'Parts & Accessories'
+					when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+					when categ_lvl2_id in (46576) then 'Parts & Accessories'
+					when bsns_vrtcl_name in ('Collectibles') and meta_categ_id in (220, 237, 550)  then 'Collectibles B2C'
+					when bsns_vrtcl_name in ('Collectibles') and categ_lvl2_id in (180250) then 'Collectibles B2C' 
+			
+					else bsns_vrtcl_name end as new_vertical
+				from DW_CATEGORY_GROUPINGS where SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) group by 1,2,3,4,5,6,7,8 ,9,10,11,12)  AS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+
+-- 
+    --INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT         ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID         AND CK.SITE_ID = CAT.SITE_ID and cat.site_id = 3 
+    left outer join dw_users u on ck.seller_id = u.user_id
+inner join ( select distinct seller_id  from  p_InventoryPlanning_t.pa_personalisation_seller   ) cx on ck.seller_id=cx.seller_id
+LEFT  JOIN DW_USEGM_HIST HIST ON HIST.USER_ID=ck.Seller_ID AND HIST.USEGM_ID = 206
+inner join dw_cal_dt cal on ck.cal_dt = cal.cal_dt AND cal.RETAIL_YEAR >=2022 and AGE_FOR_RTL_WEEK_ID <=-1
+ LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID,item_cndtn_id from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+
+    WHERE 1=1
+and ck.site_id = 3 
+ AND HIST.USEGM_ID = 206
+and ck.CAL_DT >= date '2018-12-01'
+and new_vertical = 'Parts & Accessories'
+and categ_lvl3_id =179448 
+and   AGE_FOR_RTL_WEEK_ID >=-13
+--and retail_week in ( select distinct retail_week from  ACCESS_VIEWS.DW_CAL_DT where retail_year =2022 and    AGE_FOR_RTL_WEEK_ID in (-1,-2 ))
+GROUP BY 1,2,3,4,5,6,7,8
+);
+-- 1437 
+--SELECT * FROM   p_InventoryPlanning_t.pa_personalisation_vi LIMIT 100; 
+
+
+-- 3 . Funnel BI
+
+Drop table if exists    p_InventoryPlanning_t.pa_personalisation_bi ; -- select distinct vertical from  p_InventoryPlanning_t.pa_personalisation_bi limit 100 ;
+CREATE TABLE p_InventoryPlanning_t.pa_personalisation_bi as
+( 
+SELECT 
+CASE WHEN Retail_year  IN (2018,2019) AND RETAIL_WEEK =1 THEN 2019
+WHEN Retail_year  IN (2019,2020) AND RETAIL_WEEK =1 THEN 2020
+WHEN Retail_year  IN (2020,2021) AND RETAIL_WEEK =53 THEN 2020
+WHEN Retail_year  IN (2021,2022) AND RETAIL_WEEK =52 THEN 2021
+ELSE Retail_year end as Retail_year ,
+retail_week,
+USER_SLCTD_ID,
+ck.seller_id,
+cat.CATEG_LVL4_ID,
+cat.CATEG_LVL4_name,
+	
+CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Other' END AS Item_Condition,
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
+		when meta_categ_id in (26395) then 'Lifestyle'
+		when CATEG_LVL3_ID in (260325) then 'Lifestyle'
+		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+		when categ_lvl3_id in (3244) then 'Parts & Accessories'
+		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+		when categ_lvl2_id in (46576) then 'Parts & Accessories'
+	
+		else bsns_vrtcl_name end as vertical,
+/*cat.meta_categ_id,
+cat.meta_categ_name,
+cat.CATEG_LVL2_ID,
+cat.CATEG_LVL2_name,
+cat.CATEG_LVL3_ID,
+cat.CATEG_LVL3_name,	*/
+SUM(CK.GMV_PLAN_USD) AS Total_GMV, 
+SUM(QUANTITY) AS BI,
+Total_GMV / BI AS ASP
+FROM DW_CHECKOUT_TRANS AS CK
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL        ON CAL.CAL_DT = CK.GMV_DT        AND CAL.RETAIL_YEAR >= 2021
+INNER JOIN DW_USEGM_HIST AS HIST          ON HIST.USER_ID = CK.SELLER_ID         AND HIST.USEGM_GRP_ID = 48          AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2015-12-25'       
+INNER JOIN PRS_RESTRICTED_V.USER_DNA_DIM AS RB 
+        ON RB.USER_ID = CK.BUYER_ID         
+inner join (  select seller_id from  p_InventoryPlanning_t.pa_personalisation_seller   ) dec on ck.seller_id=dec.seller_id
+LEFT JOIN LSTG_ITEM_CNDTN COND 
+ON COND.ITEM_SITE_ID = CK.SITE_ID 
+AND COND.ITEM_ID = CK.ITEM_ID 
+ INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID and cat.site_id =3
+INNER  JOIN DW_USERs U ON U.USER_ID= CK.SELLER_ID 
+WHERE 1=1
+AND CK.CK_WACKO_YN  =  'N'
+AND CK.SALE_TYPE NOT IN (10,15)
+AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+AND CAT.site_id = 3 
+AND CK.SLR_CNTRY_ID = 3
+and ck.byr_cntry_id =3
+and HIST.USEGM_ID = 206--- = 'b2c'
+AND CAL.age_for_rtl_week_id<0
+and  categ_lvl3_id =179448 
+and    AGE_FOR_RTL_WEEK_ID  >=-13
+
+GROUP BY 1,2,3,4,5,6,7,8) ;
+
+--- 4.  combine for funnel 
+ DROP TABLE IF EXISTS   p_InventoryPlanning_t.pa_personalisation_funnel;
+ CREATE TABLE p_InventoryPlanning_t.pa_personalisation_funnel AS
+(
+select a.*,
+b.BI
+from   p_InventoryPlanning_t.pa_personalisation_vi a 
+left join  (select * from  p_InventoryPlanning_t.pa_personalisation_bi where vertical = 'Parts & Accessories' ) b 
+on a.seller_id=b.seller_id and a.retail_year=b.retail_year and   a.retail_week=b.retail_week and a.categ_lvl4_id=b.categ_lvl4_id and a.Item_Condition_Type1=b.Item_Condition
+);
+--select * from  p_InventoryPlanning_t.pa_personalisation_vi where vertical = 'Parts & Accessories'
+--select * from  p_InventoryPlanning_t.pa_personalisation_bi where vertical = 'Parts & Accessories'
+select * from   p_InventoryPlanning_t.pa_personalisation_funnel  ;
+
+------------------------------------------------
+-- 5. handling time
+-- Dispatch & delivery times 
+
+ Drop table if exists    p_InventoryPlanning_t.pa_personalisation_delivery_listing;
+create table  p_InventoryPlanning_t.pa_personalisation_delivery_listing as (
+SELECT
+lstg.SELLER_ID,
+u.USER_SLCTD_ID,
+ lstg.lstg_id,
+  categ_lvl4_name,
+  categ_lvl4_id ,
+  categ_lvl3_name,
+  categ_lvl3_id ,
+  categ_lvl2_name,
+  categ_lvl2_id,
+--,CK_TRANS_ID
+--,CK_DT
+
+lkp.shpmt_mthd_id,
+i.shipping_method,
+lkp.SHPMT_MTHD_DESC,
+lkp.LCL_NAME,
+lkp.MIN_DLVRY_TM_IN_HOUR,
+lkp.MIN_DLVRY_TM_IN_HOUR/24 AS DLVRY_TM_DAY,
+lkp.API_SOAP_SRVC_CODE
+,lstg.lstg_end_dt
+--,CAST(lkp.Min_DLVRY_TM_IN_HOUR/24 AS DECIMAL (18,0)) min_dlvry_tm_in_hour
+,CASE WHEN lkp.Min_DLVRY_TM_IN_HOUR IS NULL THEN NULL
+	             WHEN lkp.Min_DLVRY_TM_IN_HOUR < 0 THEN NULL
+	             WHEN CAST(lkp.Min_DLVRY_TM_IN_HOUR/24 AS DECIMAL (18,0)) >= 6 THEN 6
+	             ELSE CAST(lkp.Min_DLVRY_TM_IN_HOUR/24 AS DECIMAL (18,0))
+	END AS SLA_P2P
+,CASE WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=1 THEN 1 
+	        ELSE 0 
+END AS PRO_1D_P2P
+,lstg.HNDLNG_DAY_NUM
+
+	,CASE WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=1 THEN  1 
+	          WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=2 THEN  1 
+	          WHEN lstg.HNDLNG_DAY_NUM=1 AND SLA_P2P=1 THEN  1
+	          WHEN lstg.HNDLNG_DAY_NUM=1 AND SLA_P2P=0 THEN  1
+	          
+	          WHEN lstg.HNDLNG_DAY_NUM=2 AND SLA_P2P=1 THEN  1
+	          WHEN lstg.HNDLNG_DAY_NUM=1 AND SLA_P2P=2 THEN  1
+	          WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=3 THEN  1
+	          ELSE 0 
+	END AS PRO_3D_P2P
+
+	--,CASE WHEN PRO_3D_P2P=1 AND FACT.FREE_SHPNG_YN_IND='Y' THEN  1 ELSE 0 END AS PRO_3D_FREE_P2P 
+	,CASE WHEN PRO_3D_P2P=1 AND i.new_free_shpng_ind =1 THEN  1 ELSE 0 END AS PRO_3D_FREE_P2P 
+	--,case when FACT.FREE_SHPNG_YN_IND='Y' THEN  1 ELSE 0 End  as Free_shipping
+	,i.new_free_shpng_ind as Free_shipping
+,case when fact.shpmt_mthd_id in (301,302, 303,304,322,327,328,336,337,363,364,365, 366) then 1 else 0 end as shpmt_mthd_id_flag
+FROM ssa_shpmt_lstg_fact lstg -- select count(distinct lstg_id) from ssa_shpmt_lstg_fact where seller_id=141455937 and lstg_end_dt >= current_date lstg  limit 100
+inner join  (select distinct seller_id from   p_InventoryPlanning_t.pa_personalisation_seller   ) v on lstg.seller_id=v.seller_id
+--inner join P_ICHAN_T.recyclers_upload c on lst.slr_id=c.seller_id--   select * from P_ICHAN_T.recyclers_upload
+left join  DW_ITEMS_SHIPPING i on i.item_id=lstg.lstg_id-- = 402688783703 limit 10
+--left join DW_SHPMT_MTHD_LKP lk on lk.shpmt_mthd_id=i.shipping_method
+LEFT JOIN  SSA_SHPMT_TRANS_FACT FACT on lstg.lstg_id = fact.LSTG_ID and lstg.lstg_end_dt >= date_sub(current_date , 60) --  select * from SSA_SHPMT_TRANS_FACT FACT limit 10
+LEFT JOIN DW_SHPMT_MTHD_LKP LKP ON i.shipping_method=lkp.shpmt_mthd_id
+---LEFT JOIN ssa_shpmt_lstg_fact lstg on lstg.lstg_id = fact.LSTG_ID and lstg.lstg_end_dt >= date_sub(current_date , 60) 
+INNER JOIN ( select distinct  meta_categ_id, LEAF_CATEG_ID , SITE_ID ,  categ_lvl3_name,categ_lvl3_id ,categ_lvl2_name,categ_lvl2_id , categ_lvl4_name,categ_lvl4_id 
+		from DW_CATEGORY_GROUPINGS where site_id =3 and   categ_lvl3_id =179448 ) CAT
+							ON CAT.LEAF_CATEG_ID = lstg.LEAF_CATEG_ID AND CAT.SITE_ID = lstg.SELLER_SITE_ID   and cat.site_id = 3	
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lstg.LSTG_END_DT AND COND.ITEM_ID = lstg.LSTG_ID 
+inner join DW_USERS_INFO u on u.user_id=lstg.seller_id
+WHERE 
+lstg.SELLER_CNTRY_ID=3
+AND lstg.LSTG_SITE_ID=3
+--AND CK_DT between date_sub(current_date , 60) AND date_sub(current_date , 1)
+--AND CDE_MIN_DT=CDE_MAX_DT
+--AND fact.shpmt_mthd_id in (301,302, 303,304,322,327,328,336,337,363,364,365, 366)
+--AND CK_TRANS_ID<>0
+and lstg.lstg_end_dt >= CURRENT_DATE
+);
+
+select * from   p_InventoryPlanning_t.pa_personalisation_delivery_listing limit 100 ;
+
+
+
+Drop table if exists    p_InventoryPlanning_t.pa_personalisation_delivery_listing_max;
+create table p_InventoryPlanning_t.pa_personalisation_delivery_listing_max as (
+Select 
+Seller_id,
+USER_SLCTD_ID,
+lstg_id,
+  categ_lvl3_name,
+  categ_lvl3_id ,
+    categ_lvl4_name,
+  categ_lvl4_id ,
+  MIN(MIN_DLVRY_TM_IN_HOUR) AS DELIVERY_TIME_IN_HOUR,
+MIN(DLVRY_TM_DAY) AS DELIVERY_TIME_IN_DAY,
+MIN(HNDLNG_DAY_NUM) HANDLING_DAY,
+max(free_shipping) free_shipping,
+max(PRO_3D_FREE_P2P) as PRO_3D_FREE_P2P
+from  ( select distinct * from   p_InventoryPlanning_t.pa_personalisation_delivery_listing )
+group by 1,2,3,4 ,5,6,7);
+
+SELECT * FROM   p_InventoryPlanning_t.pa_personalisation_delivery_listing_max; 
+
+Drop table if exists    p_InventoryPlanning_t.pa_personalisation_delivery;
+create table p_InventoryPlanning_t.pa_personalisation_delivery as (
+select 
+Seller_id,
+USER_SLCTD_ID,
+categ_lvl3_name,
+  categ_lvl3_id ,
+    categ_lvl4_name,
+  categ_lvl4_id ,
+  DELIVERY_TIME_IN_HOUR,
+DELIVERY_TIME_IN_DAY,
+HANDLING_DAY,
+free_shipping,
+PRO_3D_FREE_P2P,
+count(distinct lstg_id) listing
+from  p_InventoryPlanning_t.pa_personalisation_delivery_listing_max
+group by 1,2,3,4,5,6,7,8,9,10,11) ; 
+
+select * from  p_InventoryPlanning_t.pa_personalisation_delivery; 
