@@ -1,0 +1,214 @@
+--Identify top 1000 sellers for various L2 and L3s and provide quarterly GMV by L3 (2022 Q3 by L4)
+ 
+--L2:
+--6030 Car Parts & Accessories
+--34998 Garage equipment & tools
+--38635 In-Car Technology, GPS & Security
+ 
+--L3:
+--179448 Car Care & Cleaning
+--179421 Paints & Supplies
+
+----------------
+ -- 01. Identify top sellers in each segments
+ 
+ drop table if exists    p_InventoryPlanning_t.pa_car_part_top_seller_gmv ; 
+create table  p_InventoryPlanning_t.pa_car_part_top_seller_gmv as (
+select 
+Retail_year,
+seller_id, 
+b.USER_SLCTD_ID,
+case 
+when  CATEG_LVL3_ID in (179448 )  then  'Car_Care_and_Cleaning'
+when  CATEG_LVL3_ID in (179421 ) then 'Paints_and_Supplies'
+when  CATEG_LVL2_ID in (34998 )  then ' Garage_equipment_and_tools'
+when  CATEG_LVL2_ID in (38635 )then 'In_car_tech'
+when  CATEG_LVL2_ID in (6030 )then 'Car_parts'
+else categ_lvl2_name end as segment,
+
+CATEG_LVL2_ID, 
+categ_lvl2_name, 
+
+CATEG_LVL3_ID, 
+categ_lvl3_name, 
+
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
+		when meta_categ_id in (26395) then 'Lifestyle'
+		when CATEG_LVL3_ID in (260325) then 'Lifestyle'
+		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039,
+		11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+		when categ_lvl3_id in (3244) then 'Parts & Accessories'
+		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+		when categ_lvl2_id in (46576) then 'Parts & Accessories'
+		when bsns_vrtcl_name in ('Collectibles') and meta_categ_id in (220, 237, 550)  then 'Collectibles B2C'
+		when bsns_vrtcl_name in ('Collectibles') and categ_lvl2_id in (180250) then 'Collectibles B2C' 
+		else bsns_vrtcl_name end as vertical,
+
+
+case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 2 then 'Refurb' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  'Other'  end as Condition,
+--SUM(CAST(CK.QUANTITY AS DECIMAL(18,2))* CAST(CK.ITEM_PRICE AS DECIMAL(18,2))*CAST(LPR.CURNCY_PLAN_RATE AS DECIMAL(18,2))) AS GMV_10,
+sum(GMV_PLAN_USD) as GMV_20,
+--count(distinct  BUYER_ID) as buyer_count
+sum(QUANTITY) as BI
+--COALESCE(SUM(CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE),0) AS GMV
+
+
+			FROM   DW_CHECKOUT_TRANS ck 
+			--inner join ( select DISTINCT item_id from P_InventoryPlanning_t.oem_data_old_dedupe) kr on ck.ITEM_ID=kr.item_id
+			INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS LPR
+				ON LPR.CURNCY_ID = CK.LSTG_CURNCY_ID
+			INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.CREATED_DT   and retail_year >= 2022 and AGE_FOR_RTL_WEEK_ID <=-1 -- and retail_week between 1 and 52  --change here for time period if needed
+			INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			INNER join dw_users b on CK.seller_id=b.user_id -- select * from  dw_users where user_id in (  59275107,777151520)
+			 
+			inner JOIN lstg_item_cndtn CNDTN ON ck.item_id = CNDTN.item_id  AND ck.auct_end_dt = CNDTN.AUCT_END_DT
+			INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+			WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				and ck.site_id = 3
+				and slr_cntry_id = 3
+				and SLR_CNTRY_ID=BYR_CNTRY_ID
+				and CATEG_LVL2_ID in (6030 , 34998 ,38635,82099,34998 ) 
+				GROUP BY 1,2,3,4,5,6,7,8,9,10
+ );
+select distinct segment from    p_InventoryPlanning_t.pa_car_part_top_seller_gmv; --- order by 10 desc   limit 1000;
+
+ drop table if exists    p_InventoryPlanning_t.pa_car_part_top_seller_RANK ; 
+create table  p_InventoryPlanning_t.pa_car_part_top_seller_RANK as (
+select 
+RANK() OVER (    PARTITION BY segment     ORDER BY GMV_20 DESC ) AS SELLER_RANK , * 
+FROM   p_InventoryPlanning_t.pa_car_part_top_seller_gmv) ; 
+
+ drop table if exists    p_InventoryPlanning_t.pa_car_part_top_seller_RANK_TOP; 
+create table  p_InventoryPlanning_t.pa_car_part_top_seller_RANK_TOP as (
+SELECT * FROM   p_InventoryPlanning_t.pa_car_part_top_seller_RANK WHERE SELLER_RANK <=1000 ) ; 
+
+SELECT * FROM   p_InventoryPlanning_t.pa_car_part_top_seller_RANK_TOP;
+
+------------------------------------------------
+------------------------------------------------------------
+-------------------------------------------------------------
+-------- 02.  provide quarterly GMV by L3 (2022 Q3 by L4)
+drop table  if exists  p_InventoryPlanning_t.pa_car_part_top_seller_output  ;
+create table p_InventoryPlanning_t.pa_car_part_top_seller_output as 
+
+(
+SELECT			
+Retail_year,
+--cal.RETAIL_week,
+cal.rtl_qtr_of_rtl_year_id,
+ck.seller_id, 
+b.USER_SLCTD_ID,
+CATEG_LVL2_ID, 
+categ_lvl2_name, 
+CATEG_LVL3_ID, 
+categ_lvl3_name, 
+case when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+      when cat.meta_categ_id in (26395) then 'Lifestyle'
+      when cat.categ_lvl3_id in (260325) then 'Lifestyle'
+      when cat.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562,
+	  								2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+      when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+      when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
+      when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+      when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
+      when cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
+      else cat.bsns_vrtcl_name end as vertical,
+case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 2 then 'Refurb' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  'Other'  end as Condition,
+sum(GMV_PLAN_USD) as GMV_20,
+sum(QUANTITY) as BI
+			FROM   DW_CHECKOUT_TRANS ck 
+			inner join ( select distinct seller_id from   p_InventoryPlanning_t.pa_car_part_top_seller_RANK_TOP ) x on x.seller_id=ck.seller_id
+			INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS LPR
+				ON LPR.CURNCY_ID = CK.LSTG_CURNCY_ID
+			INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.CREATED_DT   and retail_year >= 2020 and AGE_FOR_RTL_WEEK_ID between -106 and -1 -- and retail_week between 1 and 52  --change here for time period if needed
+			INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			INNER join dw_users b on CK.seller_id=b.user_id -- select * from  dw_users where user_id in (  59275107,777151520)
+			 
+			inner JOIN lstg_item_cndtn CNDTN ON ck.item_id = CNDTN.item_id  AND ck.auct_end_dt = CNDTN.AUCT_END_DT
+			INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+			WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				and ck.site_id = 3
+				and slr_cntry_id = 3
+				and SLR_CNTRY_ID=BYR_CNTRY_ID
+				and  CATEG_LVL2_ID in (6030 , 34998 ,38635,82099,34998 ) 
+				GROUP BY 1,2,3,4,5,6,7,8,9,10
+);
+select * from   p_InventoryPlanning_t.pa_car_part_top_seller_output order by 3 ;
+
+
+-- 03 . by L4  (2022 Q3 by L4)
+drop table IF EXISTS    p_InventoryPlanning_t.pa_car_part_top_seller_L4  ;
+create table p_InventoryPlanning_t.pa_car_part_top_seller_L4 as 
+
+(
+SELECT			
+Retail_year,
+ck.seller_id, 
+b.USER_SLCTD_ID,
+--cal.RETAIL_week,
+cal.rtl_qtr_of_rtl_year_id,
+CATEG_LVL2_ID, 
+categ_lvl2_name, 
+CATEG_LVL3_ID, 
+categ_lvl3_name, 
+CATEG_LVL4_ID, 
+categ_lvl4_name, 
+case when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+      when cat.meta_categ_id in (26395) then 'Lifestyle'
+      when cat.categ_lvl3_id in (260325) then 'Lifestyle'
+      when cat.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562,
+	  								2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+      when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+      when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
+      when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+      when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
+      when cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
+      else cat.bsns_vrtcl_name end as vertical,
+case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 2 then 'Refurb' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  'Other'  end as Condition,
+sum(GMV_PLAN_USD) as GMV_20,
+sum(QUANTITY) as BI
+			FROM   DW_CHECKOUT_TRANS ck 
+			inner join ( select distinct seller_id from   p_InventoryPlanning_t.pa_car_part_top_seller_RANK_TOP ) x on x.seller_id=ck.seller_id
+			INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS LPR
+				ON LPR.CURNCY_ID = CK.LSTG_CURNCY_ID
+			INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.CREATED_DT   and retail_year >= 2022 and rtl_qtr_of_rtl_year_id in (3)  -- and retail_week between 1 and 52  --change here for time period if needed
+			INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			INNER join dw_users b on CK.seller_id=b.user_id -- select * from  dw_users where user_id in (  59275107,777151520)
+			 
+			inner JOIN lstg_item_cndtn CNDTN ON ck.item_id = CNDTN.item_id  AND ck.auct_end_dt = CNDTN.AUCT_END_DT
+			INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+			WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				and ck.site_id = 3
+				and slr_cntry_id = 3
+				and SLR_CNTRY_ID=BYR_CNTRY_ID
+				and  CATEG_LVL2_ID in (6030 , 34998 ,38635,82099,34998 ) 
+				GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12
+);
+select * from   p_InventoryPlanning_t.pa_car_part_top_seller_L4 order by 3 ;
+
+--Select * from  p_csi_tbs_t.sh_ukde_fitment_categ_new_new ;
+--Select * from p_csi_tbs_t.sh_ukde_fitment_categ_backup;
+
+--INSERT INTO p_csi_tbs_t.tables_to_keep(database_name, table_name, reason)
+--VALUES('p_csi_tbs_t','sh_ukde_fitment_categ_new_new','I need this table for some important reason')
+--INSERT INTO p_csi_tbs_t.tables_to_keep(database_name, table_name, reason)
+--VALUES('p_csi_tbs_t','sh_ukde_fitment_categ_backup','I need this table for some important reason')
