@@ -23,6 +23,11 @@ Report Filters:
 - Meta category
 - L2 category
 
+TO-DOs:
+-------
+* Allow users to choose their Country ID (or country name)
+* Do not restrict the action codes for this data, allow users to filter them on the dashboard
+
 */
 
 create view p_InventoryPlanning_t.vw_seller_credit_calculation as
