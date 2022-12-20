@@ -7,16 +7,17 @@ with seller as
 (
 Select user_id as seller_id, user_slctd_id as seller_name
 From DW_USERS 
-Where user_id in (1929034938,167935447,1379005411,1140366161,162611490)
+Where user_id in (1082372328)
 )
 
 
-
+(
 SELECT  
 	"Weekly" as DataType
    ,x.WEEK_END_DT as cal_dt
    ,x.retail_year
    ,x.retail_week
+   ,gem2.lstg_site_id
    ,gem2.slr_cntry_id
    ,s.seller_id
    ,s.seller_name
@@ -53,7 +54,8 @@ SELECT
    ,CASE WHEN (gem2.leaf_categ_id = 172036  AND gem2.acct_trans_dt >='2016-01-01') OR (gem2.slr_id = 2120087788 AND gem2.acct_trans_dt >='2020-10-01' ) THEN 'N' ELSE 'Y' END AS  GMV_INCLD_YN
    ,sum(gem2.amt_bc*cast ( cr.curncy_plan_rate as FLOAT)* -1) as revenue_usd
    ,sum(gem2.amt_bc) as revenue_gbp 
-   ,sum(0) as gmv
+   ,sum(0) as gmv_usd
+   ,sum(0) as gmv_gbp
 
 FROM ( 
 
@@ -142,23 +144,25 @@ left join
 		sps1.user_id = gem2.slr_id and ( gem2.acct_trans_dt >= sps1.EFCTV_START_DT and sps1.ACTV_IND = 1) 	 */
 
 WHERE  
-RETAIL_YEAR >= 2021
-and age_for_rtl_week_id < 0
-and bkt.LSTG_REV_BKT_DESC in ('FValue Credit', 'FValue Fee')
+x.RETAIL_YEAR = 2022
+and x.RTL_QTR_OF_RTL_YEAR_ID = 4
+-- and age_for_rtl_week_id < 0
+-- and bkt.LSTG_REV_BKT_DESC in ('FValue Credit', 'FValue Fee')
 and gem2.blng_curncy_id = 3
 
- GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18
- 
+ GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
+)
 -- ==================================================================
 
 UNION ALL
 
-
+(
 SELECT  
 	"Weekly" as DataType
    ,x.WEEK_END_DT as cal_dt
    ,x.retail_year
    ,x.retail_week
+   ,ck.SITE_ID
    ,ck.slr_cntry_id
    ,s.seller_id
    ,s.seller_name
@@ -175,7 +179,9 @@ SELECT
    ,CASE WHEN (ck.leaf_categ_id = 172036  AND ck.created_dt >='2016-01-01') OR (ck.seller_id = 2120087788 AND ck.created_dt >='2020-10-01' ) THEN 'N' ELSE 'Y' END AS  GMV_INCLD_YN -- THis is to remove NHS portal for the UK
    ,sum(0) as revenue_usd
    ,sum(0) as revenue_gbp
+   ,sum(ck.GMV_PLAN_USD) as gmv_usd
    ,sum(ck.GMV_LC_AMT) as gmv_gbp
+
 FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS as ck
 inner join ACCESS_VIEWS.dw_category_groupings as cat on  ( (ck.leaf_categ_id=cat.leaf_categ_id and ck.site_id=cat.site_id) and  ! cat.sap_category_id in(5,7,23,41, -999))
 inner join ACCESS_VIEWS.ssa_curncy_plan_rate_dim as cr on cr.curncy_id=ck.lstg_curncy_id
@@ -187,11 +193,13 @@ left join prs_restricted_v.cust_sgmntn as lkp on hist.cust_sgmntn_cd=lkp.cust_sg
 
 			
 WHERE  
-	RETAIL_YEAR >= 2021  and age_for_rtl_week_id < 0  
-and
- 	! ck.SALE_TYPE in(10,15) and 
-	lower(ck.ck_wacko_yn)=lower('N') and 
-	x.cal_dt>=to_date('2018-01-01') and ck.slr_cntry_id in (3 ,77)
+x.RETAIL_YEAR = 2022
+and x.RTL_QTR_OF_RTL_YEAR_ID = 4
+and	! ck.SALE_TYPE in(10,15)
+and lower(ck.ck_wacko_yn)=lower('N') 
+and x.cal_dt>=to_date('2018-01-01')
+and ck.slr_cntry_id in (3 ,77)
 
- GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18;
-
+ GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
+)
+;
