@@ -30,6 +30,7 @@ TO-DOs:
 * Add Account Currency Code (this is also the local charged currency code for billing)
 * Speak to Ege to understand the cost offer thresholds (i.e. upto £400 the cost is 9% and 2% over £400 spend, etc.)
 * Add the columns that are required in the export file
+* Test commit line to check Jira-Github integration
 */
 
 create view p_InventoryPlanning_t.vw_seller_credit_calculation as
