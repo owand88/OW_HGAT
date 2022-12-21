@@ -27,7 +27,9 @@ TO-DOs:
 -------
 * Allow users to choose their Country ID (or country name)
 * Do not restrict the action codes for this data, allow users to filter them on the dashboard
-
+* Add Account Currency Code (this is also the local charged currency code for billing)
+* Speak to Ege to understand the cost offer thresholds (i.e. upto £400 the cost is 9% and 2% over £400 spend, etc.)
+* Add the columns that are required in the export file
 */
 
 create view p_InventoryPlanning_t.vw_seller_credit_calculation as
@@ -51,8 +53,8 @@ with seller_fee_data as
         else t1.blng_curncy_id
     end as blng_curncy_id                                 -- Billing Currency ID of the Seller
    
-    ,cast(t1.amt_usd as decimal(18,2))                                           -- Charged Fee in USD currency
-    ,cast(t1.amt_blng_curncy as decimal(18,2))                                   -- Charged Fee in the Billing Currency of the Seller. If you need see the charged fee amount in Buyer's local currency, then use "trxn_curncy_amt" column
+    ,cast(t1.amt_usd as decimal(18,4))                                           -- Charged Fee in USD currency
+    ,cast(t1.amt_blng_curncy as decimal(18,4))                                   -- Charged Fee in the Billing Currency of the Seller. If you need see the charged fee amount in Buyer's local currency, then use "trxn_curncy_amt" column
     ,t1.leaf_categ_id                                     -- Leaf Category ID. This can be joined to "DW_CATEGORY_GROUPINGS" table on "LEAF_CATEG_ID" column to get the category name details
     
     from dw_accounts_all as t1
@@ -86,10 +88,10 @@ with seller_fee_data as
 (
     select
         t1.*
-        ,cast(nvl(t2.item_price_amt, 0) as decimal(18,2)) as item_price_amt                          -- Item price amount
+        ,cast(nvl(t2.item_price_amt, 0) as decimal(18,4)) as item_price_amt                          -- Item price amount
         ,nvl(t2.sold_qty, 0) as sold_qty                                      -- Sold quantity (aggregated value per transaction id)
-        ,cast(nvl(t2.gmv20_usd_amt, 0) as decimal(18,2)) as gmv20_usd_amt	                          -- GMV in USD (according to 2.0 definition and aggregared value, i.e. if the item price was $5, and if the buyer has bought 3 items on that transaction, then the GMV value is 3 x $5 = $15)
-        ,cast(nvl(t2.gmv20_lstg_curncy_amt, 0) as decimal(18,2)) as gmv20_lstg_curncy_amt            -- GMV in the seller's listing currency (according to 2.0 definition and aggregated value). This is the FXed value of "gmv20_usd_amt" column
+        ,cast(nvl(t2.gmv20_usd_amt, 0) as decimal(18,4)) as gmv20_usd_amt	                          -- GMV in USD (according to 2.0 definition and aggregared value, i.e. if the item price was $5, and if the buyer has bought 3 items on that transaction, then the GMV value is 3 x $5 = $15)
+        ,cast(nvl(t2.gmv20_lstg_curncy_amt, 0) as decimal(18,4)) as gmv20_lstg_curncy_amt            -- GMV in the seller's listing currency (according to 2.0 definition and aggregated value). This is the FXed value of "gmv20_usd_amt" column
         
     from seller_fee_data as t1
     
