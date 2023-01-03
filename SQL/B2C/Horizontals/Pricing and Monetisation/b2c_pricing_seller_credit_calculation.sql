@@ -23,46 +23,56 @@ Report Filters:
 - Meta category
 - L2 category
 
-TO-DOs:
--------
-* Allow users to choose their Country ID (or country name)
-* Do not restrict the action codes for this data, allow users to filter them on the dashboard
-* Add Account Currency Code (this is also the local charged currency code for billing)
-* Speak to Ege to understand the cost offer thresholds (i.e. upto £400 the cost is 9% and 2% over £400 spend, etc.)
-* Add the columns that are required in the export file
-* Test commit line to check Jira-Github integration
+ToDos:
+
+* Add a parameter called "Jurisdiction" to your Tableau report, as it is not clear to choose which code to use from the document that Pricing team uses to get the code from ("https://wiki.corp.ebay.com/download/attachments/269519945/BCD%20Code%20Guidance%20Template.xlsm?version=5&modificationDate=1660307666000&api=v2")
+* Add a parameter called "Reason" to your Tableau report, as it is not clear to choose which code to use from the document that Pricing team uses to get the code from ("https://wiki.corp.ebay.com/download/attachments/269519945/BCD%20Code%20Guidance%20Template.xlsm?version=5&modificationDate=1660307666000&api=v2")
+* Add a parameter called "Input_Amt" to your Tableau report and set the credit amount, which will be calculated in your Tableau report, to this variable 
+* Add a parameter called "Memo" to your Tableau report and allow the user to input a calue before exporting the file to upload it to Oracle/SAP for recrediting later on
+
 */
 
-create view p_InventoryPlanning_t.vw_seller_credit_calculation as
+create VIEW p_InventoryPlanning_t.vw_seller_credit_calculation as
 
 with seller_fee_data as 
 (
     select
-    distinct t1.user_id as seller_id                         -- Seller ID
-    ,t3.user_slctd_id as seller_name                                    -- Seller Name
+    distinct t1.user_id as seller_id                      -- Seller ID
+    ,t3.user_slctd_id as seller_name                      -- Seller Name
     ,t1.item_id                                           -- Item ID (or Listing ID)
     ,t1.ck_trans_id                                       -- Transaction ID (this is 0 for Insertion Fee related rows)
     ,t1.acct_trans_id                                     -- Billing Fee Transaction ID of the Seller
     ,t1.acct_trans_date                                   -- Transaction timestamp
     ,t1.user_cntry_id                                     -- Country ID (3 for UK)
-    ,t1.actn_code                                         -- Fee Action Code (This tells you the type of the fee, i.e., FvF, Fixed fee, Ad fee, etc.)
+    ,t5.cntry_desc as user_cntry_name                     -- Country Name
+	,t1.actn_code                                         -- Fee Action Code (This tells you the type of the fee, i.e., FvF, Fixed fee, Ad fee, etc.)
     ,nvl(t2.actn_code_desc,'') as actn_code_desc          -- Fee Action Code description
    
     ,case 
         when length(t1.blng_curncy_id) = 1 then '00'||t1.blng_curncy_id
         when length(t1.blng_curncy_id) = 2 then '0'||t1.blng_curncy_id
         else t1.blng_curncy_id
-    end as blng_curncy_id                                 -- Billing Currency ID of the Seller
-   
-    ,cast(t1.amt_usd as decimal(18,4))                                           -- Charged Fee in USD currency
-    ,cast(t1.amt_blng_curncy as decimal(18,4))                                   -- Charged Fee in the Billing Currency of the Seller. If you need see the charged fee amount in Buyer's local currency, then use "trxn_curncy_amt" column
+    end as export_blng_curncy_id                          -- Billing Currency ID of the Seller. This ID value gets padded with "0" as it is required for the file which should be exported and uploaded to the Oracle system (please see "https://wiki.corp.ebay.com/pages/viewpage.action?pageId=269519945#BulkCredit/DebitProcessSubmitterSteps-BCDFilePreparations" page for details)
+	
+    ,"O" as export_account_type                           -- This is required for the file which should be exported and uploaded to the Oracle system (please see "https://wiki.corp.ebay.com/pages/viewpage.action?pageId=269519945#BulkCredit/DebitProcessSubmitterSteps-BCDFilePreparations" page for details) 
+	,t1.user_id||export_blng_curncy_id as export_external_id -- This is required for the file which should be exported and uploaded to the Oracle system (please see "https://wiki.corp.ebay.com/pages/viewpage.action?pageId=269519945#BulkCredit/DebitProcessSubmitterSteps-BCDFilePreparations" page for details)
+	,"" as export_category                                -- This is required for the file which should be exported and uploaded to the Oracle system (please see "https://wiki.corp.ebay.com/pages/viewpage.action?pageId=269519945#BulkCredit/DebitProcessSubmitterSteps-BCDFilePreparations" page for details)
+	,t4.iso_code as export_curr_id                        -- This is required for the file which should be exported and uploaded to the Oracle system (please see "https://wiki.corp.ebay.com/pages/viewpage.action?pageId=269519945#BulkCredit/DebitProcessSubmitterSteps-BCDFilePreparations" page for details)
+	,t4.iso_code_name as blng_curncy_iso_name             -- Billing Currency ISO name (i.e. GBP, USD, EUR, et.)
+	,cast(t1.amt_usd as decimal(18,4))                    -- Charged Fee in USD currency
+    ,cast(t1.amt_blng_curncy as decimal(18,4))            -- Charged Fee in the Billing Currency of the Seller. If you need see the charged fee amount in Buyer's local currency, then use "trxn_curncy_amt" column
     ,t1.leaf_categ_id                                     -- Leaf Category ID. This can be joined to "DW_CATEGORY_GROUPINGS" table on "LEAF_CATEG_ID" column to get the category name details
     
     from dw_accounts_all as t1
     left join dw_action_codes as t2
     on t1.actn_code = t2.actn_code
-    inner join dw_users as t3
+    left join dw_users as t3
     on t1.user_id = t3.user_id
+	left join dw_currencies as t4
+	on t1.blng_curncy_id = t4.curncy_id
+	left join dw_countries as t5
+	on t1.user_cntry_id = t5.cntry_id
+	
     
     where 1=1
     and t1.user_type = 'SELLER'
@@ -72,11 +82,12 @@ with seller_fee_data as
     --and cast(t1.acct_trans_date as date) <= <Parameters.End Date>
     and t1.wacko_yn = 'N'
     and t1.amt_usd != 0
-    and t1.actn_code in (1, 409, 474, 504, 508, 526)
+    and t1.actn_code in (1, 198, 409, 474, 504, 508, 526)
     /*
     actn_code lookup
     ----------------
     1: Insertion Fee
+	198: Subtitle Fee
     409: Ad Fee Standard
     474: Ad Fee Advanced
     504: Final Value Fee (FvF)
@@ -147,6 +158,5 @@ select
     -- end,0) as seller_fixed_fee_credit_lstg_curcny_amt
 
 from category_detail_data as t1
-
 
 
