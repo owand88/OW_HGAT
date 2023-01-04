@@ -29,7 +29,7 @@ ToDos:
 * Add a parameter called "Reason" to your Tableau report, as it is not clear to choose which code to use from the document that Pricing team uses to get the code from ("https://wiki.corp.ebay.com/download/attachments/269519945/BCD%20Code%20Guidance%20Template.xlsm?version=5&modificationDate=1660307666000&api=v2")
 * Add a parameter called "Input_Amt" to your Tableau report and set the credit amount, which will be calculated in your Tableau report, to this variable 
 * Add a parameter called "Memo" to your Tableau report and allow the user to input a calue before exporting the file to upload it to Oracle/SAP for recrediting later on
-
+* Test commit for Github-Jira integration
 */
 
 create VIEW p_InventoryPlanning_t.vw_seller_credit_calculation as
