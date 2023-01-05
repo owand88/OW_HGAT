@@ -3,25 +3,12 @@ Jira: UKPLAN-89
 
 Author: Tugrul Ates
 
-Date: 2022-12-19
-
 Description: This scripts extracts the seller fee and category detail data whic then will be used to calculate seller credits
 due to an issue happened on ebay side.
 
 For example, the seller was supposed to pay 5% FvF fee as per their pricing contract with ebay, but they ended up paying 9% FvF.
 Therefore, ebay has to issue a credit to that seller.
 
-Report Parameters:
-- Seller name
-- Start date
-- End date
-- Agreed FvF%
-- Agreed Fixed Fee (£) (with default value of £0.25)
-
-Report Filters:
-- Vertical
-- Meta category
-- L2 category
 
 ToDos:
 
@@ -29,7 +16,6 @@ ToDos:
 * Add a parameter called "Reason" to your Tableau report, as it is not clear to choose which code to use from the document that Pricing team uses to get the code from ("https://wiki.corp.ebay.com/download/attachments/269519945/BCD%20Code%20Guidance%20Template.xlsm?version=5&modificationDate=1660307666000&api=v2")
 * Add a parameter called "Input_Amt" to your Tableau report and set the credit amount, which will be calculated in your Tableau report, to this variable 
 * Add a parameter called "Memo" to your Tableau report and allow the user to input a calue before exporting the file to upload it to Oracle/SAP for recrediting later on
-* Test commit for Github-Jira integration
 */
 
 create VIEW p_InventoryPlanning_t.vw_seller_credit_calculation as
@@ -82,12 +68,15 @@ with seller_fee_data as
     --and cast(t1.acct_trans_date as date) <= <Parameters.End Date>
     and t1.wacko_yn = 'N'
     and t1.amt_usd != 0
-    and t1.actn_code in (1, 198, 409, 474, 504, 508, 526)
+    and t1.actn_code in (1, 139, 198, 245, 305, 409, 474, 504, 508, 526)
     /*
     actn_code lookup
     ----------------
     1: Insertion Fee
+    139: Store Fee
 	198: Subtitle Fee
+    245: CBT (International Listing) Fee
+    305: Gallery Plus Fee
     409: Ad Fee Standard
     474: Ad Fee Advanced
     504: Final Value Fee (FvF)
