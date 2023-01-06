@@ -63,9 +63,8 @@ with seller_fee_data as
     where 1=1
     and t1.user_type = 'SELLER'
     --and t1.user_id = 2204968861
-    --and t3.user_slctd_id = <Parameters.Seller Name>
+    and t3.user_slctd_id in ('hpstoreuk', 'NextBase')  -- Add seller names here
     and cast(t1.acct_trans_date as date) >= '2022-01-01'
-    --and cast(t1.acct_trans_date as date) <= <Parameters.End Date>
     and t1.wacko_yn = 'N'
     and t1.amt_usd != 0
     and t1.actn_code in (1, 139, 198, 245, 305, 409, 474, 504, 508, 526)
@@ -103,7 +102,6 @@ with seller_fee_data as
     
     where 1=1
     and t2.ck_trans_dt >= '2022-01-01'
-    --and t2.ck_trans_dt <= <Parameters.End Date>
 )
 
 ,category_detail_data as 
