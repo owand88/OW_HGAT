@@ -63,7 +63,7 @@ with seller_fee_data as
     where 1=1
     and t1.user_type = 'SELLER'
     --and t1.user_id = 2204968861
-    and t3.user_slctd_id in ('hpstoreuk', 'NextBase')  -- Add seller names here
+    and t3.user_slctd_id in (select distinct seller_name from p_InventoryPlanning_t.seller_list_for_seller_credit)           --Seller names are passed from "Seller Name for Seller Credit Calcualtion" zeta sheet to here
     and cast(t1.acct_trans_date as date) >= '2022-01-01'
     and t1.wacko_yn = 'N'
     and t1.amt_usd != 0
@@ -145,5 +145,6 @@ select
     -- end,0) as seller_fixed_fee_credit_lstg_curcny_amt
 
 from category_detail_data as t1
+
 
 
