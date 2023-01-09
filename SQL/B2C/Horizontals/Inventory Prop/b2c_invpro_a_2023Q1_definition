@@ -16,6 +16,7 @@ cal.retail_year
       when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
       when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
       when cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
+	  when cat.meta_categ_id in (220) then 'Collectibles'
       else cat.bsns_vrtcl_name end as new_vertical
 
 ,case
