@@ -1,0 +1,39 @@
+/*
+UKPLAN-102
+- Acquire a list of categories under the UK definition of Tech & Media verticals at leaf category level to send to GFK for review as part of the discussion on GfK - eBay partnership.
+*/
+
+select distinct 	
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 	
+      when meta_categ_id in (26395) then 'Lifestyle'	
+      when categ_lvl3_id in (260325) then 'Lifestyle'	
+      when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'	
+      when categ_lvl3_id in (35000, 98989) then 'Home & Garden'	
+      when categ_lvl3_id in (3244) then 'Parts & Accessories'	
+      when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'	
+      when categ_lvl2_id in (46576) then 'Parts & Accessories'	
+      when categ_lvl2_id in (63, 29223) then 'Collectibles'	
+      else bsns_vrtcl_name end as UK_adjusted_vertical
+,bsns_vrtcl_name as original_vertical
+,leaf_categ_id
+,leaf_categ_name
+,meta_categ_id
+,meta_categ_name
+,categ_lvl2_id
+,categ_lvl2_name
+from access_views.dw_category_groupings cat	
+where 
+site_id = 3	
+and  leaf_categ_id = move_to--latest category structure
+and (case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 	
+      when meta_categ_id in (26395) then 'Lifestyle'	
+      when categ_lvl3_id in (260325) then 'Lifestyle'	
+      when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'	
+      when categ_lvl3_id in (35000, 98989) then 'Home & Garden'	
+      when categ_lvl3_id in (3244) then 'Parts & Accessories'	
+      when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'	
+      when categ_lvl2_id in (46576) then 'Parts & Accessories'	
+      when categ_lvl2_id in (63, 29223) then 'Collectibles'	
+      else bsns_vrtcl_name end in ('Electronics','Media'))	
+order by UK_adjusted_vertical,leaf_categ_id
+;	
