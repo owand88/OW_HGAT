@@ -1,6 +1,10 @@
 /* 
+UKPLAN-52
 Task: Analyse old SR GMV in categories that are not part of the SR program at granular level
 Objective: Identify which categories to be enabled for 2023 category expansion in the SR program
+
+UKPLAN-101
+Task: 2022 view ensures we are not missing any categories which may have spiked in Nov/Dec22 to make sure they are included in Q2 plans.
 */
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -63,22 +67,24 @@ from prs_restricted_v.slng_trans_super_fact ck
 inner join prs_restricted_v.slng_lstg_super_fact lstg
 on ck.item_id=lstg.item_id
 
-inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
-			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
-			when meta_categ_id in (26395) then 'Lifestyle'
-			when categ_lvl3_id in (260325) then 'Lifestyle'
-			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
-			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
-			when categ_lvl3_id in (3244) then 'Parts & Accessories'
-			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
-			when categ_lvl2_id in (46576) then 'Parts & Accessories'
-			when categ_lvl2_id in (63, 29223) then 'Collectibles'
-			else bsns_vrtcl_name end as new_vertical from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id
+			,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+             when meta_categ_id in (26395) then 'Lifestyle'
+             when categ_lvl3_id in (260325) then 'Lifestyle'
+             when categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
+             when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+             when categ_lvl3_id in (3244) then 'Parts & Accessories'
+             when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+             when categ_lvl2_id in (46576) then 'Parts & Accessories'
+             when categ_lvl2_id in (63, 29223) then 'Collectibles'
+             else bsns_vrtcl_name end as new_vertical
+			 from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat
 on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
         
 inner join access_views.dw_cal_dt as cal 
 on cal.cal_dt = ck.GMV_dt
-and cal.age_for_rtl_year_id in (-1,0) and cal.age_for_rtl_week_id <= -1--Till RW46
+--and cal.age_for_rtl_year_id in (-1,0) and cal.age_for_rtl_week_id <= -1--Till RW46
+and cal.retail_year in (2021,2022)
     
 inner join access_views.dw_users u 
 on ck.seller_id = u.user_id
@@ -99,7 +105,7 @@ group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
 );
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--- YTD GMV of items not part of SR categories, and of old SR condition
+-- Full 2021 and 2022 view: GMV of items not part of SR categories, and in the old SR condition
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 select 
 retail_year 
@@ -121,5 +127,4 @@ from P_InventoryPlanning_T.SR_GMV_TY_LY
 where 
 SR_launch_category is null
 and item_condition='Refurb - Seller' 
-and retail_year=2022
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13;
