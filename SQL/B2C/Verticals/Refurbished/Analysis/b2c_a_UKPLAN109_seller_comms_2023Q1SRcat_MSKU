@@ -1,0 +1,81 @@
+/*
+UKPLAN-109
+Create a seller comms target list to warn listers who have MSKU listings in categories to be launched in 2023 Q1 SR expansion that the ability to use grade/condition as a MSKU is being taken away.
+*/
+
+--53 new leaf categories launched in the UK SR program (Provided in Angie's Excel file)
+select * from P_UK_BC_T.SR_2023Q1_cat_launch;
+
+drop table if exists P_UK_BC_T.old_SR_2023Q1cat_MSKU;
+create table P_UK_BC_T.old_SR_2023Q1cat_MSKU as
+(
+select
+cat.leaf_categ_id
+,cat.leaf_categ_name
+,lstg.item_cndtn_id
+,case when item_cndtn_id = 1000 then 'New'
+	  when item_cndtn_id = 1500 then 'New - Other'
+	  when item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when item_cndtn_id = 2030 then 'Refurb - Good'
+	  when item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when item_cndtn_id = 3000 then 'Used'
+	  when item_cndtn_id = 4000 then 'Used - Very Good'
+	  when item_cndtn_id = 5000 then 'Used - Good'
+	  when item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+,u.user_slctd_id as seller_name
+,lstg.slr_id as seller_id
+,min(lstg.EU_B2C_C2C_flag) as B2C_C2C
+,count(distinct(lstg.item_id)) as LL
+
+from prs_restricted_v.slng_lstg_super_fact lstg
+
+inner join (select meta_categ_id, meta_categ_name, categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, leaf_categ_name, site_id
+			from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join P_UK_BC_T.SR_2023Q1_cat_launch sr
+on lstg.leaf_categ_id = sr.leaf_categ_id
+        
+inner join dw_cal_dt cal
+on lstg.auct_start_dt < cal.cal_dt and lstg.auct_end_dt >= cal.cal_dt
+and cal.retail_year = 2022
+    
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+where 
+lstg.msku_ind=1
+and lstg.slr_cntry_id=3    
+and lstg.item_site_id = 3
+and lstg.iscore=1
+and lstg.auct_type_code not in (10,15)
+and lstg.auct_end_dt > '2018-12-29'  
+group by 1,2,3,4,5,6
+);
+
+/*Data check*/
+select count(*) from P_UK_BC_T.old_SR_2023Q1cat_MSKU;--8609
+
+--MSKU lisitngs in 51 out of 53 categories 
+select count(distinct leaf_categ_id) from P_UK_BC_T.old_SR_2023Q1cat_MSKU;
+
+--No MSKU listings in Other Ironing & Vacuuming (leaf id: 45734) and PTAC Air Conditioners (leaf id: 260444)
+select * from P_UK_BC_T.SR_2023Q1_cat_launch 
+where leaf_categ_id not in (select distinct leaf_categ_id from P_UK_BC_T.old_SR_2023Q1cat_MSKU);
+
+--Portable Fans (leaf id: 20612) has the highest number of sellers with MSKU listings (2151)
+select leaf_categ_name, leaf_categ_id, count(distinct seller_id) 
+from P_UK_BC_T.old_SR_2023Q1cat_MSKU
+group by 1,2 order by 3 desc;
+
+--Add to Excel Data Connection
+select * from P_UK_BC_T.old_SR_2023Q1cat_MSKU;
