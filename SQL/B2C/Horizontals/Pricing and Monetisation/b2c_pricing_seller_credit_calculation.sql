@@ -11,9 +11,10 @@ Therefore, ebay has to issue a credit to that seller.
 
 */
 
+
 create VIEW p_InventoryPlanning_t.vw_seller_credit_calculation as
 
-with seller_fee_data as 
+with seller_level_fee_data as 
 (
     select
     distinct t1.user_id as seller_id                      -- Seller ID
@@ -38,8 +39,8 @@ with seller_fee_data as
 	,"" as export_category                                -- This is required for the file which should be exported and uploaded to the Oracle system (please see "https://wiki.corp.ebay.com/pages/viewpage.action?pageId=269519945#BulkCredit/DebitProcessSubmitterSteps-BCDFilePreparations" page for details)
 	,t4.iso_code as export_curr_id                        -- This is required for the file which should be exported and uploaded to the Oracle system (please see "https://wiki.corp.ebay.com/pages/viewpage.action?pageId=269519945#BulkCredit/DebitProcessSubmitterSteps-BCDFilePreparations" page for details)
 	,t4.iso_code_name as blng_curncy_iso_name             -- Billing Currency ISO name (i.e. GBP, USD, EUR, et.)
-	,cast(t1.amt_usd as decimal(18,4))                    -- Charged Fee in USD currency
-    ,cast(t1.amt_blng_curncy as decimal(18,4))            -- Charged Fee in the Billing Currency of the Seller. If you need see the charged fee amount in Buyer's local currency, then use "trxn_curncy_amt" column
+	,cast(t1.amt_usd as decimal(18,4)) as amt_usd                   -- Charged Fee in USD currency
+    ,cast(t1.amt_blng_curncy as decimal(18,4)) as amt_blng_curncy         -- Charged Fee in the Billing Currency of the Seller. If you need see the charged fee amount in Buyer's local currency, then use "trxn_curncy_amt" column
     ,t1.leaf_categ_id                                     -- Leaf Category ID. This can be joined to "DW_CATEGORY_GROUPINGS" table on "LEAF_CATEG_ID" column to get the category name details
     
     from dw_accounts_all as t1
@@ -60,12 +61,13 @@ with seller_fee_data as
     and cast(t1.acct_trans_date as date) >= '2022-01-01'
     and t1.wacko_yn = 'N'
     and t1.amt_usd != 0
-    and t1.actn_code in (1, 139, 198, 245, 305, 409, 474, 504, 508, 526)
+    and t1.actn_code in (1,  139, 140, 198, 245, 305, 409, 474, 504, 508, 526)
     /*
     actn_code lookup
     ----------------
     1: Insertion Fee
     139: Store Fee
+	140: Store Fee Credit
 	198: Subtitle Fee
     245: CBT (International Listing) Fee
     305: Gallery Plus Fee
@@ -77,25 +79,6 @@ with seller_fee_data as
     */
 )
 
-,gmv_detail_data as 
-(
-    select
-        t1.*
-        ,cast(nvl(t2.item_price_amt, 0) as decimal(18,4)) as item_price_amt                          -- Item price amount
-        ,nvl(t2.sold_qty, 0) as sold_qty                                      -- Sold quantity (aggregated value per transaction id)
-        ,cast(nvl(t2.gmv20_usd_amt, 0) as decimal(18,4)) as gmv20_usd_amt	                          -- GMV in USD (according to 2.0 definition and aggregared value, i.e. if the item price was $5, and if the buyer has bought 3 items on that transaction, then the GMV value is 3 x $5 = $15)
-        ,cast(nvl(t2.gmv20_lstg_curncy_amt, 0) as decimal(18,4)) as gmv20_lstg_curncy_amt            -- GMV in the seller's listing currency (according to 2.0 definition and aggregated value). This is the FXed value of "gmv20_usd_amt" column
-        
-    from seller_fee_data as t1
-    
-    left join prs_restricted_v.slng_trans_super_fact as t2
-    on t1.item_id = t2.item_id
-    and t1.ck_trans_id = t2.ck_trans_id
-    and t1.seller_id = t2.slr_id
-    
-    where 1=1
-    and t2.ck_trans_dt >= '2022-01-01'
-)
 
 ,category_detail_data as 
 (
@@ -104,14 +87,72 @@ t1.*
 ,t2.bsns_vrtcl_name                  -- Business vertical (category) name
 ,t2.meta_categ_name                  -- Meta category name
 ,t2.categ_lvl2_name                  -- Level 2 category name
-from gmv_detail_data as t1
+from seller_level_fee_data as t1
 left join dw_category_groupings as t2
 on t1.leaf_categ_id = t2.leaf_categ_id
 
 where 1=1
+and t1.actn_code not in (139,140)    -- Store Fee data does not have any category related ids. That's why we exclude them from this join
 and t2.site_id = 3  -- This is to only look at the category definition data for the UK website. Otherwise, you will get the same leaf_categ_id value duplicating in the table for different ebay websites (countries)
 )
 
+,trnx_level_fee_data as 
+(
+select 
+*
+from category_detail_data
+where actn_code in (409,474,504,508,526)
+)
+
+
+,listing_level_fee_data as 
+(
+select 
+*
+from category_detail_data
+where actn_code in (1,198,245,305)
+)
+
+,store_level_fee_data as                --Store Level Fee data does not have category id data available. Therefore, we need to calculate the Store fee data at Seller account level. For this reason, we need to separate the seller fee data and union it later on. Otherwise, the category table join causes an issue with this data
+(
+select 
+*
+,'None' as bsns_vrtcl_name
+,'None' as meta_categ_name
+,'None' as categ_lvl2_name
+from seller_level_fee_data
+where actn_code in (139, 140)
+)
+
+,combined_data as 
+(
+select * from trnx_level_fee_data
+union all 
+select * from listing_level_fee_data
+union all 
+select * from store_level_fee_data
+)
+
+
+,gmv_detail_data as 
+(
+    select
+        t1.*
+        ,cast(nvl(t2.item_price_amt, 0) as decimal(18,4)) as item_price_amt                           -- Item price amount
+        ,nvl(t2.sold_qty, 0) as sold_qty                                                              -- Sold quantity (aggregated value per transaction id)
+        ,cast(nvl(t2.gmv20_usd_amt, 0) as decimal(18,4)) as gmv20_usd_amt	                          -- GMV in USD (according to 2.0 definition and aggregared value, i.e. if the item price was $5, and if the buyer has bought 3 items on that transaction, then the GMV value is 3 x $5 = $15)
+        ,cast(nvl(t2.gmv20_lstg_curncy_amt, 0) as decimal(18,4)) as gmv20_lstg_curncy_amt             -- GMV in the seller's listing currency (according to 2.0 definition and aggregated value). This is the FXed value of "gmv20_usd_amt" column
+        
+    from combined_data as t1
+    
+    left join prs_restricted_v.slng_trans_super_fact as t2
+    on  t1.seller_id = t2.slr_id
+	and t1.ck_trans_id = t2.ck_trans_id
+	and t1.item_id = t2.item_id
+	
+    --where 1=1
+    --and t2.ck_trans_dt >= '2022-01-01'
+)
 
 
 select
@@ -121,23 +162,8 @@ select
         when t1.actn_code = 504 then abs(t1.amt_usd) / t1.gmv20_usd_amt       
         else 0 
     end,0),6) as actual_fvf_fee_percentage
-   
-    -- ,nvl(case
-    --     when t1.actn_code = 504 then cast((1 - ${agreed_fvf_fee_percentage} / actual_fvf_fee_percentage) * abs(t1.amt_usd) as decimal(18,4))        -- As "t1.amt_usd" is all negative values in the table, we need to use their absolute values for this calculation
-    --     else 0
-    -- end,0) as seller_fvf_fee_credit_usd_amt
-   
-    -- ,nvl(case
-    --     when t1.actn_code = 504 then cast((1 - ${agreed_fvf_fee_percentage} / actual_fvf_fee_percentage) * abs(t1.amt_blng_curncy) as decimal(18,4))         -- As "t1.amt_blng_curncy" is all negative values in the table, we need to use their absolute values for this calculation
-    --     else 0
-    -- end,0) as seller_fvf_fee_credit_lstg_curcny_amt
-   
-    -- ,nvl(case
-    --     when t1.actn_code = 508 then  cast(abs(t1.amt_blng_curncy) - ${agreed_fixed_fee_listing_currency_amount} as decimal(18,4))        -- As "t1.amt_blng_curncy" is all negative values in the table, we need to use their absolute values for this calculation
-    --     else 0
-    -- end,0) as seller_fixed_fee_credit_lstg_curcny_amt
-
-from category_detail_data as t1
+ 
+from gmv_detail_data as t1
 
 
 
