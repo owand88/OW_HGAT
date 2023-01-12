@@ -1,0 +1,683 @@
+/*
+UKPLAN-98
+- Couple of points ahead of the analysis:
+•	Buy Better Than New (BBTN) condition confirmation at bottom of email
+•	Analysis to focus on L2 (not Inv Prop)
+•	For all questions please provide GMV on promo, GMV, Conversion, Condition, BI, VI, ASP as a minimum
+
+Did the condition split % pre BBTN correlate with the ramp up in the campaign? E.g. smaller share of refurb pre BBTN was more difficult to increase velocity
+•	Split by condition 8 weeks prior vs BBTN wks 45 to 48
+•	Weekly WOW and YoY growth/decline at a category level by condition 
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- GMV, BI, ASP
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.BTN_GMV;
+create table p_uk_bc_t.BTN_GMV as (
+select
+cal.retail_year
+,cal.retail_week
+,cal.age_for_rtl_week_id
+,case when retail_week between 45 and 48 then 1 else 0 end as BBTN_Week
+,cat.vertical
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+,case when cndtn.item_cndtn_id <> 1000 then 1 else 0 end as BTN_Condition
+	  
+,sum(ck.GMV_plan_usd) as tot_GMV
+,sum(ck.quantity) AS tot_SI
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,23,41,-999)--exclude non-core categories (Cars & Trucks [5], Motorcycles [7], Real Estate [23], Other Vehicles [41], Unknown [-999])
+			group by 1,2,3,4,5,6,7,8,9,10,11,12) cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt 
+and cal.retail_year in (2021,2022) and cal.retail_week between 37 and 48
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5) hist 																						
+on ck.seller_id=hist.user_id and ck.GMV_dt between hist.beg_date and hist.end_date	
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+where 
+cat.vertical in ('Electronics','Media')
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+group by 1,2,3,4,5,6,7,8,9,10
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- LL
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.BTN_LL;
+create table p_uk_bc_t.BTN_LL as(
+select
+cal.retail_year
+,cal.retail_week
+,cal.age_for_rtl_week_id
+,case when retail_week between 45 and 48 then 1 else 0 end as BBTN_Week
+,cat.vertical
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+,case when cndtn.item_cndtn_id <> 1000 then 1 else 0 end as BTN_Condition
+
+,count(distinct(lstg.item_id)) as LL
+
+from access_views.dw_lstg_item lstg
+
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical 
+			from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,23,41,-999)--exclude non-core categories (Cars & Trucks [5], Motorcycles [7], Real Estate [23], Other Vehicles [41], Unknown [-999])
+			group by 1,2,3,4,5,6,7,8,9,10,11,12) cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5) hist 																						
+on lstg.slr_id=hist.user_id and lstg.auct_end_dt between hist.beg_date and hist.end_date	
+
+inner join dw_cal_dt cal
+on lstg.auct_start_dt < cal.cal_dt and lstg.auct_end_dt >= cal.cal_dt
+and cal.retail_year in (2021,2022) and cal.retail_week between 37 and 48
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+where 
+lstg.slr_cntry_id=3    
+and lstg.item_site_id = 3
+and lstg.auct_type_code not in (10,15)
+and lstg.auct_end_dt > '2018-12-29'  
+and cat.vertical in ('Electronics','Media')
+group by 1,2,3,4,5,6,7,8,9,10
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- VI
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.BTN_VI;
+create table p_uk_bc_t.BTN_VI as(
+select
+cal.retail_year
+,cal.retail_week
+,cal.age_for_rtl_week_id
+,case when retail_week between 45 and 48 then 1 else 0 end as BBTN_Week
+,cat.vertical
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+,case when cndtn.item_cndtn_id <> 1000 then 1 else 0 end as BTN_Condition
+
+,sum(views) as VI
+
+from access_views.dw_lstg_item lstg
+
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical 
+			from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,23,41,-999)--exclude non-core categories (Cars & Trucks [5], Motorcycles [7], Real Estate [23], Other Vehicles [41], Unknown [-999])
+			group by 1,2,3,4,5,6,7,8,9,10,11,12) cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5) hist 																						
+on lstg.slr_id=hist.user_id and lstg.auct_end_dt between hist.beg_date and hist.end_date		
+
+--View (Bhagyada advised on 2022-03-24 that there is a significant step down in SRP_VI_CNT in the table SLNG_TRFC_SUPER_FACT hence using p_uk_iac_t.UK_VI for views)
+inner join (
+	select
+	cal_dt
+	,item_id
+	,sum(VI) as views
+	from p_uk_iac_t.UK_VI view
+	group by 1,2) vi
+on lstg.item_id=vi.item_id 
+
+inner join access_views.dw_cal_dt cal
+on vi.cal_dt = cal.cal_dt 
+and cal.retail_year in (2021,2022) and cal.retail_week between 37 and 48	
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+where 
+lstg.slr_cntry_id=3    
+and lstg.item_site_id = 3
+and lstg.auct_type_code not in (10,15)
+and lstg.auct_end_dt > '2018-12-29'  
+and cat.vertical in ('Electronics','Media')
+group by 1,2,3,4,5,6,7,8,9,10
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- GMV on Promo
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*
+GMV on Promo (Seller Coupon GMV + Seller Offers GMV divided by Overall GMV) 
+•	Seller Coupon GMV is derived from the dataset, P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 [where promotion_type = 'seller coupon']. Dataset has L2 view.
+•	Seller Offers GMV is derived from the dataset, P_SLR_TRACKER_T.seller_union_all_hist [where promotion_type in ('DAILY DEALS','SME','RPP','CODED COUPONS')] and P_SLR_TRACKER_T.STP_FINAL_HIST.  
+•	P_SLR_TRACKER_T.seller_union_all_hist does have L2 but and P_SLR_TRACKER_T.STP_FINAL_HIST does not have a L2 view
+Decision to provide RPP and Seller Coupon GMV to illustrate Promo % as those 2 are keys in the BTN initiative
+
+ select * from P_SLR_TRACKER_T.seller_union_all_hist 
+ select * from P_SLR_TRACKER_T.STP_final_hist
+ select * from P_SLR_TRACKER_T.PP_couponhist_1_coupon_sum1 
+
+--Dataset P_SLR_TRACKER_T.seller_union_all_hist only has L2 name, 8 L2 name have more than 1 L2 id
+--Decision to keep only 1 L2 id for each L2 name to prevent dups
+select 
+categ_lvl2_name
+,count(distinct categ_lvl2_id)
+from access_views.dw_category_groupings 
+where sap_category_id not in (5,7,23,41,-999)--exclude non-core categories (Cars & Trucks [5], Motorcycles [7], Real Estate [23], Other Vehicles [41], Unknown [-999])
+and site_id=3
+and case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end in ('Electronics','Media')
+group by 1
+having count(distinct categ_lvl2_id)>1
+
+--Books have 2 L2 id (267, 261186)
+select * 
+from access_views.dw_category_groupings 
+where site_id=3 
+and categ_lvl2_name='Books'
+
+select 
+categ_lvl2_name
+,categ_lvl2_id
+from access_views.dw_category_groupings 
+where site_id=3 
+and categ_lvl2_name='Books'
+qualify (row_number() over (partition by categ_lvl2_name order by move_to desc))=1
+
+select 
+promo.retail_year
+,promo.retail_week
+,promo.vertical
+,promo.categ_lvl2_name
+,cat.categ_lvl2_id
+,sum(promo.promotion_GMV) as Promo_RPPEvent_GMV
+from P_SLR_TRACKER_T.seller_union_all_hist promo
+left join (
+	select 
+	categ_lvl2_name
+	,categ_lvl2_id
+	from access_views.dw_category_groupings 
+	where site_id=3 
+	qualify (row_number() over (partition by categ_lvl2_name order by move_to desc))=1) cat
+on promo.categ_lvl2_name=cat.categ_lvl2_name
+where promo.retail_year in (2021,2022)
+and promo.vertical in ('Electronics','Media')
+and promo.promotion_type='RPP';
+
+••••••••••Datasets do not factor in item condition, cannot provide RPP / seller coupon view at condition level••••••••••  
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Combine all metrics
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select count(*) from p_uk_bc_t.BTN_GMV;--13781
+select count(*) from p_uk_bc_t.BTN_LL;--16668
+select count(*) from p_uk_bc_t.BTN_VI;--15970
+
+--All 24 weeks present (2021RW37-2021RW48 & 2022RW37-2022RW48)
+select distinct retail_year||retail_week from p_uk_bc_t.BTN_LL;
+
+create table p_uk_bc_t.BTN_combine as (
+select 
+a.retail_year
+,a.retail_week
+,a.age_for_rtl_week_id
+,a.BBTN_Week
+,a.vertical
+,a.categ_lvl2_id
+,a.categ_lvl2_name
+,a.item_cndtn_id
+,a.item_condition
+,a.BTN_Condition
+,b.tot_GMV
+,b.tot_SI
+,a.LL
+,c.VI
+from p_uk_bc_t.BTN_LL a
+left join p_uk_bc_t.BTN_GMV b
+on a.age_for_rtl_week_id=b.age_for_rtl_week_id and a.categ_lvl2_id=b.categ_lvl2_id and a.categ_lvl2_name=b.categ_lvl2_name and a.item_cndtn_id=b.item_cndtn_id
+left join p_uk_bc_t.BTN_VI c
+on a.age_for_rtl_week_id=c.age_for_rtl_week_id and a.categ_lvl2_id=c.categ_lvl2_id and a.categ_lvl2_name=c.categ_lvl2_name and a.item_cndtn_id=c.item_cndtn_id
+);
+
+/*
+--QC
+select count(*) from p_uk_bc_t.BTN_combine;--16668
+
+select * from p_uk_bc_t.BTN_combine
+where categ_lvl2_id=20710;
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Acquire BBTN weeks vs Non-BBTN weeks metrics
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.BBTN_avg_weekly_GMV;
+create table p_uk_bc_t.BBTN_avg_weekly_GMV as (
+select
+vertical
+,categ_lvl2_id
+,categ_lvl2_name
+
+--Average weekly GMV BBTN weeks vs Non-BBTN weeks
+,avg(case when retail_year=2022 and BBTN_Week=1 then GMV end) as 2022_Avg_BBTNW_GMV
+,avg(case when retail_year=2022 and BBTN_Week=0 then GMV end) as 2022_Avg_NonBBTNW_GMV
+,avg(case when retail_year=2021 and BBTN_Week=1 then GMV end) as 2021_Avg_BBTNW_GMV
+,avg(case when retail_year=2021 and BBTN_Week=0 then GMV end) as 2021_Avg_NonBBTNW_GMV
+
+from
+	(select 
+	vertical
+	,categ_lvl2_id
+	,categ_lvl2_name
+	,retail_year
+	,BBTN_Week
+	,retail_week
+	,sum(tot_GMV) as GMV
+	,sum(tot_SI) as SI
+	,sum(VI) as view
+	,sum(tot_SI) / sum(VI) as conversion
+	,sum(tot_GMV) / sum(tot_SI) as ASP
+	from p_uk_bc_t.BTN_combine 
+	group by 1,2,3,4,5,6)
+	
+group by 1,2,3
+);
+
+drop table if exists p_uk_bc_t.BBTN_avg_weekly_BTN_metrics;
+create table p_uk_bc_t.BBTN_avg_weekly_BTN_metrics as (
+select
+vertical
+,categ_lvl2_id
+,categ_lvl2_name
+
+--Average weekly GMV from BTN goods in BBTN weeks & Non BBTN weeks
+,avg(case when retail_year=2022 and BBTN_Week=1 then GMV end) as 2022_Avg_BBTNW_BTN_GMV
+,avg(case when retail_year=2022 and BBTN_Week=0 then GMV end) as 2022_Avg_NonBBTNW_BTN_GMV
+,avg(case when retail_year=2021 and BBTN_Week=1 then GMV end) as 2021_Avg_BBTNW_BTN_GMV
+,avg(case when retail_year=2021 and BBTN_Week=0 then GMV end) as 2021_Avg_NonBBTNW_BTN_GMV
+
+--Average weekly SI from BTN goods in BBTN weeks & Non BBTN weeks
+,avg(case when retail_year=2022 and BBTN_Week=1 then SI end) as 2022_Avg_BBTNW_BTN_SI
+,avg(case when retail_year=2022 and BBTN_Week=0 then SI end) as 2022_Avg_NonBBTNW_BTN_SI
+,avg(case when retail_year=2021 and BBTN_Week=1 then SI end) as 2021_Avg_BBTNW_BTN_SI
+,avg(case when retail_year=2021 and BBTN_Week=0 then SI end) as 2021_Avg_NonBBTNW_BTN_SI
+
+--Average weekly Views from BTN goods in BBTN weeks & Non BBTN weeks
+,avg(case when retail_year=2022 and BBTN_Week=1 then view end) as 2022_Avg_BBTNW_BTN_VI
+,avg(case when retail_year=2022 and BBTN_Week=0 then view end) as 2022_Avg_NonBBTNW_BTN_VI
+,avg(case when retail_year=2021 and BBTN_Week=1 then view end) as 2021_Avg_BBTNW_BTN_VI
+,avg(case when retail_year=2021 and BBTN_Week=0 then view end) as 2021_Avg_NonBBTNW_BTN_VI
+
+--Average weekly Live Listing from BTN goods in BBTN weeks & Non BBTN weeks
+,avg(case when retail_year=2022 and BBTN_Week=1 then LiveLstg end) as 2022_Avg_BBTNW_BTN_LL
+,avg(case when retail_year=2022 and BBTN_Week=0 then LiveLstg end) as 2022_Avg_NonBBTNW_BTN_LL
+,avg(case when retail_year=2021 and BBTN_Week=1 then LiveLstg end) as 2021_Avg_BBTNW_BTN_LL
+,avg(case when retail_year=2021 and BBTN_Week=0 then LiveLstg end) as 2021_Avg_NonBBTNW_BTN_LL
+
+from
+	(select 
+	vertical
+	,categ_lvl2_id
+	,categ_lvl2_name
+	,retail_year
+	,BBTN_Week
+	,retail_week
+	,sum(tot_GMV) as GMV
+	,sum(tot_SI) as SI
+	,sum(LL) as LiveLstg
+	,sum(VI) as view
+	from p_uk_bc_t.BTN_combine 
+	where BTN_Condition=1--BTN condition
+	group by 1,2,3,4,5,6)
+	
+group by 1,2,3
+);
+
+drop table if exists p_uk_bc_t.BBTN_avg_weekly_New_metrics;
+create table p_uk_bc_t.BBTN_avg_weekly_New_metrics as (
+select
+vertical
+,categ_lvl2_id
+,categ_lvl2_name
+
+--Average weekly GMV from New goods in BBTN weeks & Non BBTN weeks
+,avg(case when retail_year=2022 and BBTN_Week=1 then GMV end) as 2022_Avg_BBTNW_New_GMV
+,avg(case when retail_year=2022 and BBTN_Week=0 then GMV end) as 2022_Avg_NonBBTNW_New_GMV
+,avg(case when retail_year=2021 and BBTN_Week=1 then GMV end) as 2021_Avg_BBTNW_New_GMV
+,avg(case when retail_year=2021 and BBTN_Week=0 then GMV end) as 2021_Avg_NonBBTNW_New_GMV
+
+--Average weekly SI from New goods in BBTN weeks & Non BBTN weeks
+,avg(case when retail_year=2022 and BBTN_Week=1 then SI end) as 2022_Avg_BBTNW_New_SI
+,avg(case when retail_year=2022 and BBTN_Week=0 then SI end) as 2022_Avg_NonBBTNW_New_SI
+,avg(case when retail_year=2021 and BBTN_Week=1 then SI end) as 2021_Avg_BBTNW_New_SI
+,avg(case when retail_year=2021 and BBTN_Week=0 then SI end) as 2021_Avg_NonBBTNW_New_SI
+
+--Average weekly Views from New goods in BBTN weeks & Non BBTN weeks
+,avg(case when retail_year=2022 and BBTN_Week=1 then view end) as 2022_Avg_BBTNW_New_VI
+,avg(case when retail_year=2022 and BBTN_Week=0 then view end) as 2022_Avg_NonBBTNW_New_VI
+,avg(case when retail_year=2021 and BBTN_Week=1 then view end) as 2021_Avg_BBTNW_New_VI
+,avg(case when retail_year=2021 and BBTN_Week=0 then view end) as 2021_Avg_NonBBTNW_New_VI
+
+--Average weekly Live Listing from New goods in BBTN weeks & Non BBTN weeks
+,avg(case when retail_year=2022 and BBTN_Week=1 then LiveLstg end) as 2022_Avg_BBTNW_New_LL
+,avg(case when retail_year=2022 and BBTN_Week=0 then LiveLstg end) as 2022_Avg_NonBBTNW_New_LL
+,avg(case when retail_year=2021 and BBTN_Week=1 then LiveLstg end) as 2021_Avg_BBTNW_New_LL
+,avg(case when retail_year=2021 and BBTN_Week=0 then LiveLstg end) as 2021_Avg_NonBBTNW_New_LL
+
+from
+	(select 
+	vertical
+	,categ_lvl2_id
+	,categ_lvl2_name
+	,retail_year
+	,BBTN_Week
+	,retail_week
+	,sum(tot_GMV) as GMV
+	,sum(tot_SI) as SI
+	,sum(LL) as LiveLstg
+	,sum(VI) as view
+	from p_uk_bc_t.BTN_combine 
+	where BTN_Condition=0--New condition
+	group by 1,2,3,4,5,6)
+	
+group by 1,2,3
+);
+
+--% of GMV from BTN goods in BBTN weeks vs Non BBTN weeks
+drop table if exists p_uk_bc_t.BTN_GMV_perc;
+create table p_uk_bc_t.BTN_GMV_perc as (
+select 
+vertical
+,categ_lvl2_id
+,categ_lvl2_name
+
+,sum(case when retail_year=2022 and BBTN_Week=1 and BTN_Condition=1 then tot_GMV else 0 end) as 2022_BBTNW_BTN_GMV
+,sum(case when retail_year=2022 and BBTN_Week=1 and BTN_Condition=0 then tot_GMV else 0 end) as 2022_BBTNW_New_GMV
+,sum(case when retail_year=2022 and BBTN_Week=1 then tot_GMV else 0 end) as 2022_BBTNW_ttl_GMV
+
+,sum(case when retail_year=2022 and BBTN_Week=0 and BTN_Condition=1 then tot_GMV else 0 end) as 2022_NonBBTNW_BTN_GMV
+,sum(case when retail_year=2022 and BBTN_Week=0 and BTN_Condition=0 then tot_GMV else 0 end) as 2022_NonBBTNW_New_GMV
+,sum(case when retail_year=2022 and BBTN_Week=0 then tot_GMV else 0 end) as 2022_NonBBTNW_ttl_GMV
+
+,sum(case when retail_year=2021 and BBTN_Week=1 and BTN_Condition=1 then tot_GMV else 0 end) as 2021_BBTNW_BTN_GMV
+,sum(case when retail_year=2021 and BBTN_Week=1 and BTN_Condition=0 then tot_GMV else 0 end) as 2021_BBTNW_New_GMV
+,sum(case when retail_year=2021 and BBTN_Week=1 then tot_GMV else 0 end) as 2021_BBTNW_ttl_GMV
+
+,sum(case when retail_year=2021 and BBTN_Week=0 and BTN_Condition=1 then tot_GMV else 0 end) as 2021_NonBBTNW_BTN_GMV
+,sum(case when retail_year=2021 and BBTN_Week=0 and BTN_Condition=0 then tot_GMV else 0 end) as 2021_NonBBTNW_New_GMV
+,sum(case when retail_year=2021 and BBTN_Week=0 then tot_GMV else 0 end) as 2021_NonBBTNW_ttl_GMV
+
+from p_uk_bc_t.BTN_GMV 
+group by 1,2,3
+);
+
+--Combine all metrics to create a summary L2
+drop table if exists p_uk_bc_t.BTN_impact;
+create table p_uk_bc_t.BTN_impact as (
+select 
+a.vertical
+,a.categ_lvl2_id
+,a.categ_lvl2_name
+
+,a.2022_Avg_BBTNW_GMV
+,a.2022_Avg_NonBBTNW_GMV
+,a.2021_Avg_BBTNW_GMV
+,a.2021_Avg_NonBBTNW_GMV
+
+,b.2022_BBTNW_BTN_GMV
+,b.2022_BBTNW_New_GMV
+,b.2022_BBTNW_ttl_GMV
+,b.2022_NonBBTNW_BTN_GMV
+,b.2022_NonBBTNW_New_GMV
+,b.2022_NonBBTNW_ttl_GMV
+,b.2021_BBTNW_BTN_GMV
+,b.2021_BBTNW_New_GMV
+,b.2021_BBTNW_ttl_GMV
+,b.2021_NonBBTNW_BTN_GMV
+,b.2021_NonBBTNW_New_GMV
+,b.2021_NonBBTNW_ttl_GMV
+
+,c.2022_Avg_BBTNW_BTN_GMV
+,c.2022_Avg_NonBBTNW_BTN_GMV
+,c.2021_Avg_BBTNW_BTN_GMV
+,c.2021_Avg_NonBBTNW_BTN_GMV
+,c.2022_Avg_BBTNW_BTN_SI
+,c.2022_Avg_NonBBTNW_BTN_SI
+,c.2021_Avg_BBTNW_BTN_SI
+,c.2021_Avg_NonBBTNW_BTN_SI
+,c.2022_Avg_BBTNW_BTN_VI
+,c.2022_Avg_NonBBTNW_BTN_VI
+,c.2021_Avg_BBTNW_BTN_VI
+,c.2021_Avg_NonBBTNW_BTN_VI
+,c.2022_Avg_BBTNW_BTN_LL
+,c.2022_Avg_NonBBTNW_BTN_LL
+,c.2021_Avg_BBTNW_BTN_LL
+,c.2021_Avg_NonBBTNW_BTN_LL
+
+,d.2022_Avg_BBTNW_New_GMV
+,d.2022_Avg_NonBBTNW_New_GMV
+,d.2021_Avg_BBTNW_New_GMV
+,d.2021_Avg_NonBBTNW_New_GMV
+,d.2022_Avg_BBTNW_New_SI
+,d.2022_Avg_NonBBTNW_New_SI
+,d.2021_Avg_BBTNW_New_SI
+,d.2021_Avg_NonBBTNW_New_SI
+,d.2022_Avg_BBTNW_New_VI
+,d.2022_Avg_NonBBTNW_New_VI
+,d.2021_Avg_BBTNW_New_VI
+,d.2021_Avg_NonBBTNW_New_VI
+,d.2022_Avg_BBTNW_New_LL
+,d.2022_Avg_NonBBTNW_New_LL
+,d.2021_Avg_BBTNW_New_LL
+,d.2021_Avg_NonBBTNW_New_LL
+
+from p_uk_bc_t.BBTN_avg_weekly_GMV  a
+left join p_uk_bc_t.BTN_GMV_perc b
+on a.vertical=b.vertical and a.categ_lvl2_id=b.categ_lvl2_id and a.categ_lvl2_name=b.categ_lvl2_name
+left join p_uk_bc_t.BBTN_avg_weekly_BTN_metrics c
+on a.vertical=c.vertical and a.categ_lvl2_id=c.categ_lvl2_id and a.categ_lvl2_name=c.categ_lvl2_name
+left join p_uk_bc_t.BBTN_avg_weekly_New_metrics d
+on a.vertical=d.vertical and a.categ_lvl2_id=d.categ_lvl2_id and a.categ_lvl2_name=d.categ_lvl2_name
+);
+
+
+--Calculations for incremental difference in BTN vs New growth in BBTN weeks (RW45-RW48)
+drop table if exists p_uk_bc_t.BTN_impact_cal;
+create table p_uk_bc_t.BTN_impact_cal as (
+select
+vertical
+,categ_lvl2_id
+,categ_lvl2_name
+
+--2022 average weekly BBTN weeks'GMV
+,2022_Avg_BBTNW_GMV
+
+--General uplift in BBTN weeks
+,(2022_Avg_BBTNW_GMV/2022_Avg_NonBBTNW_GMV)-1 as 2022_BBTNW_GMV_uplift
+,(2021_Avg_BBTNW_GMV/2021_Avg_NonBBTNW_GMV)-1 as 2021_BBTNW_GMV_uplift
+
+--BTN GMV Share 
+,2022_BBTNW_BTN_GMV/2022_BBTNW_ttl_GMV as 2022_BBTNW_BTN_GMV_Share
+,2022_NonBBTNW_BTN_GMV/2022_NonBBTNW_ttl_GMV as 2022_NonBBTNW_BTN_GMV_Share
+
+,2021_BBTNW_BTN_GMV/2021_BBTNW_ttl_GMV as 2021_BBTNW_BTN_GMV_Share
+,2021_NonBBTNW_BTN_GMV/2021_NonBBTNW_ttl_GMV as 2021_NonBBTNW_BTN_GMV_Share
+
+--BTN GMV uplift in BBTN weeks
+
+,2022_Avg_BBTNW_BTN_GMV/2022_Avg_NonBBTNW_BTN_GMV-1 as 2022_BBTNW_BTN_GMV_uplift
+,2022_Avg_BBTNW_New_GMV/2022_Avg_NonBBTNW_New_GMV-1 as 2022_BBTNW_New_GMV_uplift
+
+,2021_Avg_BBTNW_BTN_GMV/2021_Avg_NonBBTNW_BTN_GMV-1 as 2021_BBTNW_BTN_GMV_uplift
+,2021_Avg_BBTNW_New_GMV/2021_Avg_NonBBTNW_New_GMV-1 as 2021_BBTNW_New_GMV_uplift
+
+--BTN SI uplift in BBTN weeks
+
+,2022_Avg_BBTNW_BTN_SI/2022_Avg_NonBBTNW_BTN_SI-1 as 2022_BBTNW_BTN_SI_uplift
+,2022_Avg_BBTNW_New_SI/2022_Avg_NonBBTNW_New_SI-1 as 2022_BBTNW_New_SI_uplift
+
+,2021_Avg_BBTNW_BTN_SI/2021_Avg_NonBBTNW_BTN_SI-1 as 2021_BBTNW_BTN_SI_uplift
+,2021_Avg_BBTNW_New_SI/2021_Avg_NonBBTNW_New_SI-1 as 2021_BBTNW_New_SI_uplift
+
+--BTN Views uplift in BBTN weeks
+
+,2022_Avg_BBTNW_BTN_VI/2022_Avg_NonBBTNW_BTN_VI-1 as 2022_BBTNW_BTN_VI_uplift
+,2022_Avg_BBTNW_New_VI/2022_Avg_NonBBTNW_New_VI-1 as 2022_BBTNW_New_VI_uplift
+
+,2021_Avg_BBTNW_BTN_VI/2021_Avg_NonBBTNW_BTN_VI-1 as 2021_BBTNW_BTN_VI_uplift
+,2021_Avg_BBTNW_New_VI/2021_Avg_NonBBTNW_New_VI-1 as 2021_BBTNW_New_VI_uplift
+
+--BTN LL uplift in BBTN weeks
+
+,2022_Avg_BBTNW_BTN_LL/2022_Avg_NonBBTNW_BTN_LL-1 as 2022_BBTNW_BTN_LL_uplift
+,2022_Avg_BBTNW_New_LL/2022_Avg_NonBBTNW_New_LL-1 as 2022_BBTNW_New_LL_uplift
+
+,2021_Avg_BBTNW_BTN_LL/2021_Avg_NonBBTNW_BTN_LL-1 as 2021_BBTNW_BTN_LL_uplift
+,2021_Avg_BBTNW_New_LL/2021_Avg_NonBBTNW_New_LL-1 as 2021_BBTNW_New_LL_uplift
+
+from p_uk_bc_t.BTN_impact 
+);
+
+
+
+--Add to Excel Data Connection
+select * from p_uk_bc_t.BTN_combine;
+
+--Export to Excel 
+select * from p_uk_bc_t.BTN_impact
+where vertical='Electronics'
+order by 2022_Avg_BBTNW_GMV desc;
+
+select * from p_uk_bc_t.BTN_impact
+where vertical='Media'
+order by 2022_Avg_BBTNW_GMV desc;
+
+select * from p_uk_bc_t.BTN_impact_cal
+where vertical='Electronics'
+order by 2022_Avg_BBTNW_GMV desc;
+
+select * from p_uk_bc_t.BTN_impact_cal
+where vertical='Media'
+order by 2022_Avg_BBTNW_GMV desc;
