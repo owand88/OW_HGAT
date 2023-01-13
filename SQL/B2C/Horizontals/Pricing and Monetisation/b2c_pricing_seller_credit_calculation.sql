@@ -11,7 +11,6 @@ Therefore, ebay has to issue a credit to that seller.
 
 */
 
-
 create VIEW p_InventoryPlanning_t.vw_seller_credit_calculation as
 
 with seller_level_fee_data as 
@@ -117,9 +116,9 @@ where actn_code in (1,198,245,305)
 (
 select 
 *
-,'None' as bsns_vrtcl_name
-,'None' as meta_categ_name
-,'None' as categ_lvl2_name
+,'None: Store Level Fees' as bsns_vrtcl_name
+,'None: Store Level Fees' as meta_categ_name
+,'None: Store Level Fees' as categ_lvl2_name
 from seller_level_fee_data
 where actn_code in (139, 140)
 )
