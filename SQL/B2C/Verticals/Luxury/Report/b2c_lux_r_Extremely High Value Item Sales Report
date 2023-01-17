@@ -5,7 +5,7 @@ Create table p_robevans_t.high_value_luxury_items_report as
 With lstg1 AS
 (Select item_id, AUCT_TITLE
 	From PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
-	INNER JOIN DW_CATEGORY_GROUPINGS CAT1 
+	INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT1 
 		ON CAT1.LEAF_CATEG_ID = lstg.LEAF_CATEG_ID 
 		AND CAT1.SITE_ID = 3
 		AND CAT1.SAP_CATEGORY_ID NOT in (5,7,41,23,-999) 
@@ -41,24 +41,24 @@ ck.CREATED_DT
 ,format_number(sum(ck.gmv_plan_usd),0) as gmv
 ,format_number(sum(ck.QUANTITY),0) as si
 
-From DW_CHECKOUT_TRANS ck
+From ACCESS_VIEWS.DW_CHECKOUT_TRANS ck
 LEFT JOIN lstg1
 	on lstg1.item_id = ck.item_id
-INNER JOIN DW_CAL_DT cal on ck.created_dt = cal.CAL_DT
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT cal on ck.created_dt = cal.CAL_DT
 	and AGE_FOR_DT_ID >= -1
 Left JOIN ACCESS_VIEWS.DW_COUNTRIES cntry
 	on cntry.CNTRY_ID = ck.SLR_CNTRY_ID
 Left JOIN ACCESS_VIEWS.DW_COUNTRIES cntry1
 	on cntry1.CNTRY_ID = ck.BYR_CNTRY_ID
-Left Join DW_CK_LKP_PYMT_MTHD pay
+Left Join ACCESS_VIEWS.DW_CK_LKP_PYMT_MTHD pay
 	on pay.pymt_mthd_id = ck.PAYMENT_METHOD
-INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT 
 	ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
 	AND CAT.SITE_ID = 3
 	AND CAT.SAP_CATEGORY_ID NOT in (5,7,41,23,-999) 
-LEFT JOIN DW_USERS u
+LEFT JOIN ACCESS_VIEWS.DW_USERS u
 	on u.user_id = ck.seller_id
-LEFT JOIN DW_USERS u1
+LEFT JOIN ACCESS_VIEWS.DW_USERS u1
 	on u1.user_id = ck.BUYER_ID
 left join (Select
 				item_id,
@@ -73,7 +73,7 @@ left join (Select
 					'BRAND' as aspect,
 					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
 				from
-					item_aspct_clssfctn
+					ACCESS_VIEWS.item_aspct_clssfctn
 				where
 					AUCT_END_DT>='2016-06-01'
 					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
@@ -86,7 +86,7 @@ left join (Select
 					'BRAND' as aspect,
 					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
 				from
-					item_aspct_clssfctn_cold
+					ACCESS_VIEWS.item_aspct_clssfctn_cold
 				WHERE
 					AUCT_END_DT>='2016-06-01'
 					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
@@ -106,7 +106,7 @@ left join (Select
 					'MODEL' as aspect,
 					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
 				from
-					item_aspct_clssfctn
+					ACCESS_VIEWS.item_aspct_clssfctn
 				where
 					AUCT_END_DT>='2016-06-01'
 					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('MODEL')
@@ -119,7 +119,7 @@ left join (Select
 					'MODEL' as aspect,
 					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
 				from
-					item_aspct_clssfctn_cold
+					ACCESS_VIEWS.item_aspct_clssfctn_cold
 				WHERE
 					AUCT_END_DT>='2016-06-01'
 					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('MODEL')
@@ -131,7 +131,7 @@ LEFT JOIN
                            AUCT_END_DT,
                            COALESCE(MAX(ASPCT.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
                             FROM
-                            ITEM_ASPCT_CLSSFCTN ASPCT
+                            ACCESS_VIEWS.ITEM_ASPCT_CLSSFCTN ASPCT
                             WHERE
                             UPPER(ASPCT.NS_TYPE_CD) IN ('NF','DF') 
                             AND ASPCT.AUCT_END_DT>='2018-12-26'
@@ -144,7 +144,7 @@ LEFT JOIN
                            AUCT_END_DT,
                           COALESCE(MAX(ASPCT_COLD.ASPCT_VLU_NM),'UNKNOWN') AS ASPCT_VLU_NM_BRAND
                         FROM
-                        ITEM_ASPCT_CLSSFCTN_COLD ASPCT_COLD
+                        ACCESS_VIEWS.ITEM_ASPCT_CLSSFCTN_COLD ASPCT_COLD
                         WHERE UPPER(ASPCT_COLD.NS_TYPE_CD) IN ('NF','DF') 
                         AND ASPCT_COLD.AUCT_END_DT>='2018-12-26'
                         AND UPPER(ASPCT_COLD.PRDCT_ASPCT_NM) LIKE ('%MODIFIED ITEM%')

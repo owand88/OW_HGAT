@@ -10,7 +10,7 @@ cal.retail_year
 ,case when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
       when cat.meta_categ_id in (26395) then 'Lifestyle'
       when cat.categ_lvl3_id in (260325) then 'Lifestyle'
-      when cat.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+      when cat.categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
       when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
       when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
       when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
@@ -27,7 +27,7 @@ when new_vertical = 'Fashion' and (cndtn_rollup_id=1 or cndtn.item_cndtn_id = 17
 when new_vertical = 'Fashion' and (cndtn_rollup_id=1 or cndtn.item_cndtn_id = 1750) and cat.LEAF_CATEG_ID in (55793,24087,45333,53120,53548) then 'Mens & Womens Footwear Focus'
 when new_vertical = 'Fashion' and (cndtn_rollup_id=3 or cndtn.item_cndtn_id = 1750) and ck.seller_id in (56677594,76395263,81989834,118945299,195651817,222043520,305587902,565791012,807642762,844826217,1001729106,1078517816,1104420930,1106029208,1140031384,1220266750,1378664255,1417329361,1485367886,1622388726,1644692192,2090615526,2210493957,2338634389) THEN 'Preloved Sellers Focus'
 
--- P&A
+-- P&A (2023 Q1 updated)
 when new_vertical = 'Parts & Accessories' and (cat.categ_lvl2_id in (107059)) then 'Car Tuning and Styling Focus'
 when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33743)) then 'Tyres & Wheels Focus'
 when new_vertical = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (180035)) then 'Tyres & Wheels Focus'
@@ -49,7 +49,7 @@ when new_vertical = 'Collectibles' and cat.categ_lvl2_id in (58520, 39482) then 
 when new_vertical = 'Collectibles' and cat.categ_lvl2_id in (3499, 4742, 65174) then 'Stamp Focus'
 when new_vertical = 'Collectibles' and cat.categ_lvl3_id in (7921) then 'Stamp Focus' 
 
---B&I 
+--B&I  (2023 Q1 updated)
 when new_vertical = 'Business & Industrial' and cat.categ_lvl2_id in (25298,26221) then 'Office Supplies & Material Handling Focus'
 
 -- H&G 2023Q1 Updated
@@ -65,7 +65,7 @@ when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (3199, 20488, 38204
 when new_vertical = 'Home & Garden' and cat.categ_lvl3_id in (3199, 20488, 38204, 38208, 88057, 107578, 183322) then 'Living Room Furniture Other Focus'
 
 
---Lifestyle
+--Lifestyle (2023 Q1 updated)
 when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (11854, 31762, 31769, 36447) and cat.categ_lvl3_id in (260773, 260783, 260774, 36449) and cndtn_rollup_id=2 then 'Personal Electrical Refurb Focus'
 when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (11854, 31762, 31769, 36447) and cat.categ_lvl3_id in (260773, 260783, 260774, 36449) and cndtn_rollup_id not in (2) then 'Personal Electrical Non-Refurb Focus'
 when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (180345) then 'Fragrances Focus'
@@ -76,10 +76,11 @@ when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (7294) and cndtn_rollup
 when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (1513) then 'Golf Focus'
 when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (11778)  and cndtn_rollup_id=2 then 'Independent Living Refurb Focus'
 when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (11778) and cndtn_rollup_id not in (2) then'Independent Living Non-Refurb Focus'
-when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (67659) and cat.categ_lvl3_id in (262436) then 'CBD Products Focus'
-when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (67588) and cat.categ_lvl3_id in (30115) and cat.categ_lvl4_id in (263022) then 'Covid-19 Self Tests Focus'
 when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (15273) then 'Fitness Running & Yoga Focus'
 when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (31786) then 'Make-Up Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (183497) then 'Electronic Smoking, Parts & Accs Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (67659) then 'Natural & Alternative Remedies Focus'
+when new_vertical = 'Lifestyle' and cat.categ_lvl2_id in (36259) then 'Winter Sports Focus'
 
 --Tech (2023 Q1 updated)
 when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) and cndtn.item_cndtn_id = 1000 then 'Appliances New Focus' 

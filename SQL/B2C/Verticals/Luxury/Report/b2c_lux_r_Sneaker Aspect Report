@@ -62,7 +62,7 @@ LEFT JOIN (select item_id, count(ITEM_VRTN_ID) c  from LSTG_ITEM_VRTN group by 1
         ON CK.ITEM_ID = CNDTN.ITEM_ID
 INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID
 INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
-INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR in (2021,2022) and AGE_FOR_RTL_WEEK_ID = -1 
+INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID = -1 
 left outer join dw_users u
 on ck.slr_id = u.user_id
 
@@ -119,7 +119,7 @@ LEFT JOIN (select item_id, auct_titl, AUCT_END_DT from DW_LSTG_ITEM where item_s
 -- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = CK.gmv_dt 
-	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID >= -53
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID >= -53
 
 left join 
 (select a.* from (
@@ -183,7 +183,7 @@ LEFT JOIN (select item_id, auct_titl, AUCT_END_DT from DW_LSTG_ITEM where item_s
 -- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = CK.gmv_dt 
-	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID >= -53
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID >= -53
 left join 
 (select a.* from (
 select
@@ -279,7 +279,7 @@ LEFT JOIN (select item_id, auct_titl, AUCT_END_DT from DW_LSTG_ITEM where item_s
 -- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = CK.gmv_dt 
-	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID >= -53
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID >= -53
 left join (select a.* from (
 select
 item_id,
@@ -378,7 +378,7 @@ LEFT JOIN (select item_id, auct_titl, AUCT_END_DT from DW_LSTG_ITEM where item_s
 -- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = CK.gmv_dt 
-	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID >= -53 and AGE_FOR_RTL_WEEK_ID <= -1
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID >= -53 and AGE_FOR_RTL_WEEK_ID <= -1
 
 left join 
 (select a.* from (
