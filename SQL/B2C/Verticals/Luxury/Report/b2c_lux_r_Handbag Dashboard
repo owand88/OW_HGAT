@@ -61,7 +61,7 @@ FROM DW_LSTG_ITEM AS ck
         ON ck.ITEM_ID = CNDTN.ITEM_ID
 INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = ck.SLR_CNTRY_ID
 INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
-INNER JOIN DW_CAL_DT CAL ON ck.AUCT_START_DT < CAL.CAL_DT AND ck.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR in (2019,2020,2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+INNER JOIN DW_CAL_DT CAL ON ck.AUCT_START_DT < CAL.CAL_DT AND ck.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-3 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 on ck.slr_id = u.user_id
 
@@ -235,7 +235,7 @@ LEFT JOIN ( select item_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN gro
         ON ck.ITEM_ID = CNDTN.ITEM_ID
 INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = ck.SLR_CNTRY_ID
 INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
-INNER JOIN DW_CAL_DT CAL ON ck.AUCT_START_DT < CAL.CAL_DT AND ck.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2020  and AGE_FOR_RTL_WEEK_ID <= -1 
+INNER JOIN DW_CAL_DT CAL ON ck.AUCT_START_DT < CAL.CAL_DT AND ck.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-3  and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 on ck.slr_id = u.user_id
 
@@ -384,7 +384,7 @@ left join (Select
 -- 	ON ck.LSTG_CURNCY_ID = LPR.CURNCY_ID 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = ck.gmv_dt 
-	and retail_year >= 2019 and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-3 and AGE_FOR_RTL_WEEK_ID <= -1 
 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
@@ -571,7 +571,7 @@ FROM DW_CHECKOUT_TRANS AS ck
 -- 	ON ck.LSTG_CURNCY_ID = LPR.CURNCY_ID 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = ck.gmv_dt 
-	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
 INNER JOIN DW_CATEGORY_GROUPINGS CAT 
@@ -640,7 +640,7 @@ INNER JOIN (select selleR_id from  P_robevans_T.hb_fm_gmva) as a on ck.seller_id
 -- 	ON ck.LSTG_CURNCY_ID = LPR.CURNCY_ID 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = ck.gmv_dt 
-	and retail_year in (2020,2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
 INNER JOIN DW_CATEGORY_GROUPINGS CAT 
@@ -681,7 +681,7 @@ FROM DW_CHECKOUT_TRANS AS ck
 LEFT JOIN  DW_LSTG_ITEM i on ck.item_id = i.item_id and ck.AUCT_END_DT = i.AUCT_END_DT
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = ck.gmv_dt 
-	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
 INNER JOIN DW_CATEGORY_GROUPINGS CAT 
@@ -756,7 +756,7 @@ INNER JOIN (Select item_id,AUCT_END_DT from P_robevans_T.hb_item_gmv1a) a on a.i
 LEFT JOIN DW_LSTG_ITEM i on i.item_id = ck.item_id and i.AUCT_END_dt = ck.AUCT_END_DT
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = ck.gmv_dt 
-	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
 INNER JOIN DW_CATEGORY_GROUPINGS CAT 
@@ -935,7 +935,7 @@ FROM DW_CHECKOUT_TRANS AS ck
         ON ck.ITEM_ID = CNDTN.ITEM_ID
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = ck.gmv_dt 
-	and retail_year in (2019,2020,2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-3 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
 INNER JOIN DW_CATEGORY_GROUPINGS CAT 
@@ -993,7 +993,7 @@ INNER JOIN DW_LSTG_ITEM D ON ck.ITEM_ID = D.ITEM_ID AND ck.AUCT_END_DT = D.AUCT_
 INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID = ck.ITEM_SITE_ID and cat.site_id = 3 
 INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = ck.SLR_CNTRY_ID
 INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
-INNER JOIN DW_CAL_DT CAL ON ck.AUCT_START_DT < CAL.CAL_DT AND ck.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR in (2019,2020,2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+INNER JOIN DW_CAL_DT CAL ON ck.AUCT_START_DT < CAL.CAL_DT AND ck.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-3 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 on ck.slr_id = u.user_id
 WHERE ck.wacko_YN = 'N'                      
@@ -1043,7 +1043,7 @@ SUM(watch_CNT) as watches
         AND ck.SITE_ID = CAT.SITE_ID and cat.site_id = 3 
     left outer join dw_users u
 on ck.seller_id = u.user_id
-inner join dw_cal_dt cal on ck.cal_dt = cal.cal_dt AND cal.RETAIL_YEAR in (2019,2020,2021,2022) and AGE_FOR_RTL_WEEK_ID <=-1
+inner join dw_cal_dt cal on ck.cal_dt = cal.cal_dt AND cal.RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-3 and AGE_FOR_RTL_WEEK_ID <=-1
 inner join (select item_id, START_PRICE_LSTG_CURNCY,BIN_PRICE_LSTG_CURNCY,RSRV_PRICE_LIST_CRNCY, slr_cntry_id from  DW_LSTG_ITEM) i on i.item_id = ck.item_id and SLR_CNTRY_ID = 3
  LEFT JOIN ( select item_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
         ON ck.ITEM_ID = CNDTN.ITEM_ID
@@ -1462,7 +1462,7 @@ LEFT JOIN ( select item_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN gro
         ON ck.ITEM_ID = CNDTN.ITEM_ID
 INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = ck.SLR_CNTRY_ID
 INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
-INNER JOIN DW_CAL_DT CAL ON ck.AUCT_START_DT < CAL.CAL_DT AND ck.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2021  and AGE_FOR_RTL_WEEK_ID <= -1 
+INNER JOIN DW_CAL_DT CAL ON ck.AUCT_START_DT < CAL.CAL_DT AND ck.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1  and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 on ck.slr_id = u.user_id
 
@@ -1615,7 +1615,7 @@ left join (Select
 -- 	ON ck.LSTG_CURNCY_ID = LPR.CURNCY_ID 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = ck.gmv_dt 
-	and retail_year >= 2021 and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID <= -1 
 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
