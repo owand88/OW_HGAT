@@ -1,0 +1,273 @@
+/*
+What was the impact of Currys and Argos miss?
+
+By L2 what was the Argos/Currys GMV in 2021 broken down by condition
+Of the 5 biggest impacted GMV categories, what was the top 20 (by total GMV) seller growth within these? 
+E.g. Currys and Argos miss was $2m in category X and the top 20 sellers all grew but only added $1m so a miss of $1m
+*/
+
+--Check seller IDs found on Hive for Argos and Currys
+66512606--Argos
+991453053--Currys
+
+select * from access_views.dw_users
+where user_id in (66512606,991453053);
+
+--Check what conditions Argos / Currys usually sell
+create temporary table argoscurrys as(
+select
+ck.seller_id
+,cat.vertical
+,lstg.item_cndtn_id
+,case when lstg.item_cndtn_id = 1000 then 'New'
+	  when lstg.item_cndtn_id = 1500 then 'New - Other'
+	  when lstg.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when lstg.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when lstg.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when lstg.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when lstg.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when lstg.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when lstg.item_cndtn_id = 3000 then 'Used'
+	  when lstg.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when lstg.item_cndtn_id = 5000 then 'Used - Good'
+	  when lstg.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when lstg.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+,sum(ck.GMV20_plan) as tot_GMV
+
+from prs_restricted_v.slng_trans_super_fact ck 
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on ck.item_id=lstg.item_id
+
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,23,41,-999)--exclude non-core categories (Cars & Trucks [5], Motorcycles [7], Real Estate [23], Other Vehicles [41], Unknown [-999])
+			group by 1,2,3,4,5,6,7,8,9,10,11,12) cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt and cal.retail_year in (2021,2022)
+
+where 
+ck.seller_id in (66512606,991453053)
+and cat.vertical in ('Electronics','Media')
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+group by 1,2,3,4
+);
+
+--Currys (991453053) only sells New within Tech categories
+--Argos (66512606): 62% New, 25% old SR (Refurb - Seller, 2500), 13% Refurb - Excellent (2010), 0.1% Used (3000) [All in Tech], a very small amount in Media (0.03% of total Tech & Media)
+select * from argoscurrys
+order by seller_id,tot_GMV desc;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- All B2C sellers' Tech GMV in 2021 and 2022
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.Tech_21_22_GMV;
+create table p_uk_bc_t.Tech_21_22_GMV as (
+select
+cal.retail_year
+,cal.retail_week
+,cal.retail_wk_end_date
+,case when cal.retail_week between 45 and 48 then 1 else 0 end as BBTNW
+,cat.vertical
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,ck.seller_id
+,u.user_slctd_id as seller_name
+,case when ck.seller_id in (66512606,991453053) then 1 else 0 end as argos_currys 
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+
+,sum(ck.GMV_plan_usd) as tot_GMV
+,sum(ck.quantity) AS tot_SI
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,23,41,-999)--exclude non-core categories (Cars & Trucks [5], Motorcycles [7], Real Estate [23], Other Vehicles [41], Unknown [-999])
+			group by 1,2,3,4,5,6,7,8,9,10,11,12) cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt 
+and cal.retail_year in (2021,2022)
+
+inner join access_views.dw_users u
+on ck.seller_id=u.user_id
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5) hist 																						
+on ck.seller_id=hist.user_id and ck.GMV_dt between hist.beg_date and hist.end_date	
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+where 
+cat.vertical = 'Electronics'
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+group by 1,2,3,4,5,6,7,8,9,10,11,12
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Analysis
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Look at Tech GMV trend of Argos [66512606] and Currys [991453053] who ceased trading, and musicMagpie [1046392160] (large Tech seller) for seasonality.
+--Argos ceased trading on the eBay platform in 2022RW4, and Currys ceased trading in 2022 RW13.
+
+--Currys' 2021 Tech GMV (Total $57.9M) made up of 100% New inventory (Condition ID: 1000). 
+--Currys’ top 7 L2 categories exceed $2M GMV each, they contribute to 70% of Currys’ total 2021 GMV.
+--They are 
+Appliances 20710
+Laptops & Netbooks	175672
+TVs	11071
+Printers, Scanners & Supplies 171961
+Tablets & eBook Readers	171485
+Video Games	139973
+Mobile & Smart Phones	9355
+
+--Argos' 2021 Tech GMV (Total $23.8M) made up of 62% New (Condition ID: 1000); 25% old SR (Refurb - Seller, Condition ID: 2500); 12% Refurb - Excellent (Condition ID: 2010); 0.1% Used (Condition ID: 3000).
+--Argos' top 5 categories exceed $1M GMV in 2021, these top 5 L2s contributed to 70% of total 2021 GMV. 
+--They are 
+Appliances 20710
+Mobile & Smart Phones 9355
+TVs 11071
+Laptops & Netbooks 175672
+Tablets & eBook Readers 171485
+
+/*
+Top 20 sellers in Appliances in 2022 together account for a -$3.1M (-3.4%) YoY decline. 
+Total Appliances GMV from Currys and Argos in 2021 is $18.1M and $2.3M in 2022. 
+With the -3.4% YoY decline observed in the top 20 Appliances sellers, we estimate Appliances GMV from Currys and Argos in 2022 to be $17.5M had they stayed on the platform.
+Removing the actual Appliances GMV generated from Currys and Argos in 2022Q1, the total estimated miss in Appliances from Currys and Argos in 2022 is $15.2M ($17.5M - $2.3M).
+
+Top 20 sellers in Laptops & Netbooks in 2022 together account for a -$3.5M (-9.8%) YoY decline. 
+Total Laptops & Netbooks GMV from Currys and Argos in 2021 is $10.7M and $1.1M in 2022. 
+With the -9.8% YoY decline observed in the top 20 Laptops & Netbooks sellers, we estimate Laptops & Netbooks GMV from Currys and Argos in 2022 to be $9.6M had they stayed on the platform.
+Removing the actual Laptops & Netbooks GMV generated from Currys and Argos in 2022Q1, the total estimated miss in Laptops & Netbooks from Currys and Argos in 2022 is $8.5M ($9.6M - $1.1M).
+
+Top 20 sellers in TVs in 2022 together account for a -$4.1M (-11.8%) YoY decline. 
+Total TVs GMV from Currys and Argos in 2021 is $10.4M and $0.7M in 2022. 
+With the -11.8% YoY decline observed in the top 20 TVs sellers, we estimate TVs GMV from Currys and Argos in 2022 to be $9.2M had they stayed on the platform.
+Removing the actual TVs GMV generated from Currys and Argos in 2022Q1, the total estimated miss in TVs from Currys and Argos in 2022 is $8.4M ($9.2 - $0.7M).
+
+Top 20 sellers in Tablets & eBook Readers in 2022 together account for a -$0.7M (-5.5%) YoY decline. 
+Total Tablets & eBook Readers GMV from Currys and Argos in 2021 is $4.3M and $0.5M in 2022. 
+With the -5.5% YoY decline observed in the top 20 Tablets & eBook Readers sellers, we estimate Tablets & eBook Readers GMV from Currys and Argos in 2022 to be $4.1M had they stayed on the platform.
+Removing the actual Tablets & eBook Readers GMV generated from Currys and Argos in 2022Q1, the total estimated miss in Tablets & eBook Readers from Currys and Argos in 2022 is $3.5M ($4.1 - $0.5M).
+
+Top 20 sellers in Mobile & Smart Phones in 2022 together account for a +$7.4M (+10.8%) YoY growth. 
+Total Mobile & Smart Phones GMV from Currys and Argos in 2021 is $6.4M and $0.5M in 2022. 
+With the +10.8% YoY grwoth observed in the top 20 Mobile & Smart Phones sellers, we estimate Mobile & Smart Phones GMV from Currys and Argos in 2022 to be $7.1M had they stayed on the platform.
+Removing the actual Mobile & Smart Phones GMV generated from Currys and Argos in 2022Q1, the total estimated miss in Mobile & Smart Phones from Currys and Argos in 2022 is -$0.8M ($7.1 - $0.5M - $7.4M gain from top 20 sellers YoY growth).
+
+Top 20 sellers in Printers, Scanners & Supplies in 2022 together account for a -$3.0M (-20.6%) YoY growth. 
+Total Printers, Scanners & Supplies GMV from Currys and Argos in 2021 is $5.2M and $1.2M in 2022. 
+With the -20.6% YoY grwoth observed in the top 20 Printers, Scanners & Supplies sellers, we estimate Printers, Scanners & Supplies GMV from Currys and Argos in 2022 to be $4.1M had they stayed on the platform.
+Removing the actual Printers, Scanners & Supplies GMV generated from Currys and Argos in 2022Q1, the total estimated miss in Printers, Scanners & Supplies from Currys and Argos in 2022 is $2.9M ($4.1 - $1.2M).
+
+Top 20 sellers in Video Games in 2022 together account for a -$8.1M (-50.3%) YoY growth. 
+Total Video Games GMV from Currys and Argos in 2021 is $3.3M and $0.5M in 2022. 
+With the -50.3% YoY grwoth observed in the top 20 Video Games sellers, we estimate Video Games GMV from Currys and Argos in 2022 to be $1.6M had they stayed on the platform.
+Removing the actual Video Games GMV generated from Currys and Argos in 2022Q1, the total estimated miss in Video Games from Currys and Argos in 2022 is $1.2M ($1.6 - $0.5M).
+*/
+
+
+
+
+
+--Add to Excel Data connection
+
+--Weekly GMV
+select * from p_uk_bc_t.Tech_21_22_GMV
+where seller_id in (991453053,66512606,1046392160);
+
+--Other sellers' YoY growth & YoY Peak uplift
+select 
+categ_lvl2_id
+,categ_lvl2_name
+,seller_id
+,seller_name
+,item_cndtn_id
+,item_condition
+
+--Other sellers' YoY growth
+,sum(case when retail_year=2021 then tot_GMV end) as tot_2021_GMV
+,sum(case when retail_year=2022 then tot_GMV end) as tot_2022_GMV
+
+--Other sellers' YoY Peak uplift
+,sum(case when retail_year=2021 and BBTNW=1 then tot_GMV end) as tot_2021_Peak_RW45_48_GMV
+,sum(case when retail_year=2022 and BBTNW=1 then tot_GMV end) as tot_2022_Peak_RW45_48_GMV
+,sum(case when retail_year=2021 and BBTNW=0 and retail_week between 41 and 44 then tot_GMV end) as tot_2021_BeforePeak_RW41_44_GMV
+,sum(case when retail_year=2022 and BBTNW=0 and retail_week between 41 and 44 then tot_GMV end) as tot_2022_BeforePeak_RW41_44_GMV
+from p_uk_bc_t.Tech_21_22_GMV
+where argos_currys=0 
+and categ_lvl2_id in (
+20710
+,175672
+,11071
+,171961
+,171485
+,139973
+,9355
+)
+group by 1,2,3,4,5,6;
