@@ -149,8 +149,8 @@ select * from store_level_fee_data
 	and t1.ck_trans_id = t2.ck_trans_id
 	and t1.item_id = t2.item_id
 	
-    where 1=1
-    and t2.ck_trans_dt >= '2022-01-01'
+    -- where 1=1
+    -- and t2.ck_trans_dt >= '2022-01-01'
 )
 
 
