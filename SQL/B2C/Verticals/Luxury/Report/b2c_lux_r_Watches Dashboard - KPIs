@@ -1,3 +1,5 @@
+
+
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 ------ GMV and LL by GBP limit (>£1000)----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -53,7 +55,7 @@ FROM DW_LSTG_ITEM AS CK
         ON CK.ITEM_ID = CNDTN.ITEM_ID
 INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID
 INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
-INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR in (2020,2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-3 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 on ck.slr_id = u.user_id
 
@@ -199,7 +201,7 @@ left join (Select
         ON CK.ITEM_ID = CNDTN.ITEM_ID
 INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = CK.SLR_CNTRY_ID
 INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
-INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR in (2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+INNER JOIN DW_CAL_DT CAL ON CK.AUCT_START_DT < CAL.CAL_DT AND CK.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 on ck.slr_id = u.user_id
 
@@ -375,7 +377,7 @@ left join (Select
 -- 	ON ck.LSTG_CURNCY_ID = LPR.CURNCY_ID 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = ck.gmv_dt 
-	and retail_year >= 2019 and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-3 and AGE_FOR_RTL_WEEK_ID <= -1 
 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
@@ -418,7 +420,7 @@ FROM DW_CHECKOUT_TRANS AS ck
 LEFT JOIN  DW_LSTG_ITEM i on ck.item_id = i.item_id and ck.AUCT_END_DT = i.AUCT_END_DT
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = ck.gmv_dt 
-	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
 INNER JOIN DW_CATEGORY_GROUPINGS CAT 
@@ -491,7 +493,7 @@ INNER JOIN (Select item_id,AUCT_END_DT from P_robevans_T.watches_item_gmv1a) a o
 LEFT JOIN DW_LSTG_ITEM i on i.item_id = ck.item_id and i.AUCT_END_dt = ck.AUCT_END_DT
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = ck.gmv_dt 
-	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
 INNER JOIN DW_CATEGORY_GROUPINGS CAT 
@@ -528,7 +530,7 @@ FROM DW_CHECKOUT_TRANS AS CK
 -- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = CK.gmv_dt 
-	and retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
 INNER JOIN DW_CATEGORY_GROUPINGS CAT 
@@ -595,7 +597,7 @@ INNER JOIN (select selleR_id from  P_robevans_T.watches_slr_gmv1) as a on ck.sel
 -- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = CK.gmv_dt 
-	and retail_year in (2020,2021,2022) and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-3 and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
 INNER JOIN DW_CATEGORY_GROUPINGS CAT 
@@ -945,7 +947,7 @@ LEFT JOIN ( select item_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN gro
         ON ck.ITEM_ID = CNDTN.ITEM_ID
 INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = ck.SLR_CNTRY_ID
 INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
-INNER JOIN DW_CAL_DT CAL ON ck.AUCT_START_DT < CAL.CAL_DT AND ck.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2021  and AGE_FOR_RTL_WEEK_ID <= -1 
+INNER JOIN DW_CAL_DT CAL ON ck.AUCT_START_DT < CAL.CAL_DT AND ck.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1  and AGE_FOR_RTL_WEEK_ID <= -1 
 left outer join dw_users u
 on ck.slr_id = u.user_id
 
@@ -1096,7 +1098,7 @@ left join (Select
 -- 	ON ck.LSTG_CURNCY_ID = LPR.CURNCY_ID 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
 	ON CAL.CAL_DT = ck.gmv_dt 
-	and retail_year >= 2021 and AGE_FOR_RTL_WEEK_ID <= -1 
+	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and AGE_FOR_RTL_WEEK_ID <= -1 
 
 left outer join dw_users u
 	on ck.seller_id = u.user_id
