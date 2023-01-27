@@ -1,0 +1,418 @@
+-- Are you able to add slr names (store names) please?
+--Are you also able to add the other metrics? – images 3+, handling times <=24hrs, free returns, Fitment adoption/gap?
+
+
+-- Get UK Listings
+drop table if exists p_inventoryplanning_t.motors_ll_uk_all;
+create  table p_inventoryplanning_t.motors_ll_uk_all as 
+(
+select 
+	i.item_id,
+	i.auct_start_dt,
+	i.auct_end_dt,
+	i.item_site_id,
+	i.slr_id,
+	i.SLR_CNTRY_ID,
+	i.leaf_categ_id,
+	i.photo_count,
+	i.product_id,
+	i.auct_type_code,
+	i.qty_sold,
+	H.HNDLNG_DAY_NUM,
+	f.B2C_C2C
+from access_views.dw_lstg_item i 
+inner join access_views.dw_category_groupings cmp on i.leaf_categ_id=cmp.leaf_categ_id and i.item_site_id=cmp.site_id  and cmp.SITE_ID=3
+LEFT JOIN ACCESS_VIEWS.SSA_SHPMT_LSTG_FACT H
+ON I.ITEM_ID=H.LSTG_ID
+LEFT JOIN ACCESS_VIEWS.CTLG_ITEM_FACT F ON F.ITEM_ID = i.ITEM_ID
+where CMP.bsns_vrtcl_name =  'Parts & Accessories'
+	and (INT(I.ITEM_SITE_ID),INT(I.SLR_CNTRY_ID)) IN ((3,3))
+	and I.auct_start_dt>='2022-06-12'
+	and I.auct_end_dt> CURRENT_DATE
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13
+); 
+-- 19179794 
+
+-- IMAGES AND HANDLING TIME
+drop table if exists p_inventoryplanning_t.motors_ll_IMG_HANDLING;
+create  table p_inventoryplanning_t.motors_ll_IMG_HANDLING as 
+Select slr_id,
+count(distinct item_id) as totall_ll,
+sum(case when photo_count >=3 then 1 else 0 end ) as IMAGE_3_PLUS,
+sum(case when HNDLNG_DAY_NUM <=1 then 1 else 0 end ) as HANDLING_DAYS_LESS_THAN_1
+from p_inventoryplanning_t.motors_ll_uk_all 
+GROUP BY 1
+; 
+-- 179774 
+
+-- Get MPN
+drop table if exists p_inventoryplanning_t.motors_ll_mpn_0;
+create  table p_inventoryplanning_t.motors_ll_mpn_0 as 
+(
+	select 
+	 i.item_site_id,
+	 i.item_id,
+	 i.auct_end_dt,
+	 nf_mpn_gtin,
+	 is_mpn_gtin, 
+	 coalesce(a.nf_mpn_gtin,b.is_mpn_gtin) as mpn_gtin
+from p_inventoryplanning_t.motors_ll_uk_all i 
+left join 
+	(   select 
+		   i.item_id,
+		   auct_end_dt,
+		   Cast(trim(lower(ASPCT_VLU_NM)) AS VARCHAR(350)) AS nf_mpn_GTIN 
+		   from access_views.item_aspct_clssfctn i 
+		   inner join (select item_id from p_inventoryplanning_t.motors_ll_uk_all group by 1) l on i.item_id=l.item_id
+			where ns_type_cd='nf' 
+			and lower(prdct_aspct_nm) in ('mpn','manufacturer part number') 
+			and replace(trim(lower(aspct_vlu_nm)),' ','') not in ('doesnotapply','nonapplicabile','na','n/a','notapplicable'
+			,'unbekannt','nichtzutreffend')
+			and auct_end_dt>date'2022-11-06'
+		group by 1,2,3
+	) a on a.item_id=i.item_id and a.auct_end_dt=i.auct_end_dt
+left join 
+	(   select 
+		i.item_id,
+		auct_end_dt,
+		Cast(Trim(Lower(ASPCT_VLU_NM)) AS VARCHAR(350)) AS is_mpn_GTIN 
+		from access_views.ITEM_ASPCT_CLSSFCTN i
+		inner join (select item_id from p_inventoryplanning_t.motors_ll_uk_all group by 1) l on i.item_id=l.item_id 
+		where ns_type_cd='is1' 
+		and lower(prdct_aspct_nm) in ('mpn','manufacturer part number')  
+		and replace(trim(lower(aspct_vlu_nm)),' ','') not in ('doesnotapply','nonapplicabile','na','n/a','notapplicable'
+		,'unbekannt','nichtzutreffend')
+		and auct_end_dt>'2022-11-06'
+		group by 1,2,3
+	) b on b.item_id=i.item_id and b.auct_end_dt=i.auct_end_dt 
+);
+-- 39871621 
+
+drop table if exists p_inventoryplanning_t.motors_ll_mpn;
+create  table p_inventoryplanning_t.motors_ll_mpn as 
+(
+select 
+	item_site_id,
+	item_id,
+	auct_end_dt,
+	case when mpn_gtin is not null then 1 else 0 end as mpn_flag 
+from p_inventoryplanning_t.motors_ll_mpn_0 
+group by 1,2,3,4
+);
+
+
+----------------------
+-- Get gtin
+drop table if exists p_inventoryplanning_t.motors_ll_gtin_0;
+create temporary table p_inventoryplanning_t.motors_ll_gtin_0 as 
+(
+	select 
+	 i.item_site_id,
+	 i.item_id,
+	 i.auct_end_dt,
+	 nf_mpn_gtin,
+	 is_mpn_gtin, 
+	 coalesce(a.nf_mpn_gtin,b.is_mpn_gtin) as mpn_gtin
+from p_inventoryplanning_t.motors_ll_uk_all i 
+left join 
+	(   select 
+		   i.item_id,
+		   auct_end_dt,
+		   Cast(trim(lower(ASPCT_VLU_NM)) AS VARCHAR(350)) AS nf_mpn_GTIN 
+		   from access_views.item_aspct_clssfctn i 
+		   inner join (select item_id from p_inventoryplanning_t.motors_ll_uk_all group by 1) l on i.item_id=l.item_id
+			where ns_type_cd='nf' 
+			and lower(prdct_aspct_nm) in ('gtin') 
+			and replace(trim(lower(aspct_vlu_nm)),' ','') not in ('doesnotapply','nonapplicabile','na','n/a','notapplicable'
+			,'unbekannt','nichtzutreffend')
+			and auct_end_dt>'2022-11-06'
+		group by 1,2,3
+	) a on a.item_id=i.item_id and a.auct_end_dt=i.auct_end_dt
+left join 
+	(   select 
+		i.item_id,
+		auct_end_dt,
+		Cast(Trim(Lower(ASPCT_VLU_NM)) AS VARCHAR(350)) AS is_mpn_GTIN 
+		from access_views.ITEM_ASPCT_CLSSFCTN i
+		inner join (select item_id from p_inventoryplanning_t.motors_ll_uk_all group by 1) l on i.item_id=l.item_id 
+		where ns_type_cd='is1' 
+		and lower(prdct_aspct_nm) in ('gtin')  
+		and replace(trim(lower(aspct_vlu_nm)),' ','') not in ('doesnotapply','nonapplicabile','na','n/a','notapplicable'
+		,'unbekannt','nichtzutreffend')
+		and auct_end_dt>'2022-11-06'
+		group by 1,2,3
+	) b on b.item_id=i.item_id and b.auct_end_dt=i.auct_end_dt 
+);
+
+drop table if exists p_inventoryplanning_t.motors_ll_gtin;
+create temporary table p_inventoryplanning_t.motors_ll_gtin as 
+(
+select 
+	item_site_id,
+	item_id,
+	auct_end_dt,
+	case when mpn_gtin is not null then 1 else 0 end as gtin_flag 
+from p_inventoryplanning_t.motors_ll_gtin_0 
+group by 1,2,3,4
+);
+
+-------------------------
+-- Get upc
+drop table if exists p_inventoryplanning_t.motors_ll_upc_0;
+create temporary table p_inventoryplanning_t.motors_ll_upc_0 as 
+(
+	select 
+	 i.item_site_id,
+	 i.item_id,
+	 i.auct_end_dt,
+	 nf_mpn_gtin,
+	 is_mpn_gtin, 
+	 coalesce(a.nf_mpn_gtin,b.is_mpn_gtin) as mpn_gtin
+from p_inventoryplanning_t.motors_ll_uk_all i 
+left join 
+	(   select 
+		   i.item_id,
+		   auct_end_dt,
+		   Cast(trim(lower(ASPCT_VLU_NM)) AS VARCHAR(350)) AS nf_mpn_GTIN 
+		   from access_views.item_aspct_clssfctn i 
+		   inner join (select item_id from p_inventoryplanning_t.motors_ll_uk_all group by 1) l on i.item_id=l.item_id
+			where ns_type_cd='nf' 
+			and lower(prdct_aspct_nm) in ('upc') 
+			and replace(trim(lower(aspct_vlu_nm)),' ','') not in ('doesnotapply','nonapplicabile','na','n/a','notapplicable'
+			,'unbekannt','nichtzutreffend')
+			and auct_end_dt>'2022-11-06'
+		group by 1,2,3
+	) a on a.item_id=i.item_id and a.auct_end_dt=i.auct_end_dt
+left join 
+	(   select 
+		i.item_id,
+		auct_end_dt,
+		Cast(Trim(Lower(ASPCT_VLU_NM)) AS VARCHAR(350)) AS is_mpn_GTIN 
+		from access_views.ITEM_ASPCT_CLSSFCTN i
+		inner join (select item_id from p_inventoryplanning_t.motors_ll_uk_all group by 1) l on i.item_id=l.item_id 
+		where ns_type_cd='is1' 
+		and lower(prdct_aspct_nm) in ('upc')  
+		and replace(trim(lower(aspct_vlu_nm)),' ','') not in ('doesnotapply','nonapplicabile','na','n/a','notapplicable'
+		,'unbekannt','nichtzutreffend')
+		and auct_end_dt>'2022-11-06'
+		group by 1,2,3
+	) b on b.item_id=i.item_id and b.auct_end_dt=i.auct_end_dt 
+);
+
+drop table if exists p_inventoryplanning_t.motors_ll_upc;
+create temporary table p_inventoryplanning_t.motors_ll_upc as 
+(
+select 
+	item_site_id,
+	item_id,
+	auct_end_dt,
+	case when mpn_gtin is not null then 1 else 0 end as upc_flag 
+from p_inventoryplanning_t.motors_ll_upc_0 
+group by 1,2,3,4
+);
+--19179794 
+----- Image count
+--select * from p_inventoryplanning_t.motors_ll_uk_all;
+
+
+ -----------------------------
+ -- FITMENT
+ DROP TABLE IF EXISTS  p_inventoryplanning_t.motors_ll_aspects_FITMENT ;
+ CREATE TABLE p_inventoryplanning_t.motors_ll_aspects_FITMENT AS (
+ 
+ SELECT slr_id, 
+ SUM(FITMENT_ADOPTD_Flag) FITMENT_ADOPTD_Flag ,
+ COUNT(DISTINCT ITEM_ID ) ENABLED_LL 
+ FROM (
+ 
+ SELECT  slr_id , ITEM_ID, MAX(FITMENT_ADOPTD_Flag) AS FITMENT_ADOPTD_Flag FROM (
+SELECT
+(select distinct RETAIL_WEEK from dw_cal_dt where age_for_rtl_week_id = -1) as RETAIL_WEEK,
+(select distinct RETAIL_YEAR from dw_cal_dt where age_for_rtl_week_id = -1) as retail_year,
+I.slr_id,
+us.user_slctd_id,
+--case when  COND.CNDTN_ROLLUP_ID =  1 then 'New' when  COND.CNDTN_ROLLUP_ID =  2 then 'Refurb' when  COND.CNDTN_ROLLUP_ID =  3 then 'Used' else 'Other' end as item_cond,
+CASE WHEN(CAST (CASE WHEN CAST (I.flags10 as INT) < 0  THEN
+CAST (I.flags10 as INT) + cast (2147483648  as int)
+ELSE CAST (I.flags10 AS INT  )  END AS   INT  ) & 64 ) >= 1 THEN 1 ELSE 0 END 
+AS FITMENT_ADOPTD_Flag,
+--CASE WHEN CATEG_LVL2_ID IN (25622,10063,96382,21670,180035,122304,84149,184632) then 1 else 0 end MCYCL_Flag,
+--CASE WHEN CATEG_LVL2_ID NOT IN (25622,10063,96382,21670,180035,122304,84149) then 1 else 0 end CAR_Flag,
+i.item_id
+
+from ( select distinct slr_id , auct_start_dt,AUCT_END_DT ,  ITEM_SITE_ID ,  ITEM_ID, auct_titl,flags10,AUCT_TYPE_CODE , SLR_CNTRY_ID, leaf_categ_id , WACKO_YN 
+								from DW_LSTG_ITEM
+								where AUCT_END_DT> current_date and AUCT_TYPE_CODE NOT IN (10,15) and SLR_CNTRY_ID=3 and WACKO_YN = 'N' )   I 
+-- INNER JOIN ( SELECT DISTINCT  flags10, ITEM_ID , AUCT_END_DT, auct_titl FROM  DW_LSTG_ITEM_COLD WHERE AUCT_END_DT >current_date  GROUP BY 1,2,3,4 ) COLD ON I.ITEM_ID = COLD.ITEM_ID AND I.AUCT_END_DT = COLD.AUCT_END_DT
+INNER JOIN (SELECT leaf_categ_id,bsns_vrtcl_name,categ_lvl2_id,categ_lvl3_id,categ_lvl2_name,categ_lvl3_name FROM DW_CATEGORY_GROUPINGS where site_id = 3 and bsns_Vrtcl_name = 'Parts & Accessories' group by 1,2,3,4,5,6) cat ON I.leaf_categ_id = cat.leaf_categ_id  
+INNER JOIN (select distinct user_id , user_slctd_id from dw_users )  us ON I.slr_id=us.user_id
+INNER JOIN (selECT CAL_DT,RETAIL_YEAR, Retail_week,QTR_OF_YEAR_ID, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT where retail_year >=2022 and age_for_rtl_week_id = -1 group by 1,2, 3, 4,5 ) CAL
+ON I.AUCT_START_DT < CAL.CAL_DT AND I.AUCT_END_DT >= CAL.CAL_DT  
+INNER JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_new WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   ON I.ITEM_SITE_ID=F.SITE_ID AND I.LEAF_CATEG_ID=F.LEAF_CATEG_ID 
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN WHERE AUCT_END_DT >current_date group by 1,2 ) AS COND 
+   ON COND.ITEM_ID = i.ITEM_ID
+LEFT JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+        AND USEGM_ID = 206 
+        AND END_DATE >= '2020-01-01' group by 1,2,3,4,5   )AS HIST         ON HIST.USER_ID =  I.SLR_ID        AND  I.AUCT_START_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE                                          
+INNER JOIN (SELECT DISTINCT SLR_ID FROM  p_inventoryplanning_t.motors_ll_uk_all )  X ON  I.slr_id=X.slr_id
+WHERE 1=1
+AND I.WACKO_YN = 'N'
+AND I.AUCT_END_DT > CURRENT_DATE
+-- AND COLD.AUCT_END_DT > current_date
+AND I.ITEM_SITE_ID IN (3)         
+AND F.SITE_ID = 3
+AND I.AUCT_TYPE_CODE NOT IN (10,15)
+AND I.SLR_CNTRY_ID=3 
+AND CAT.bsns_vrtcl_name='Parts & Accessories'
+AND  HIST.USEGM_ID = 206
+AND fmt_enabled = 'Y') GROUP BY 1,2)
+GROUP BY 1);
+
+------------
+-- FREE RETURN
+ DROP TABLE IF EXISTS  p_inventoryplanning_t.motors_ll_aspects_RETURN ;
+ CREATE TABLE p_inventoryplanning_t.motors_ll_aspects_RETURN AS (
+ 
+SELECT a.SLR_ID,
+SLR_NAME,
+SUM(LL_CNT) AS TOT_LL,
+SUM(RETURN_CNT_AGG) AS RETURN_CNT,
+RETURN_CNT/TOT_LL AS ADOPTION,
+TOT_LL-RETURN_CNT AS NON_ADOPTED_CNT
+FROM P_PA_PR_T.LQS_RESULT_DAILY_SLR_CATEG a
+INNER JOIN (SELECT DISTINCT SLR_ID FROM  p_inventoryplanning_t.motors_ll_uk_all )  X ON  A.slr_id=X.slr_id
+WHERE CAL_DT='2022-11-30' 
+AND ITEM_SITE_ID IN (3)
+GROUP BY 1,2);
+SELECT * FROM p_inventoryplanning_t.motors_ll_aspects_RETURN ; -- 1193121968
+ /*
+SELECT a.SLR_ID,
+SLR_NAME,
+SUM(LL_CNT) AS TOT_LL,
+SUM(RETURN_CNT_AGG) AS RETURN_CNT,
+RETURN_CNT/TOT_LL AS ADOPTION,
+TOT_LL-RETURN_CNT AS NON_ADOPTED_CNT
+FROM P_PA_PR_T.LQS_RESULT_DAILY_SLR_CATEG a
+--INNER JOIN (SELECT DISTINCT SLR_ID FROM  p_inventoryplanning_t.motors_ll_uk_all )  X ON  A.slr_id=X.slr_id
+WHERE CAL_DT='2022-11-30' 
+AND ITEM_SITE_ID IN (3)
+AND A.SLR_ID = 1193121968
+GROUP BY 1,2;
+*/
+----------------------------------------------------------------------------------
+-- Join to get adoption
+Drop table if exists p_inventoryplanning_t.motors_ll_aspects_adoption;
+create table  p_inventoryplanning_t.motors_ll_aspects_adoption as 
+select 
+l.slr_id
+, count(1) as itm_cnt
+, sum(mpn_flag) as mpn_cnt
+, sum(gtin_flag) as gtin_cnt
+, sum(upc_flag) as upc_cnt
+, sum(case when (mpn_flag+gtin_flag+upc_flag)>0 then 1 else 0 end) general_mpn_cnt
+from p_inventoryplanning_t.motors_ll_uk_all l
+left join p_inventoryplanning_t.motors_ll_mpn m on l.item_id=m.item_id 
+left join p_inventoryplanning_t.motors_ll_gtin g on l.item_id=g.item_id
+left join p_inventoryplanning_t.motors_ll_upc u on l.item_id=u.item_id
+group by 1 
+;
+--179774 
+SELECT * FROM p_inventoryplanning_t.motors_ll_aspects_adoption; 
+--select * from  p_inventoryplanning_t.motors_mpn_adoption limit 1000;
+--select * from  p_inventoryplanning_t.motors_ll_aspects_adoption where itm_cnt >=50  limit 1000;
+--select count(*) from  p_inventoryplanning_t.motors_ll_aspects_adoption where itm_cnt >=50  limit 1000;
+-- 8890
+
+
+-------JOIN THE IMAGE , HANDLING TIME TABLES AND FITMENT 
+Drop table if exists p_inventoryplanning_t.motors_ll_aspects_adoption_seller;
+create table  p_inventoryplanning_t.motors_ll_aspects_adoption_seller as 
+select l.*, 
+u.USER_SLCTD_ID, 
+h.IMAGE_3_PLUS,
+H.HANDLING_DAYS_LESS_THAN_1, 
+H.TOTALL_LL,
+F.FITMENT_ADOPTD_FLAG,
+F.ENABLED_LL,
+G.TOT_LL,
+G.RETURN_CNT
+from  p_inventoryplanning_t.motors_ll_aspects_adoption l
+left join  DW_USERs U ON U.USER_ID= l.Slr_ID 
+left join  p_inventoryplanning_t.motors_ll_IMG_HANDLING  h on  l.Slr_ID=h.Slr_ID --- select * from  p_inventoryplanning_t.motors_ll_IMG_HANDLING 
+LEFT JOIN   p_inventoryplanning_t.motors_ll_aspects_FITMENT F  ON l.Slr_ID=F.Slr_ID
+left join  p_inventoryplanning_t.motors_ll_aspects_RETURN G  ON l.Slr_ID=G.Slr_ID
+where itm_cnt >=50
+;
+SELECT * FROM  p_inventoryplanning_t.motors_ll_aspects_adoption_seller;
+ 
+ 
+Drop table if exists p_inventoryplanning_t.motors_ll_aspects_adoption_TW;
+create table  p_inventoryplanning_t.motors_ll_aspects_adoption_TW as 
+SELECT 
+( select distinct retail_year from DW_CAL_DT where AGE_FOR_WEEK_ID =0) as Retail_year,
+( select distinct retail_week from DW_CAL_DT where AGE_FOR_WEEK_ID =0) as Retail_week,
+slr_id,
+USER_SLCTD_ID,
+itm_cnt,
+mpn_cnt,
+gtin_cnt,
+upc_cnt,
+general_mpn_cnt,
+IMAGE_3_PLUS,
+HANDLING_DAYS_LESS_THAN_1,
+IFNULL(FITMENT_ADOPTD_FLAG,0) FITMENT_ADOPTD_FLAG,
+IFNULL(ENABLED_LL,0) ENABLED_LL,
+ifnull( IFNULL(FITMENT_ADOPTD_FLAG,0)/ IFNULL(ENABLED_LL,0) ,0)  AS FITMENT_ADOPTION,
+mpn_cnt/itm_cnt AS MPN_PC,
+gtin_cnt/itm_cnt AS GTIN_PC,
+upc_cnt/itm_cnt AS UPC_PC,
+general_mpn_cnt/itm_cnt AS GENERAL_MPN_PC,
+IMAGE_3_PLUS/itm_cnt AS IMG_3_PLUS_PC,
+HANDLING_DAYS_LESS_THAN_1/itm_cnt AS HDT_LESS_1_PC,
+IFNULL(RETURN_CNT,0)/IFNULL(TOT_LL,0) AS fREE_RETURN_ADOPTION
+FROM  p_inventoryplanning_t.motors_ll_aspects_adoption_seller;
+ -- 9840 
+ 
+
+ 
+--SELECT COUNT(*) FROM p_inventoryplanning_t.motors_ll_aspects_adoption_Output LIMIT 1000;
+
+--dROP TABLE IF EXISTS   p_inventoryplanning_t.motors_ll_aspects_adoption_Output ;
+--Create  Table  p_inventoryplanning_t.motors_ll_aspects_adoption_Output AS 
+---SELECT * FROM  p_inventoryplanning_t.motors_ll_aspects_adoption_TW  ;
+
+INSERT INTO   p_inventoryplanning_t.motors_ll_aspects_adoption_Output  
+SELECT * FROM   p_inventoryplanning_t.motors_ll_aspects_adoption_TW  
+;
+---------------------
+
+drop table if exists p_inventoryplanning_t.motors_ll_uk_all;
+drop table if exists p_inventoryplanning_t.motors_ll_IMG_HANDLING;
+drop table if exists p_inventoryplanning_t.motors_ll_mpn_0;
+drop table if exists p_inventoryplanning_t.motors_ll_mpn;
+drop table if exists p_inventoryplanning_t.motors_ll_gtin_0;
+drop table if exists p_inventoryplanning_t.motors_ll_gtin;
+drop table if exists p_inventoryplanning_t.motors_ll_upc_0;
+drop table if exists p_inventoryplanning_t.motors_ll_upc;
+DROP TABLE IF EXISTS  p_inventoryplanning_t.motors_ll_aspects_FITMENT ;
+Drop table if exists p_inventoryplanning_t.motors_ll_aspects_adoption;
+Drop table if exists p_inventoryplanning_t.motors_ll_aspects_adoption_seller;
+
+----------------
+/*
+select * from   p_inventoryplanning_t.motors_ll_aspects_adoption limit 100; 
+
+SELECT a.SLR_ID,SLR_NAME,
+SUM(LL_CNT) AS TOT_LL,
+SUM(RETURN_CNT_AGG) AS RETURN_CNT,
+RETURN_CNT/TOT_LL AS ADOPTION,
+TOT_LL-RETURN_CNT AS NON_ADOPTED_CNT
+FROM P_PA_PR_T.LQS_RESULT_DAILY_SLR_CATEG a
+inner join ( select distinct slr_id from  p_inventoryplanning_t.motors_ll_aspects_adoption_OUTPUT ) b on a.slr_id=b.slr_id
+WHERE CAL_DT='2022-11-30' 
+AND ITEM_SITE_ID IN (3)
+GROUP BY 1,2
+ORDER BY 6 DESC
+LIMIT 1000;
+*/
