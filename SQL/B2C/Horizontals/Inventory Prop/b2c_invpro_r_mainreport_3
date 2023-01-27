@@ -285,6 +285,7 @@ LEFT JOIN P_WAJ_T.Forecast_UK_Verticals1_v1 B
 ON trim(A.VERTICAL)=trim(b.vertical) AND A.RETAIL_WEEK=B.RETAIL_WEEK
 LEFT JOIN ACCESS_VIEWS.DW_CAL_DT DT
 ON DT.age_for_rtl_year_id=0 AND A.RETAIL_WEEK=DT.RETAIL_WEEK
+-- ON DT.RETAIL_YEAR=2022 AND A.RETAIL_WEEK=DT.RETAIL_WEEK
 GROUP BY 1,2,3,4,5,6,7,8
 ;
 
@@ -306,6 +307,7 @@ LEFT JOIN P_WAJ_T.Forecast_UK_Verticals1_v1 B
 ON trim(A.VERTICAL)=trim(b.vertical) AND A.RETAIL_WEEK=B.RETAIL_WEEK 
 LEFT JOIN ACCESS_VIEWS.DW_CAL_DT DT
 ON DT.age_for_rtl_year_id=0 AND A.RETAIL_WEEK=DT.RETAIL_WEEK
+-- ON DT.RETAIL_YEAR=2022 AND A.RETAIL_WEEK=DT.RETAIL_WEEK
 GROUP BY 1,2,3,4,5,6,7,8
 ;
 
@@ -314,7 +316,7 @@ create table p_eupricing_t.ly_qtr
 select  a.retail_week,a.AGE_FOR_RTL_WEEK_ID,a.RETAIL_WK_END_DATE , b.AGE_FOR_RTL_WEEK_ID AGE_FOR_RTL_WEEK_ID_ly , b.RETAIL_WK_END_DATE as RETAIL_WK_END_DATE_ly 
 from access_views.dw_cal_dt as a 
 join access_views.dw_cal_dt as b on a.AGE_FOR_RTL_WEEK_ID-52=b.AGE_FOR_RTL_WEEK_ID
-where a.retail_year=2022 and a.AGE_FOR_RTL_WEEK_ID<=-1 group by 1,2,3,4,5;
+where a.AGE_FOR_RTL_YEAR_ID>=-1 and a.AGE_FOR_RTL_WEEK_ID<=-1 group by 1,2,3,4,5;
 
 --- INVENTORY PROP CODE ENDS ------------------------------------
 
@@ -386,6 +388,7 @@ cal.age_for_rtl_week_id
 ,ck.item_id        
 ,inv.new_vertical as vertical   
 ,inv.inventory_prop as inventory_prop
+,cndtn.ITEM_CNDTN_ID
 ,sum(ck.quantity) as BI
 ,sum(ck.gmv_plan_usd) as gmv
 
@@ -426,7 +429,7 @@ and ck.auct_end_dt >= '2018-12-25'
 and ck.gmv_dt between  '2018-12-25' and current_date
 and cal.age_for_rtl_week_id<0
 and inv.new_vertical not in ('Vehicles', 'Unknown', 'Real Estate') 
-group by 1,2,3,4,5,6,7,8,9,10,11);
+group by 1,2,3,4,5,6,7,8,9,10,11,12);
 
 drop table if exists P_CSI_TBS_T.UKI_FINAL_v2_trading;
 create table P_CSI_TBS_T.UKI_FINAL_v2_trading as (
@@ -439,6 +442,7 @@ base.age_for_rtl_week_id
 ,base.retail_week 
 ,base.vertical
 ,base.inventory_prop
+,base.item_cndtn_id
 ,cat.meta_categ_id
 ,cat.meta_categ_name
 ,cat.categ_lvl2_id
@@ -452,7 +456,7 @@ inner join prs_restricted_v.slng_lstg_super_fact lstg
 on base.item_id = lstg.item_id       
 inner join (select meta_categ_id,meta_categ_name,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,leaf_categ_id from access_views.dw_category_groupings where sap_category_id not in (5,7,41,23,-999) and site_id=3 group by 1,2,3,4,5,6,7) cat
 on lstg.leaf_categ_id = cat.leaf_categ_id 
-group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14);
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15);
 	
 -- QTR NUMBERS
 
