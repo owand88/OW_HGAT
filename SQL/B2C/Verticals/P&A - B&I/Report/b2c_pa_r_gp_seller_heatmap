@@ -1,0 +1,1523 @@
+-- Green Parts Sellers Heatmap
+
+--1. New listings graded. exclude seatbelts, air bags and tyres. flag lower than 25pc
+--2. MPN % of new listings
+--3. http. photo 
+--4. listings description
+--5. Aspects item specifics. check with garage experience
+--6. fitment adoption
+--7.Seller premium service. How many listings qualify for premium service but not using
+--8. GMV
+--9. Images
+--10.Shipping : LIstings with free delivery
+--11. Heatmap 
+--12. Weekly New listings
+--13. Seller Standard
+--14. Weekly for all listings MPN and Grade rates
+-- -----------------------------------------------------------------------------------------
+
+-- delete 
+--select count(*) from P_ICHAN_T.recyclers_upload;
+-- CONVERT TO DELTA   P_ICHAN_T.recyclers_upload;
+--DELETE FROM  P_ICHAN_T.recyclers_upload WHERE eBay_id='Picupspares (DUPLICATE)';
+
+--- create backup
+--drop table  P_ICHAN_T.recyclers_upload_2 ; 
+--create table P_ICHAN_T.recyclers_upload_2 as  select * from  P_ICHAN_T.recyclers_upload;
+--select * from  P_ICHAN_T.recyclers_upload_2;
+--select * from  P_ICHAN_T.recyclers_upload_3  ;
+
+
+--create table P_ICHAN_T.recyclers_upload_3 as 
+--select a.*, case when seller_name in 
+--('picupspares',--'reclamet25','dlhautorecyclersltd','overtongarage','dronsfieldsindependentmercedes0333','e-copart','great_bridge_parts','charlestrentlimited','quinnautoparts','greenpartsmart','asm.auto.recycling.ltd','morgan-autosalvage','a-z-vehicledismantlers','traynorsmotorstore','dixonsvauxhallspares','nis-spec1st',
+--'ted4parts','charltonautoparts') then 1 else 0 end as exactlinc from   P_ICHAN_T.recyclers_upload_2 a ;
+
+ -- recreate the table 
+--drop table  P_ICHAN_T.recyclers_upload;
+--create table   P_ICHAN_T.recyclers_upload
+--select * from  P_ICHAN_T.recyclers_upload_3;
+
+
+--select * from  P_ICHAN_T.recyclers_upload order by digital_lister  desc ; 
+--CONVERT TO DELTA   P_ICHAN_T.recyclers_upload ; 
+--UPDATE P_ICHAN_T.recyclers_upload SET digital_lister = 1 WHERE seller_name ='reclamet25';
+--CONVERT TO DELTA   P_ICHAN_T.recyclers_upload ; 
+--UPDATE P_ICHAN_T.recyclers_upload SET digital_lister = 1 WHERE seller_name ='picupspares'
+
+--CONVERT TO DELTA   P_ICHAN_T.recyclers_upload ; 
+--UPDATE P_ICHAN_T.recyclers_upload SET digital_lister = 0 WHERE seller_name='asm.auto.recycling.ltd';
+-- ------------------------
+-- Green Parts total LL
+-- select * from  p_ichan_t.gp_ll_mpn_a where Slr_ID=166747440
+
+Drop table if exists   p_ichan_t.gp_ll_HEATMAP ;
+create table  p_ichan_t.gp_ll_HEATMAP as 
+(
+select 
+MPN,
+ManufacturerPartNumber,
+Grade,
+lst.Item_id,
+lst.Slr_ID,
+  U.USER_SLCTD_ID,
+  lst.AUCT_START_DT,
+  cal.retail_year,
+  cal.retail_week,
+   CAT.meta_categ_id, 
+	 CAT.CATEG_LVL2_ID, 
+	 CAT.categ_lvl2_name, 
+	  CAT.CATEG_LVL3_ID, 
+	 CAT.categ_lvl3_name, 
+	  CAT.CATEG_LVL4_ID, 
+	 CAT.categ_lvl4_name,site_id
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+inner join ( select distinct  seller_id from  P_ICHAN_T.recyclers_upload)  c on lst.slr_id=c.seller_id-- select * from   P_ICHAN_T.recyclers_upload order by seller_id rank where seller_id =1077516705
+--inner join P_ICHAN_T.certified_ll   c on lst.Slr_ID=c.SLr_ID
+left join (select
+						upper(ASPCT_VLU_NM) as MPN,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('mpn' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) bbase
+				ON lst.ITEM_ID = bbase.ITEM_ID
+		
+				
+				left join (select
+						upper(ASPCT_VLU_NM) as ManufacturerPartNumber,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('manufacturer part number' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) cbase
+				ON lst.ITEM_ID = cbase.ITEM_ID
+		left join (select
+						upper(ASPCT_VLU_NM) as Grade,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('grade' )--- and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) gbase
+				ON lst.ITEM_ID = gbase.ITEM_ID
+		
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        	ON CAL.CAL_DT =lst.AUCT_START_DT AND retail_year >=2022 and age_for_rtl_week_id <= -1 and lst.AUCT_START_DT >= '2021-03-01'--  and  age_for_rtl_week_id >= -10
+--INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+--INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON  CAL.CAL_DT = lst.CREATED_DT AND 				RETAIL_YEAR >= 2017
+--INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 
+--				ON Lstg.AUCT_START_DT < CAL.CAL_DT AND Lstg.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2019  and AGE_FOR_RTL_WEEK_ID >= -10
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID and retail_year >=  2020
+--INNER JOIN dw_lstg_item_cold lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--WHERE lst.AUCT_end_dt >= date -- limiit on live listings
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+ and categ_lvl2_id in (6030)
+ --and categ_lvl2_name in ('Car Parts')
+ --and lst.AUCT_end_dt >= CURRENT_DATE
+ );
+ -- 362547 
+/* Drop table if exists  p_ichan_t.gp_ll_grade_verify ; 
+create table  p_ichan_t.gp_ll_grade_verify as  
+select
+						upper(ASPCT_VLU_NM) as Grade,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('grade' )--  and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2018-01-01'
+						 and item_id in ( select distinct item_id from  p_ichan_t.gp_ll )
+						 group by 1,2,3,4; 
+						 select * from p_ichan_t.gp_ll_grade_verify ;  */
+ -- update recycler lists
+--Select  USER_ID, USER_SLCTD_ID from  DW_USERs where USER_SLCTD_ID in ( 'i-need-spares');
+--select * from P_ICHAN_T.recyclers_upload where seller_id in (1161373565,1399251618,867162196,337981112,1031172561);
+--CONVERT TO DELTA  P_ICHAN_T.recyclers_upload
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'bradgatemotors', 'bradgatemotors',1161373565,1);
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'i-need-spares', 'i-need-spares',1399251618,1);
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'bradgatecommercial', 'bradgatecommercial',867162196,1);
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'netty4me', 'netty4me',337981112,1);
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'gala_motors', 'gala_motors',1031172561,1);
+
+-- DELETE FROM P_ICHAN_T.recyclers_upload WHERE seller_name ='synetiq';
+ 
+ 
+ -- digital listers
+-- Select * from  p_ichan_t.gp_ll limit 100 ;
+ 
+ 
+--select * from p_ichan_t.gp_ll 
+dROP TABLE  if exists   p_ichan_t.gp_ll_mpn_a ;
+create table   p_ichan_t.gp_ll_mpn_a as (
+SELECT
+i.seller_id,i.seller_name,  portal_seller,rank,digital_lister,exactlinc,
+Item_id,
+Retail_year, Retail_week,
+AUCT_START_DT,
+Slr_ID,
+USER_SLCTD_ID,
+meta_categ_id,
+CATEG_LVL2_ID,
+categ_lvl2_name,
+CATEG_LVL3_ID,
+categ_lvl3_name,
+CATEG_LVL4_ID,
+categ_lvl4_name,
+MPN,
+case when MPN is null then 0
+	when MPN ='DOES NOT APPLY' then 0
+	when MPN ='DOESNOTAPPLY' then 0 
+	when MPN ='N/A' then 0
+	when MPN ='GENUINE' then 0 
+	else 1 end as MPN_Flag,
+ManufacturerPartNumber,
+case when ManufacturerPartNumber is null then 0
+	when ManufacturerPartNumber ='DOES NOT APPLY' then 0
+	when ManufacturerPartNumber ='DOESNOTAPPLY' then 0
+	when ManufacturerPartNumber ='N/A'  then 0
+	when ManufacturerPartNumber ='GENUINE' then 0
+	else 1 end as ManufacturerPartNumber_Flag,
+	
+Grade,
+Case when Grade is null then 0 else 1 end as Grade_y
+	from   p_ichan_t.gp_ll_HEATMAP a
+	inner join   P_ICHAN_T.recyclers_upload i on a.slr_id=i.seller_id);
+-- 429281 
+-- select * from p_ichan_t.gp_ll_mpn_a
+select * from   p_ichan_t.gp_ll_HEATMAP a where grade is not null;
+
+-- take max
+--select * from p_ichan_t.gp_ll 
+dROP TABLE  if exists   p_ichan_t.gp_ll_max ;
+create table   p_ichan_t.gp_ll_max as (
+SELECT
+seller_id,
+seller_name,  
+portal_seller,
+digital_lister,
+exactlinc,
+rank,
+Item_id,
+Retail_year, 
+Retail_week,
+AUCT_START_DT,
+Slr_ID,
+USER_SLCTD_ID,
+meta_categ_id,
+CATEG_LVL2_ID,
+categ_lvl2_name,
+CATEG_LVL3_ID,
+categ_lvl3_name,
+CATEG_LVL4_ID,
+categ_lvl4_name,
+max(MPN_flag)  as MPN_flag,
+max(ManufacturerPartNumber_Flag ) as ManufacturerPartNumber_Flag,
+max(Grade_y)  as Grade_y
+from p_ichan_t.gp_ll_mpn_a-- SELECT * FROM  p_ichan_t.gp_ll_mpn_a ORDER BY  Grade_y DESC ;
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19) ;
+-- 357711 
+-- SELECT * FROM  p_ichan_t.gp_ll_max_ROW ORDER BY  Grade_y DESC ;
+--select retail_year, retail_week,  count(distinct item_id) ll, sum(grade_y ) y_grade from   p_ichan_t.gp_ll_max group by 1,2 order by 1,2   where user_slctd_id ='ted4parts' order by item_id  and  MPN_flag+ManufacturerPartNumber_Flag <1  and grade_y=0 and retail_week >=38
+--select * from   p_ichan_t.gp_ll_max ; 
+
+drop table if exists  p_ichan_t.gp_ll_max_row; 
+create table p_ichan_t.gp_ll_max_row as (select * from 
+( select row_number () over ( partition by item_id order by Grade_y DESC ,mpn_flag desc, ManufacturerPartNumber_Flag DESC )  as rownumber,* 
+from  p_ichan_t.gp_ll_MPN_A ) where rownumber =1 )  ; 
+
+-- SELECT  * from  p_ichan_t.gp_ll_max   order by Grade_y DESC LIMIT 1000;
+-- 1.seller view Listings with grade
+dROP TABLE  if exists   p_ichan_t.gp_grade_output ;
+create table   p_ichan_t.gp_grade_output as (
+select 
+portal_seller,
+digital_lister,
+Retail_year,
+Retail_week,
+Slr_ID,
+USER_SLCTD_ID,
+meta_categ_id,
+CATEG_LVL2_ID,
+categ_lvl2_name,
+CATEG_LVL3_ID,
+categ_lvl3_name,
+CATEG_LVL4_ID,
+categ_lvl4_name,
+case 	when retail_year >=2022  then 'Y'
+	else 'N' end as Include_in_pivot ,
+case when grade_y= 1 then 'Y' else 'N' end as grade, 
+count(distinct item_id) ll 
+from  p_ichan_t.gp_ll_max_row
+where categ_lvl4_id not  in( 72229,174073) 
+and  retail_year >=2022  and retail_week >=26
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) ;
+-- 29331 
+-- select *  from  p_ichan_t.gp_ll_max ;
+
+
+dROP TABLE  if exists   p_ichan_t.gp_grade_pc ;
+create table   p_ichan_t.gp_grade_pc as (
+select  Retail_year, retail_week , Slr_ID,USER_SLCTD_ID,sum(case when grade='Y' then  ll else 0 end )/sum(ll)as graded_pc 
+from  ( select * from p_ichan_t.gp_grade_output    where  RETAIL_YEAR=EXTRACT(YEAR FROM CURRENT_DATE))
+where retail_week in (select distinct retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID =-1) group by 1,2,3,4 );
+-- select * from p_ichan_t.gp_grade_pc ;
+-- select distinct retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID =-1 group by 1,2, 3, 4
+
+-- select * from p_ichan_t.gp_grade_pc ;
+-- select distinct retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID =-1 group by 1,2, 3, 4
+
+
+
+-- 2. MPN listings by seller
+dROP TABLE  if exists   p_ichan_t.gp_mpn_output ;
+create table   p_ichan_t.gp_mpn_output as (
+select 
+portal_seller,
+Retail_year,
+Retail_week,
+Slr_ID,
+USER_SLCTD_ID,
+meta_categ_id,
+CATEG_LVL2_ID,
+categ_lvl2_name,
+CATEG_LVL3_ID,
+categ_lvl3_name,
+CATEG_LVL4_ID,
+categ_lvl4_name,
+case	when retail_year >=2022 then 'Y' 
+	else 'N' end as Include_in_pivot ,
+case when MPN_flag+ManufacturerPartNumber_Flag >=1 then 'Y' else 'N' end as MPN, 
+count(distinct item_id) ll 
+from  p_ichan_t.gp_ll_max  -- select* from  p_ichan_t.gp_ll_max  
+WHERE retail_year >=2022 AND RETAIL_WEEK >=26
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14) ;
+-- 38375  
+
+dROP TABLE  if exists   p_ichan_t.gp_mpn_pc ;
+create table   p_ichan_t.gp_mpn_pc as (
+select  Retail_year, retail_week , Slr_ID,USER_SLCTD_ID,sum(case when MPN='Y' then  ll else 0 end )/sum(ll)as MPN_pc 
+from  ( select * from p_ichan_t.gp_mpn_output   where  RETAIL_YEAR=EXTRACT(YEAR FROM CURRENT_DATE))
+where retail_week in (select distinct retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID =-1)
+ group by 1,2,3,4 );
+-- select * from p_ichan_t.gp_mpn_pc order by user_slctd_id  ;   where lower(user_slctd_id) = 'gmhrecyclers' and retail_year =2022 and retail_week =3
+
+--- %Graded by week by seller
+dROP TABLE  if exists   p_ichan_t.gp_grade_pc_seller ;
+create table   p_ichan_t.gp_grade_pc_seller as (
+Select 
+Slr_ID,
+USER_SLCTD_ID,
+Retail_year,
+Retail_week,
+sum(case when grade ='Y' then LL else 0 end ) as Listings_graded,
+sum(LL) total_ll,
+sum(case when grade ='Y' then LL else 0 end )/sum(LL) as Graded_pc
+from  p_ichan_t.gp_grade_output 
+group by 1,2,3,4);
+select * from p_ichan_t.gp_grade_pc_seller where retail_week =37 ; 
+
+--- %MPN by week by seller
+dROP TABLE  if exists   p_ichan_t.gp_mpn_pc_seller ;
+create table   p_ichan_t.gp_mpn_pc_seller as (
+Select 
+Slr_ID,
+USER_SLCTD_ID,
+Retail_year,
+Retail_week,
+sum(case when MPN ='Y' then LL else 0 end ) as Listings_MPN,
+sum(LL) total_ll,
+sum(case when MPN ='Y' then LL else 0 end )/sum(LL) as MPN_pc
+from  p_ichan_t.gp_mpn_output 
+group by 1,2,3,4);
+
+----------------------------------------------
+-------------------------------------------------------------------
+-- DIGITAL LISTER ----------------------------------
+---------------------------------------------
+--a.weekly average pre- and post at seller level
+--b.new listing conversion pre- post ( to verify listing quality) 
+--c. average GMV for ecah listing ( Help to valuate and scale) 
+
+-- asm.auto.recycling.ltd 
+-- weekly average summary 
+drop table if exists  p_ichan_t.gp_grade_digital_1  ; 
+create table   p_ichan_t.gp_grade_digital_1 as 
+(
+SELECT 
+RETAIL_YEAR,
+RETAIL_WEEK,
+DIGITAL_LISTER,
+exactlinc,
+CASE WHEN DIGITAL_LISTER =1 THEN SELLER_NAME ELSE 'OTHER' END AS NAME,
+COUNT(ITEM_ID)/COUNT(DISTINCT SELLER_NAME) LL
+from  p_ichan_t.gp_ll_max_row
+GROUP BY 1,2,3,4,5 );
+--ORDER BY 1,2,3;
+-- select * from     p_ichan_t.gp_grade_digital_1 ;
+-- reclamet25
+
+--select * from  p_ichan_t.gp_ll_max_row where digital_lister =1 and auct_start_dt >='2022-04-01' ; 
+--select retail_week, count( distinct  auct_start_dt) day   from  p_ichan_t.gp_ll_max_row where digital_lister =1 and auct_start_dt >='2022-04-01' group by 1;
+
+-- weekly average by day
+
+
+-- conversion 
+drop table if exists  p_ichan_t.gp_grade_digital_3  ; 
+create table   p_ichan_t.gp_grade_digital_3 as (
+ Select 
+case when  digital_lister =1 then seller_id 
+		when exactlinc = 1 then seller_id 
+		else'0' end as seller_id,
+case when  digital_lister =1 then seller_name
+		when exactlinc = 1 then seller_name 
+		else 'Other' end as  seller_name,
+case when  digital_lister =1 then 'digital_lister' 
+		when exactlinc = 1 then 'exactlinc seller' 
+		else'Other Certified Sellers' end as Seller_type,
+retail_week, 
+auct_start_dt,
+case when seller_name ='dronsfieldsindependentmercedes0333' and auct_start_dt >='2022-05-01' then 'post'
+when  seller_name ='reclamet25'								and auct_start_dt >='2022-05-01' then 'post'
+when  seller_name ='dlhautorecyclersltd'					and auct_start_dt >='2022-05-01' then 'post'
+when  seller_name ='overtongarage'							and auct_start_dt >='2022-05-01' then 'post'
+when  seller_name ='e-copart'								and auct_start_dt >='2022-05-01' then 'post'
+when  seller_name ='picupspares'  							and auct_start_dt >='2022-06-06' then 'post'
+ when exactlinc = 1  and auct_start_dt >='2022-05-01'   then 'post'
+ else 'pre' end as Programme,
+case when a.item_id =b.item_id then 1 else 0 end as converted,
+case when a.item_id =b.item_id then gmv_dt else current_date end as sold_date,
+count (distinct a.item_id) ll_total,
+count( distinct b.item_id) ll_converted,
+sum(ifnull (GMV_PLAN_USD,0)) as GMV ,
+sum(ifnull(Quantity,0)) as BI
+from  p_ichan_t.gp_ll_max_row  a 
+left join ( select item_id,gmv_dt, sum( GMV_PLAN_USD) GMV_PLAN_USD , sum(Quantity) Quantity from   DW_CHECKOUT_TRANS ck  where  CK.SALE_TYPE NOT IN (10,15)
+				and slr_cntry_id = 3
+				and BYR_CNTRY_ID=3
+				and CREATED_DT >='2018-01-01' group by 1,2 ) b on a.item_id =b.item_id
+where exactlinc =1 
+and auct_start_dt >='2022-01-01' group by 1,2,3,4,5 ,6,7,8);
+
+---select * from   p_ichan_t.gp_grade_digital_3  where seller_name ='overtongarage'; 
+-- select retail_week, seller_type, seller_name, programme, sum(ll_total) from   p_ichan_t.gp_grade_digital_3  where seller_name ='asm.auto.recycling.ltd'group by 1,2,3,4 ;
+--
+drop table if exists  p_ichan_t.gp_grade_digital_4  ; 
+create table   p_ichan_t.gp_grade_digital_4 as (
+ Select 
+case when  digital_lister =1 then seller_id 
+		when exactlinc = 1 then seller_id 
+		else'0' end as seller_id,
+case when  digital_lister =1 then seller_name
+		when exactlinc = 1 then seller_name 
+		else 'Other' end as  seller_name,
+case when  digital_lister =1 then 'digital_lister' 
+		when exactlinc = 1 then 'exactlinc seller' 
+		else'Other Certified Sellers' end as Seller_type,
+retail_week, 
+auct_start_dt,
+case when seller_name ='dronsfieldsindependentmercedes0333' and auct_start_dt >='2022-05-01' then 'post'
+when  seller_name ='reclamet25'								and auct_start_dt >='2022-05-01' then 'post'
+when  seller_name ='dlhautorecyclersltd'					and auct_start_dt >='2022-05-01' then 'post'
+when  seller_name ='overtongarage'							and auct_start_dt >='2022-05-01' then 'post'
+when  seller_name ='e-copart'								and auct_start_dt >='2022-05-01' then 'post'
+when  seller_name ='picupspares'  							and auct_start_dt >='2022-06-06' then 'post'
+ when exactlinc = 1  and auct_start_dt >='2022-05-01'   then 'post'
+ when auct_start_dt >='2022-05-01' then 'post'
+ else 'pre' end as Programme,
+case when a.item_id =b.item_id then 1 else 0 end as converted,
+case when a.item_id =b.item_id then gmv_dt else current_date end as sold_date,
+count (distinct a.item_id) ll_total,
+count( distinct b.item_id) ll_converted,
+sum(ifnull (GMV_PLAN_USD,0)) as GMV ,
+sum(ifnull(Quantity,0)) as BI
+from  p_ichan_t.gp_ll_max_row  a 
+left join ( select item_id,gmv_dt, sum( GMV_PLAN_USD) GMV_PLAN_USD , sum(Quantity) Quantity from   DW_CHECKOUT_TRANS ck  where  CK.SALE_TYPE NOT IN (10,15)
+				and slr_cntry_id = 3
+				and BYR_CNTRY_ID=3
+				and CREATED_DT >='2018-01-01' group by 1,2 ) b on a.item_id =b.item_id
+where exactlinc =0 
+and auct_start_dt >='2022-01-01' group by 1,2,3,4,5 ,6,7,8);
+
+
+drop table if exists  p_ichan_t.gp_grade_digital_5  ; 
+create table   p_ichan_t.gp_grade_digital_5 as (
+		select * from   p_ichan_t.gp_grade_digital_3  
+		union
+		select * from   p_ichan_t.gp_grade_digital_4  );
+
+select  Programme , seller_name, count(distinct retail_week) from  p_ichan_t.gp_grade_digital_5 where  Programme = 'pre' group by 1,2 ; 
+select  Programme , seller_name, count(distinct retail_week) from  p_ichan_t.gp_grade_digital_5 where  Programme = 'post' group by 1,2 ; 
+
+--Select * from p_ichan_t.gp_grade_digital_5  ; 
+--select* from  p_ichan_t.gp_grade_digital_6 ;
+
+drop table if exists  p_ichan_t.gp_grade_digital_6  ; 
+create table   p_ichan_t.gp_grade_digital_6 as (
+select seller_name, 
+retail_week,
+sum(ll_total) ll_total,
+sum(ll_converted)  ll_converted
+from  p_ichan_t.gp_grade_digital_5 
+group by 1,2)
+;
+--select distinct retail_week,  auct_start_dt from  p_ichan_t.gp_grade_digital_5 ; ; 
+-----------------------------------------------------------------------------------------------
+-- 6. Fitment adoption
+-- green parts sellers
+						
+DROP TABLE if exists P_ICHAN_T.gp_fitment;
+CREATE TABLE P_ICHAN_T.gp_fitment AS 
+(
+select 
+A.RETAIL_YEAR
+, A.RETAIL_WEEK
+, A.CATEG_LVL2_NAME
+, A.CATEG_LVL3_NAME
+, A.SLR_ID
+, A.USER_SLCTD_ID
+, A.ITEM_COND
+--, B.ITEM_COND AS CONDITION_RANK
+--, B.RK AS RK
+, count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end)) FA_LL
+, (count(distinct item_id)) LL
+, (count(distinct item_id)) -count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end))  FA_gap
+from  (SELect * FROM P_InventoryPlanning_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR  >=2022  AND ITEM_COND IN('Used') AND  categ_lvl2_id in(6030) )A
+INNER JOIN (SELect DISTINCT seller_id FROM P_ICHAN_T.recyclers_upload )B ON A.SLR_ID = B.seller_id
+
+GROUP BY 
+1,2,3,4,5,6,7
+);
+
+----SELect * FROM P_InventoryPlanning_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR  >=2022  and retail_week =32 AND ITEM_COND IN('Used') AND  categ_lvl2_id in(6030) 
+---and  user_slctd_id ='aswrindependentbmwdismantlers';
+-- 13978 
+-- fitment adoption for the week
+drop table if exists  p_ichan_t.gp_fitment_pc ;
+create table   p_ichan_t.gp_fitment_pc as (
+select  Retail_year, retail_week , Slr_ID,USER_SLCTD_ID,sum(FA_LL)/sum(ll)as Fitment_adoption 
+from  p_ichan_t.gp_fitment  
+where retail_week in ( select max(retail_week) from p_ichan_t.gp_fitment  where retail_year =2022) group by 1,2,3,4 );
+--select * from  p_ichan_t.gp_fitment_pc  where user_slctd_id ='aswrindependentbmwdismantlers';
+
+---select* from p_ichan_t.gp_fitment   ; 
+drop table if exists  p_ichan_t.gp_fitment_pc_week ;
+create table   p_ichan_t.gp_fitment_pc_week as (
+select retail_year, retail_week, sum( fa_ll) fa_ll, sum(ll) ll from  p_ichan_t.gp_fitment  group by 1,2 );
+
+
+-- 8 GMV
+ drop table if exists P_ICHAN_T.gp_gmv  ;
+ create table P_ICHAN_T.gp_gmv as(
+
+	SELECT	Retail_year
+			,		retail_week	
+			,		ck.seller_id
+			,		USER_SLCTD_ID
+			,TRANSACTION_ID
+			,BUYER_ID
+		    --        ,              new_vertical
+           -- ,              cat.META_CATEG_ID
+          --  ,              cat.CATEG_LVL2_NAME
+          --  ,              cat.CATEG_LVL2_ID
+		--	    ,              cat.CATEG_LVL3_NAME
+         --   ,              cat.CATEG_LVL3_ID
+		--	    ,              cat.CATEG_LVL4_NAME
+        --    ,              cat.CATEG_LVL4_ID
+        		--   ,			 case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 3 then 'Used'  when   CNDTN_ROLLUP_ID = 2 then 'Refurb' else  'Other'  end as Condition
+			   ,              SUM(gmv_plan_usd) AS GMV_usd
+			  --   ,              SUM(CAST(CK.QUANTITY AS DECIMAL(18,2))* CAST(CK.ITEM_PRICE AS DECIMAL(18,2))) AS GMV_local
+				-- , count(distinct TRANSACTION_ID) transc_uniq
+			   ,              sum(QUANTITY) as BI
+			FROM   DW_CHECKOUT_TRANS ck -- SELECT * FROM   DW_CHECKOUT_TRANS  where seller_id= 45524941
+			inner join ( select distinct seller_id from P_ICHAN_T.recyclers_upload )s on s.seller_id = ck.SELLER_ID -- select *  from   P_awang_ops_T.seller_ops_83
+			INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS SSA
+				ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID
+			INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.gmv_DT   and retail_year >=2020 and age_for_rtl_week_id <= -1  --change here for time period if needed
+			
+			 INNER JOIN ( select meta_categ_id, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_name, categ_lvl4_id, LEAF_CATEG_ID,SITE_ID,
+			 BSNS_VRTCL_NAME  ,SAP_CATEGORY_ID,
+					
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+else bsns_vrtcl_name end as new_vertical
+		from DW_CATEGORY_GROUPINGS where SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)  group by 1,2,3,4,5,6,7,8 ,9,10,11,12)  AS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) 
+		AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			inner JOIN lstg_item_cndtn cond ON ck.item_id = cond.item_id  AND ck.auct_end_dt = cond.AUCT_END_DT
+			left outer JOIN DW_USERs U ON U.USER_ID= ck.seller_id 
+			INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+						WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				--and ck.site_id = 3
+				and slr_cntry_id = 3
+				and BYR_CNTRY_ID=3
+				--and seller_id =1193121968
+				and CREATED_DT >='2018-01-01'
+				and  categ_lvl2_id in (6030)
+			--	and U.USER_SLCTD_ID  in(	SELECT * from P_ICHAN_T.certified_ll_output )
+				and new_vertical in('Parts & Accessories','Electronics','Lifestyle','Home & Garden','Business & Industrial','Collectibles','Fashion','FMCG','Media')
+				and u.USER_DSGNTN_ID =2 
+				and  CNDTN_ROLLUP_ID = 3
+				and HIST.USEGM_ID = 206		
+
+				GROUP BY 1,2,3,4,5,6);
+				-- 1704232 
+				
+				--Select * from P_ICHAN_T.gp_gmv where seller_id= 160939248; 
+--Select * from P_ICHAN_T.gp_gmv_ytd order by GMV_TY desc
+-- select distinct retail_year, retail_week from ACCESS_VIEWS.DW_CAL_DT where  retail_year =2022 and  age_for_rtl_week_id <= -1 
+Drop table if exists   p_ichan_t.gp_gmv_ytd ;
+create table   p_ichan_t.gp_gmv_ytd as (
+select  seller_id,
+USER_SLCTD_ID,
+sum(case when retail_year =2021 then gmv else 0 end) as GMV_LY,
+sum(case when retail_year =2022 then gmv else 0 end) as GMV_TY,
+sum(case when retail_year =2022 then gmv else 0 end)/sum(case when retail_year =2021 then gmv else 0 end)-1 as yoy
+from (
+Select  	Retail_year,
+seller_id,
+USER_SLCTD_ID
+			,sum(GMV_usd) GMV
+			from  P_ICHAN_T.gp_gmv
+			where retail_week in ( select distinct retail_week from  P_ICHAN_T.gp_gmv  where retail_year =2022)
+			group by 1,2,3 )			
+group by 1,2);
+			
+	
+
+------------------------------------------------------------------------------------------------------------
+-----9.  Images count
+------------------------------------------------------------------------------------------------------------
+drop table if exists   P_ICHAN_T.images_ll; -- select distinct photo_count from   P_ICHAN_T.images_ll
+create table P_ICHAN_T.images_ll as(
+SELECT
+ --meta_categ_id, 
+ --  categ_lvl3_name,
+ --categ_lvl2_id,
+ categ_lvl3_name,
+ categ_lvl3_id ,
+U.USER_SLCTD_ID as seller_id,
+lst.Slr_ID,
+lst.item_id,
+photo_count,
+--oem_part_number_for_reference,
+--reference_oe_oem_number,
+--ean,
+--Grade,
+case when u.user_dsgntn_id = 2 then 'B2C' else 'C2C' end as segment 
+--count(distinct lst.item_id) ll,
+--sum(photo_count) as tot_photos
+--count(distinct(lst.item_id)) as LL
+FROM ( select distinct  item_id,  photo_count, Slr_ID, LEAF_CATEG_ID, ITEM_SITE_ID,AUCT_END_DT,  AUCT_START_DT,WACKO_YN,  AUCT_TYPE_CODE,  SLR_CNTRY_ID 
+					from DW_LSTG_ITEM 
+					where  WACKO_YN = 'N'    and AUCT_TYPE_CODE NOT IN (10,15)  and  SLR_CNTRY_ID in ( 3  ,99)   and item_site_id = 3 		)  lst 
+inner join P_ICHAN_T.recyclers_upload i on lst.slr_id=i.seller_id
+
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+
+INNER JOIN ( select distinct  meta_categ_id, LEAF_CATEG_ID , SITE_ID ,  categ_lvl3_name,categ_lvl3_id ,categ_lvl2_id ,categ_lvl2_name from DW_CATEGORY_GROUPINGS where site_id =3) CAT
+							ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID   and cat.site_id = 3 and 	 categ_lvl2_id = 6030 --107059 --6030	
+INNER JOIN ( select distinct  CNTRY_ID, REV_ROLLUP_ID from  DW_COUNTRIES )   CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
+--INNER JOIN ( select distinct item_id , AUCT_END_DT , FLAGS9  from dw_lstg_item_cold where   AUCT_END_DT >= '2017-01-01'   ) lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--INNER JOIN ( select distinct  CAL_DT ,retail_week,retail_year 						from DW_CAL_DT where  RETAIL_YEAR in (2020)  )  CAL ON lst.AUCT_START_DT < CAL.CAL_DT AND lst.AUCT_END_DT >= CAL.CAL_DT 
+--and AGE_FOR_RTL_WEEK_ID in (-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-53,-54,-55,-56,-57,-58,-59,-60,-61,-62,-63,-64,-65) and day_of_week_id = 3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */      
+
+where  
+lst.AUCT_end_dt >= current_date -- limiit on live listings
+and lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_CNTRY_ID in(3    ,99)
+ and lst.item_site_id = 3 );
+-- group by 1,2,3);
+ 
+ --select * from   P_ICHAN_T.images_ll where item_id =143074133103 limit 10  order by ll desc ;
+  Drop table if exists   p_ichan_t.gp_images_seller ;
+create table   p_ichan_t.gp_images_seller as (
+ select categ_lvl3_name,	categ_lvl3_id,	seller_id,	Slr_ID	,	photo_count	,segment, count(distinct item_id)  ll from  P_ICHAN_T.images_ll
+ group by 1,2,3,4,5,6 );
+
+--select * from p_ichan_t.gp_images_seller 
+-- histogram
+  Drop table if exists   p_ichan_t.gp_img_histogram ;
+create table   p_ichan_t.gp_img_histogram as (
+select categ_lvl3_name,	categ_lvl3_id,	seller_id,	Slr_ID	,	photo_count	,segment, sum(ll) ll 
+from    p_ichan_t.gp_images_seller
+group by 1,2,3,4,5,6);
+-- select * from  p_ichan_t.gp_img_histogram
+
+
+ Drop table if exists   p_ichan_t.gp_images ;
+create table   p_ichan_t.gp_images as (
+ Select Seller_id,
+ Slr_id,
+ Segment,
+ -- categ_lvl3_name,	
+--  categ_lvl3_id,
+sum(photo_count*ll)/sum(ll) as avg_img
+ from    P_ICHAN_T.gp_images_seller -- select * from   P_ICHAN_T.gp_images_seller
+ group by 1,2,3);
+ -- select * from p_ichan_t.gp_images ;
+ 
+
+ 
+------------------------------------------------------------------------------------------------------------
+-- 10.FREE SHIPPING
+------------------------------------------------------------------------------------------------------------
+ Drop table if exists   P_ICHAN_T.gp_heatmap_free_listings;
+--CREATE OR REPLACE TEMPORARY VIEW p2p_transactions AS 
+create table P_ICHAN_T.gp_heatmap_free_listings as (
+SELECT
+lstg.SELLER_ID,
+ lstg.lstg_id,
+  categ_lvl3_name,categ_lvl3_id ,categ_lvl2_name,categ_lvl2_id
+--,CK_TRANS_ID
+--,CK_DT
+,lstg.HNDLNG_DAY_NUM,
+lkp.shpmt_mthd_id,
+i.shipping_method,
+lkp.SHPMT_MTHD_DESC,
+lkp.LCL_NAME,
+lkp.MIN_DLVRY_TM_IN_HOUR,
+lkp.API_SOAP_SRVC_CODE
+,lstg.lstg_end_dt
+--,CAST(lkp.Min_DLVRY_TM_IN_HOUR/24 AS DECIMAL (18,0)) min_dlvry_tm_in_hour
+,CASE WHEN lkp.Min_DLVRY_TM_IN_HOUR IS NULL THEN NULL
+	             WHEN lkp.Min_DLVRY_TM_IN_HOUR < 0 THEN NULL
+	             WHEN CAST(lkp.Min_DLVRY_TM_IN_HOUR/24 AS DECIMAL (18,0)) >= 6 THEN 6
+	             ELSE CAST(lkp.Min_DLVRY_TM_IN_HOUR/24 AS DECIMAL (18,0))
+	END AS SLA_P2P
+
+,CASE WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=1 THEN 1 
+	        ELSE 0 
+END AS PRO_1D_P2P
+
+	,CASE WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=1 THEN  1 
+	          WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=2 THEN  1 
+	          WHEN lstg.HNDLNG_DAY_NUM=1 AND SLA_P2P=1 THEN  1
+	          WHEN lstg.HNDLNG_DAY_NUM=1 AND SLA_P2P=0 THEN  1
+	          
+	          WHEN lstg.HNDLNG_DAY_NUM=2 AND SLA_P2P=1 THEN  1
+	          WHEN lstg.HNDLNG_DAY_NUM=1 AND SLA_P2P=2 THEN  1
+	          WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=3 THEN  1
+	          ELSE 0 
+	END AS PRO_3D_P2P
+
+	--,CASE WHEN PRO_3D_P2P=1 AND FACT.FREE_SHPNG_YN_IND='Y' THEN  1 ELSE 0 END AS PRO_3D_FREE_P2P 
+	,CASE WHEN PRO_3D_P2P=1 AND i.new_free_shpng_ind =1 THEN  1 ELSE 0 END AS PRO_3D_FREE_P2P 
+	--,case when FACT.FREE_SHPNG_YN_IND='Y' THEN  1 ELSE 0 End  as Free_shipping
+	,i.new_free_shpng_ind as Free_shipping
+,case when fact.shpmt_mthd_id in (301,302, 303,304,322,327,328,336,337,363,364,365, 366) then 1 else 0 end as shpmt_mthd_id_flag
+FROM ssa_shpmt_lstg_fact lstg -- select count(distinct lstg_id) from ssa_shpmt_lstg_fact where seller_id=141455937 and lstg_end_dt >= current_date lstg  limit 100
+inner join  (select distinct seller_id from  P_ICHAN_T.recyclers_upload   ) v on lstg.seller_id=v.seller_id
+--inner join P_ICHAN_T.recyclers_upload c on lst.slr_id=c.seller_id--   select * from P_ICHAN_T.recyclers_upload
+left join  DW_ITEMS_SHIPPING i on i.item_id=lstg.lstg_id-- = 402688783703 limit 10
+--left join DW_SHPMT_MTHD_LKP lk on lk.shpmt_mthd_id=i.shipping_method
+LEFT JOIN  SSA_SHPMT_TRANS_FACT FACT on lstg.lstg_id = fact.LSTG_ID and lstg.lstg_end_dt >= date_sub(current_date , 60) --  select * from SSA_SHPMT_TRANS_FACT FACT limit 10
+LEFT JOIN DW_SHPMT_MTHD_LKP LKP ON i.shipping_method=lkp.shpmt_mthd_id
+---LEFT JOIN ssa_shpmt_lstg_fact lstg on lstg.lstg_id = fact.LSTG_ID and lstg.lstg_end_dt >= date_sub(current_date , 60) 
+INNER JOIN ( select distinct  meta_categ_id, LEAF_CATEG_ID , SITE_ID ,  categ_lvl3_name,categ_lvl3_id ,categ_lvl2_name,categ_lvl2_id from DW_CATEGORY_GROUPINGS where site_id =3 and   categ_lvl2_id in (6030)) CAT
+							ON CAT.LEAF_CATEG_ID = lstg.LEAF_CATEG_ID AND CAT.SITE_ID = lstg.SELLER_SITE_ID   and cat.site_id = 3	
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lstg.LSTG_END_DT AND COND.ITEM_ID = lstg.LSTG_ID  AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+WHERE -- fact.BUYER_CNTRY_ID=3
+lstg.SELLER_CNTRY_ID=3
+AND lstg.LSTG_SITE_ID=3
+--AND CK_DT between date_sub(current_date , 60) AND date_sub(current_date , 1)
+--AND CDE_MIN_DT=CDE_MAX_DT
+--AND fact.shpmt_mthd_id in (301,302, 303,304,322,327,328,336,337,363,364,365, 366)
+--AND CK_TRANS_ID<>0
+and lstg.lstg_end_dt >= CURRENT_DATE
+and lstg.seller_id in (select distinct seller_id from  P_ICHAN_T.recyclers_upload      ));
+
+
+-- check 
+--select * from   DW_ITEMS_SHIPPING   where item_id= 363272334503 
+--select * from  SSA_SHPMT_TRANS_FACT FACT where LSTG_ID= 363272334503 -- no results 
+--select * from    DW_SHPMT_MTHD_LKP  where item_id= 363272334503 
+
+Drop table if exists  P_ICHAN_T.gp_heatmap_free_listings_max;
+create table  P_ICHAN_T.gp_heatmap_free_listings_max as (
+Select 
+Seller_id,
+lstg_id,
+max(free_shipping) free_shipping,
+max(PRO_3D_FREE_P2P) as PRO_3D_FREE_P2P
+from  ( select distinct * from  P_ICHAN_T.gp_heatmap_free_listings )
+group by 1,2 );
+--  select distinct * from  P_ICHAN_T.gp_heatmap_free_listings  where lstg_id= 363272334503
+
+Drop table if exists  P_ICHAN_T.gp_free_shipping_output;
+create table  P_ICHAN_T.gp_free_shipping_output as (
+Select 
+seller_id,
+free_shipping,
+PRO_3D_FREE_P2P,
+count(distinct lstg_id) ll
+from P_ICHAN_T.gp_heatmap_free_listings_max
+group by 1,2,3);
+---select * from P_ICHAN_T.gp_free_ll_output where seller_id =160939248;
+
+
+dROP TABLE  if exists   p_ichan_t.gp_shipping_pc ;
+create table   p_ichan_t.gp_shipping_pc as (
+select seller_id,
+U.USER_SLCTD_ID,
+sum(case when free_shipping='1' then  ll else 0 end ) free_shipping_ll,
+sum(ll)as total_ll ,
+sum(case when free_shipping='1' then  ll else 0 end )/sum(ll)as free_shipping_pc ,
+sum(case when PRO_3D_FREE_P2P='1' then  ll else 0 end )/sum(ll) as fnf_pc
+from  p_ichan_t.gp_free_shipping_output  a 
+left outer JOIN DW_USERs U ON U.USER_ID= a.seller_id 
+group by 1,2);
+
+-- select * from   p_ichan_t.gp_shipping_pc ;
+
+
+-- ----------------------------------------------------------------------------------------------------------------
+--11. Heatmap final 
+-- ----------------------------------------------------------------------------------------------------------------
+Drop table if exists   p_ichan_t.gp_heatmap ;
+create table   p_ichan_t.gp_heatmap as (
+select 
+a.seller_id, 
+a.eBay_id,
+ifnull(a.Portal_seller,"") Portal_seller,
+e.GMV_LY,
+e.GMV_TY,
+e.yoy,
+b.graded_pc-0 as Grade,
+c.mpn_pc as  MPN,
+d.fitment_adoption ,
+f.avg_img,
+g.fnf_pc as Fast_n_free
+from P_ICHAN_T.recyclers_upload  a
+left join p_ichan_t.gp_grade_pc b on a.seller_id=b.slr_id -- select * from   p_ichan_t.gp_grade_pc
+left join p_ichan_t.gp_mpn_pc c on a.seller_id=c.slr_id
+left join  p_ichan_t.gp_fitment_pc  d on a.seller_id=d.slr_id
+left join p_ichan_t.gp_gmv_ytd e  on a.seller_id=e.seller_id
+left join ( select slr_id,sum(avg_img)avg_img from  p_ichan_t.gp_images group by 1 ) f  on a.seller_id=f.slr_id  -- select * from   p_ichan_t.gp_images 
+left join  p_ichan_t.gp_shipping_pc  g on a.seller_id =g.seller_id 
+)
+;
+
+--Select * from p_ichan_t.gp_heatmap 
+ 
+ -- ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ --12.  all listings week on week -- select * from p_ichan_t.gp_ll_weekly ;
+ -- ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Drop table if exists   p_ichan_t.gp_ll_weekly ;
+create table  p_ichan_t.gp_ll_weekly as 
+(
+select 
+Retail_year,
+retail_week, 
+count( distinct lst.Item_id) ll 
+/*lst.Slr_ID,
+  U.USER_SLCTD_ID,
+  lst.AUCT_START_DT,
+  cal.retail_year,
+  cal.retail_week,
+   CAT.meta_categ_id, 
+	 CAT.CATEG_LVL2_ID, 
+	 CAT.categ_lvl2_name, 
+	  CAT.CATEG_LVL3_ID, 
+	 CAT.categ_lvl3_name, 
+	  CAT.CATEG_LVL4_ID, 
+	 CAT.categ_lvl4_name*/
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+inner join P_ICHAN_T.recyclers_upload c on lst.slr_id=c.seller_id-- select * from   P_ICHAN_T.recyclers_upload order by rank where seller_id =1077516705
+
+		
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+--INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL         	ON CAL.CAL_DT =lst.AUCT_START_DT AND retail_year in (2021,2021) and age_for_rtl_week_id <= -1 and  age_for_rtl_week_id >= -10
+--INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+--INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON  CAL.CAL_DT = lst.CREATED_DT AND 				RETAIL_YEAR >= 2017
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 
+	ON lst.AUCT_START_DT < CAL.CAL_DT AND lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2019  and AGE_FOR_RTL_WEEK_ID >= -52 and AGE_FOR_RTL_WEEK_ID <=-1
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID and retail_year >=  2020
+--INNER JOIN dw_lstg_item_cold lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--WHERE lst.AUCT_end_dt >= date -- limiit on live listings
+ INNER JOIN DW_USEGM_HIST AS HIST          ON HIST.USER_ID = lst.SLR_ID         AND HIST.USEGM_GRP_ID = 48          AND HIST.USEGM_ID = 206 --B2C only sellers
+     
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+ and categ_lvl2_id in (6030)
+ --and categ_lvl2_name in ('Car Parts')
+ --and lst.AUCT_end_dt >= CURRENT_DATE
+ group by 1,2);
+ -- 57 
+ 
+ 
+ Drop table if exists   p_ichan_t.gp_ll_weekly_data ;
+create table  p_ichan_t.gp_ll_weekly_data as 
+(
+
+select  * from p_ichan_t.gp_ll_weekly where retail_year >=2022 AND RETAIL_WEEK >=26) ;
+ 
+ --select * from  p_ichan_t.gp_ll_weekly  order by 1,2 ;
+  --dROP TABLE  if exists   p_ichan_t.gp_mpn_pc_top ;
+--create table   p_ichan_t.gp_mpn_pc_top as (select  Retail_year, retail_week ,sum(case when MPN='Y' then  ll else 0 end )/sum(ll)as MPN_pc  from  p_ichan_t.gp_mpn_output    group by 1,2 ); -- select * from  p_ichan_t.gp_mpn_pc_top order by 1,2
+ -- dROP TABLE  if exists   p_ichan_t.gp_grade_pc_top ;
+--create table   p_ichan_t.gp_grade_pc_top as (select  Retail_year, retail_week ,sum(case when grade='Y' then  ll else 0 end )/sum(ll)as graded_pc  from  p_ichan_t.gp_grade_output    group by 1,2);
+
+ dROP TABLE  if exists   p_ichan_t.gp_ll_graph ;
+create table   p_ichan_t.gp_ll_graph as (
+Select 
+a.Retail_year,
+a.Retail_week, 
+a.ll,
+b.MPN_pc,
+c.graded_pc
+from (  select * from  p_ichan_t.gp_ll_weekly where retail_year >=2022 ) a
+ inner join (select  Retail_year, retail_week ,sum(case when MPN='Y' then  ll else 0 end )/sum(ll)as MPN_pc  from  p_ichan_t.gp_mpn_output    group by 1,2 )b on a.retail_year=b.retail_year and a.retail_week =b.retail_week
+ inner join  (select  Retail_year, retail_week ,sum(case when grade='Y' then  ll else 0 end )/sum(ll)as graded_pc  from  p_ichan_t.gp_grade_output    group by 1,2) c
+ on  a.retail_year=c.retail_year and a.retail_week =c.retail_week
+ 
+ );
+ 
+---select * from  p_ichan_t.gp_ll_graph  order by 1,2 ;
+
+Drop table if exists   p_ichan_t.gp_ll_graph_data ;
+create table  p_ichan_t.gp_ll_graph_data as 
+(
+select  * from p_ichan_t.gp_ll_graph where retail_year >=2022 AND RETAIL_WEEK >=27) ;
+
+ -- select * from    p_ichan_t.gp_ll_graph_data   order by 1,2 ;
+ 
+-- ---------------------------------------------------------------
+-- Seller Standard
+-- --------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_ICHAN_T.ETRS_DATA;
+CREATE TABLE P_ICHAN_T.ETRS_DATA AS
+(
+SELECT
+usr.user_id,
+usr.user_slctd_id,
+
+CASE WHEN SPS_SLR_LEVEL_CD = 1 THEN 'eTRS' WHEN SPS_SLR_LEVEL_CD = 2 THEN 'Above Standard' WHEN SPS_SLR_LEVEL_CD = 3 THEN 'Standard' WHEN SPS_SLR_LEVEL_CD = 4 THEN 'Below Standard' ELSE 'No seller standard'END AS SELLER_STANDARD
+FROM
+prs_secure_v.dw_users usr 
+left join ( SELECT USER_ID,
+SPS_SLR_LEVEL_CD, 
+last_eval_Dt from  PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM X 
+where SPS_EVAL_TYPE_CD = 1 AND SPS_PRGRM_ID = 3 group by 1,2,3 qualify (row_number() over (partition by user_id order by last_eval_Dt desc))=1)std
+    on usr.user_id = std.user_id
+	
+where user_slctd_id in ( select distinct lower(seller_name) from P_ICHAN_T.recyclers_upload));
+
+-- select * from P_ICHAN_T.ETRS_DATA; 
+-- c on lst.slr_id=c.seller_id#
+
+-- ----------------------------------------------------------------------------------------------------------
+--- MPN and Graded overall weekly trend 
+---- overall weekly  -----------------------
+
+
+ dROP TABLE  if exists   p_ichan_t.gp_ll_graph_all ;
+create table   p_ichan_t.gp_ll_graph_all as (
+Select 
+a.Retail_year,
+a.Retail_week, 
+
+b.MPN_pc,
+c.graded_pc
+from       (  select * from  p_ichan_t.gp_grade_pc_week where retail_year >=2022 ) a
+ inner join (select  *  from  p_ichan_t.gp_mpn_pc_week  )b on a.retail_year=b.retail_year and a.retail_week =b.retail_week
+ inner join  (select *   from  p_ichan_t.gp_grade_pc_week   ) c
+ on  a.retail_year=c.retail_year and a.retail_week =c.retail_week );
+
+-- select * from p_ichan_t.gp_ll_graph_all  where retail_year =2022 and retail_week =10 
+
+-- all starts here
+Drop table if exists   p_ichan_t.gp_ll_all ;
+create table  p_ichan_t.gp_ll_all as 
+(
+select 
+MPN,
+ManufacturerPartNumber,
+Grade,
+lst.Item_id,
+lst.Slr_ID,
+  U.USER_SLCTD_ID,
+ -- lst.AUCT_START_DT,
+  cal.retail_year,
+  cal.retail_week,
+   CAT.meta_categ_id, 
+	 CAT.CATEG_LVL2_ID, 
+	 CAT.categ_lvl2_name, 
+	  CAT.CATEG_LVL3_ID, 
+	 CAT.categ_lvl3_name, 
+	  CAT.CATEG_LVL4_ID, 
+	 CAT.categ_lvl4_name,site_id
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+inner join ( select distinct  seller_id from  P_ICHAN_T.recyclers_upload)  c on lst.slr_id=c.seller_id-- select * from   P_ICHAN_T.recyclers_upload order by seller_id rank where seller_id =1077516705
+--inner join P_ICHAN_T.certified_ll   c on lst.Slr_ID=c.SLr_ID
+left join (select
+						upper(ASPCT_VLU_NM) as MPN,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('mpn' ) --and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) bbase
+				ON lst.ITEM_ID = bbase.ITEM_ID
+		
+				
+				left join (select
+						upper(ASPCT_VLU_NM) as ManufacturerPartNumber,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('manufacturer part number' ) --and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) cbase
+				ON lst.ITEM_ID = cbase.ITEM_ID
+		left join (select
+						upper(ASPCT_VLU_NM) as Grade,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('grade' ) --and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) gbase
+				ON lst.ITEM_ID = gbase.ITEM_ID
+		
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+--INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL         	ON CAL.CAL_DT =lst.AUCT_START_DT AND retail_year in (2021,2022) and age_for_rtl_week_id <= -1 and lst.AUCT_START_DT >= '2021-03-01'--  and  age_for_rtl_week_id >= -10
+--INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+--INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON  CAL.CAL_DT = lst.CREATED_DT AND 				RETAIL_YEAR >= 2017
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 	ON lst.AUCT_START_DT < CAL.CAL_DT AND lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2020  and AGE_FOR_RTL_WEEK_ID <=-1
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID and retail_year >=  2020
+--INNER JOIN dw_lstg_item_cold lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--WHERE lst.AUCT_end_dt >= date -- limiit on live listings
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+ and categ_lvl2_id in (6030)
+ --and categ_lvl2_name in ('Car Parts')
+ --and lst.AUCT_end_dt >= CURRENT_DATE
+ );
+ -- 362547 
+
+ -- update recycler lists
+--Select  USER_ID, USER_SLCTD_ID from  DW_USERs where USER_SLCTD_ID in ( 'i-need-spares');
+--select * from P_ICHAN_T.recyclers_upload where seller_id in (1161373565,1399251618,867162196,337981112,1031172561);
+--CONVERT TO DELTA  P_ICHAN_T.recyclers_upload
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'bradgatemotors', 'bradgatemotors',1161373565,1);
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'i-need-spares', 'i-need-spares',1399251618,1);
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'bradgatecommercial', 'bradgatecommercial',867162196,1);
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'netty4me', 'netty4me',337981112,1);
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'gala_motors', 'gala_motors',1031172561,1);
+
+-- DELETE FROM P_ICHAN_T.recyclers_upload WHERE seller_name ='synetiq';
+ 
+--select * from p_ichan_t.gp_ll 
+dROP TABLE  if exists   p_ichan_t.gp_ll_mpn_a_all ;
+create table   p_ichan_t.gp_ll_mpn_a_all as (
+SELECT
+i.seller_id,i.seller_name,  portal_seller,rank,
+Item_id,
+Retail_year, Retail_week,
+--AUCT_START_DT,
+Slr_ID,
+USER_SLCTD_ID,
+meta_categ_id,
+CATEG_LVL2_ID,
+categ_lvl2_name,
+CATEG_LVL3_ID,
+categ_lvl3_name,
+CATEG_LVL4_ID,
+categ_lvl4_name,
+MPN,
+case when MPN is null then 0
+	when MPN ='DOES NOT APPLY' then 0
+	when MPN ='DOESNOTAPPLY' then 0 
+	when MPN ='N/A' then 0
+	when MPN ='GENUINE' then 0 
+	else 1 end as MPN_Flag,
+ManufacturerPartNumber,
+case when ManufacturerPartNumber is null then 0
+	when ManufacturerPartNumber ='DOES NOT APPLY' then 0
+	when ManufacturerPartNumber ='DOESNOTAPPLY' then 0
+	when ManufacturerPartNumber ='N/A'  then 0
+	when ManufacturerPartNumber ='GENUINE' then 0
+	else 1 end as ManufacturerPartNumber_Flag,
+	
+Grade,
+Case when Grade is null then 0 else 1 end as Grade_y
+	from   p_ichan_t.gp_ll_all a
+	inner join   P_ICHAN_T.recyclers_upload i on a.slr_id=i.seller_id);
+-- 429281 
+-- select * from p_ichan_t.gp_ll_mpn_a
+
+
+-- take max
+--select * from p_ichan_t.gp_ll 
+dROP TABLE  if exists   p_ichan_t.gp_ll_max_all ;
+create table   p_ichan_t.gp_ll_max_all as (
+SELECT
+seller_id,
+seller_name,  
+portal_seller,
+rank,
+Item_id,
+Retail_year, 
+Retail_week,
+--AUCT_START_DT,
+Slr_ID,
+USER_SLCTD_ID,
+meta_categ_id,
+CATEG_LVL2_ID,
+categ_lvl2_name,
+CATEG_LVL3_ID,
+categ_lvl3_name,
+CATEG_LVL4_ID,
+categ_lvl4_name,
+max(MPN_flag)  as MPN_flag,
+max(ManufacturerPartNumber_Flag ) as ManufacturerPartNumber_Flag,
+max(Grade_y)  as Grade_y
+from p_ichan_t.gp_ll_mpn_a_all
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16) ;
+-- 357711 
+--select retail_year, retail_week,  count(distinct item_id) ll, sum(grade_y ) y_grade from   p_ichan_t.gp_ll_max group by 1,2 order by 1,2   where user_slctd_id ='ted4parts' order by item_id  and  MPN_flag+ManufacturerPartNumber_Flag <1  and grade_y=0 and retail_week >=38
+---select * from  p_ichan_t.gp_ll_max_all order by  Grade_y desc ;
+
+-- 1.seller view Listings with grade
+dROP TABLE  if exists   p_ichan_t.gp_grade_output_all ;
+create table   p_ichan_t.gp_grade_output_all as (
+select 
+portal_seller,
+Retail_year,
+Retail_week,
+Slr_ID,
+USER_SLCTD_ID,
+meta_categ_id,
+CATEG_LVL2_ID,
+categ_lvl2_name,
+CATEG_LVL3_ID,
+categ_lvl3_name,
+CATEG_LVL4_ID,
+categ_lvl4_name,
+case 	when retail_year >=2022 then 'Y' 
+	else 'N' end as Include_in_pivot ,
+case when grade_y= 1 then 'Y' else 'N' end as grade, 
+count(distinct item_id) ll 
+from  p_ichan_t.gp_ll_max_all
+where categ_lvl4_id not  in( 72229,174073) 
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14) ;
+-- 29331 
+dROP TABLE  if exists   p_ichan_t.gp_mpn_output_all ;
+create table   p_ichan_t.gp_mpn_output_all as (
+select 
+portal_seller,
+Retail_year,
+Retail_week,
+Slr_ID,
+USER_SLCTD_ID,
+meta_categ_id,
+CATEG_LVL2_ID,
+categ_lvl2_name,
+CATEG_LVL3_ID,
+categ_lvl3_name,
+CATEG_LVL4_ID,
+categ_lvl4_name,
+case
+	when retail_year >=2022 then 'Y' 
+	else 'N' end as Include_in_pivot ,
+case when MPN_flag+ManufacturerPartNumber_Flag >=1= 1 then 'Y' else 'N' end as mpn, 
+count(distinct item_id) ll 
+from  p_ichan_t.gp_ll_max_all
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14) ;
+
+dROP TABLE  if exists   p_ichan_t.gp_mpn_pc_week ;
+create table   p_ichan_t.gp_mpn_pc_week as (
+select * from (
+select  Retail_year, retail_week ,
+case 
+when retail_year >=2022 then 1 else 0 end as flag ,
+sum(case when  mpn='Y' then  ll else 0 end )/sum(ll)as MPN_pc 
+from  p_ichan_t.gp_mpn_output_all 
+group by 1,2,3 )where flag =1);
+select * from p_ichan_t.gp_mpn_pc_week  order by 1,2 ;
+
+dROP TABLE  if exists   p_ichan_t.gp_grade_pc_week ;
+create table   p_ichan_t.gp_grade_pc_week as (
+select * from (
+select  Retail_year, retail_week ,
+case 
+when retail_year >=2022 then 1 else 0 end as flag ,
+sum(case when grade='Y' then  ll else 0 end )/sum(ll)as graded_pc 
+from  p_ichan_t.gp_grade_output_all
+group by 1,2,3 )where flag =1);
+----select * from p_ichan_t.gp_grade_pc_week  order by 1,2 ;
+
+---end here?
+dROP TABLE  if exists   p_ichan_t.gp_grade_pc ;
+create table   p_ichan_t.gp_grade_pc as (
+select  Retail_year, retail_week , Slr_ID,USER_SLCTD_ID,sum(case when grade='Y' then  ll else 0 end )/sum(ll)as graded_pc 
+from  p_ichan_t.gp_grade_output  
+where retail_week in (select distinct retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID =-1) group by 1,2,3,4 );
+-- select * from p_ichan_t.gp_grade_pc ;
+-- select distinct retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID =-1 group by 1,2, 3, 4
+
+-- 2. MPN listings by seller
+dROP TABLE  if exists   p_ichan_t.gp_mpn_output ;
+create table   p_ichan_t.gp_mpn_output as (
+select 
+portal_seller,
+Retail_year,
+Retail_week,
+Slr_ID,
+USER_SLCTD_ID,
+meta_categ_id,
+CATEG_LVL2_ID,
+categ_lvl2_name,
+CATEG_LVL3_ID,
+categ_lvl3_name,
+CATEG_LVL4_ID,
+categ_lvl4_name,
+case
+	when retail_year >=2022 then 'Y' 
+	else 'N' end as Include_in_pivot ,
+case when MPN_flag+ManufacturerPartNumber_Flag >=1 then 'Y' else 'N' end as MPN, 
+count(distinct item_id) ll 
+from  p_ichan_t.gp_ll_max_row  -- select* from  p_ichan_t.gp_ll_max  
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14) ;
+-- 38375  
+
+dROP TABLE  if exists   p_ichan_t.gp_mpn_pc ;
+create table   p_ichan_t.gp_mpn_pc as (
+select  Retail_year, retail_week , Slr_ID,USER_SLCTD_ID,sum(case when MPN='Y' then  ll else 0 end )/sum(ll)as MPN_pc 
+from  p_ichan_t.gp_mpn_output  
+where retail_week in (select distinct retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID =-1) group by 1,2,3,4 );
+-- select * from   p_ichan_t. p_ichan_t.gp_mpn_pc ;   where lower(user_slctd_id) = 'gmhrecyclers' and retail_year =2022 and retail_week =3
+
+--- %Graded by week by seller
+dROP TABLE  if exists   p_ichan_t.gp_grade_pc_seller ;
+create table   p_ichan_t.gp_grade_pc_seller as (
+Select 
+Slr_ID,
+USER_SLCTD_ID,
+Retail_year,
+Retail_week,
+sum(case when grade ='Y' then LL else 0 end ) as Listings_graded,
+sum(LL) total_ll,
+sum(case when grade ='Y' then LL else 0 end )/sum(LL) as Graded_pc
+from  p_ichan_t.gp_grade_output 
+group by 1,2,3,4);
+
+--- %MPN by week by seller
+dROP TABLE  if exists   p_ichan_t.gp_mpn_pc_seller ;
+create table   p_ichan_t.gp_mpn_pc_seller as (
+Select 
+Slr_ID,
+USER_SLCTD_ID,
+Retail_year,
+Retail_week,
+sum(case when MPN ='Y' then LL else 0 end ) as Listings_MPN,
+sum(LL) total_ll,
+sum(case when MPN ='Y' then LL else 0 end )/sum(LL) as MPN_pc
+from  p_ichan_t.gp_mpn_output 
+group by 1,2,3,4);
+
+
+-- refresh graph data
+ dROP TABLE  if exists   p_ichan_t.gp_ll_graph_all ;
+create table   p_ichan_t.gp_ll_graph_all as (
+Select 
+a.Retail_year,
+a.Retail_week, 
+
+b.MPN_pc,
+c.graded_pc
+from (  select * from  p_ichan_t.gp_grade_pc_week where retail_year >=2022 ) a
+ inner join (select  *  from  p_ichan_t.gp_mpn_pc_week  )b on a.retail_year=b.retail_year and a.retail_week =b.retail_week
+ inner join  (select *   from  p_ichan_t.gp_grade_pc_week   ) c
+ on  a.retail_year=c.retail_year and a.retail_week =c.retail_week );
+ 
+ -- digital listers
+ --select * from P_ICHAN_T.recyclers_upload WHERE eBay_id='Picupspares (DUPLICATE)';
+--reclamet25
+--E-copart
+--Overtongarage
+--Dronsfieldsindependentmercedes0333
+--Dlhautorecyclersltd
+--Asm.auto.recycling.ltd
+
+----------------------------------------------------------------------------------------
+---- exaactlinc ------------------
+------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------
+drop table if exists   p_ichan_t.exaclinc_sellers ; -- select * from p_ichan_t.exaclinc_sellers ; 
+create table   p_ichan_t.exaclinc_sellers as (
+Select distinct user_id as seller_id, USER_SLCTD_ID from  DW_USERS U
+where  USER_SLCTD_ID in (
+'asgautocentres',
+'asm.auto.recycling.ltd',
+'a-z-vehicledismantlers',
+'shropshirebmwparts',
+'charltonautoparts',
+'dixonsvauxhallspares',
+'dlhautorecyclersltd',
+'dronsfieldsindependentmercedes0333',
+'e-copart',
+'firstsalvage',
+'gpmetalsandspares',
+'great_bridge_parts',
+'greenpartsmart',
+'mgvautosparesltd',
+'mkautobreaker',
+'morgan-autosalvage',
+'nipponautospares',
+'nis-spec1st',
+'overtongarage',
+'overtonautomotiveessex ',
+'picupspares',
+'quinnautoparts',
+'reclamet25',
+'silverlake-automotive-recycling',
+'ted4parts',
+'thornton_breakers',
+'traynorsmotorstore',
+'charlestrentlimited',
+'valesidespares2012',
+'vrsautosalvagegateshead',
+'woodlandspares'));
+
+/*
+Select distinct user_id as seller_id, USER_SLCTD_ID from  DW_USERS U where  USER_SLCTD_ID like  '%shropshire%bmw%parts%'
+
+shropshirebmwparts
+dixonsvauxhallspares
+nipponautospares
+overtonautomotiveessex 
+
+
+
+seller_id	USER_SLCTD_ID	week
+137808687	nippon_autospares_ltd	3
+1710692650	nipponautos2	1
+seller_id	USER_SLCTD_ID	week
+1049765304	dixonsvehiclerecyclers	3
+seller_id	USER_SLCTD_ID	week
+2206371706	overtonautomotiveessex	3
+106828674	overtongarage	3
+*/
+
+Drop table if exists   p_ichan_t.gp_ll_all_ex ;
+create table  p_ichan_t.gp_ll_all_ex as 
+(
+select 
+MPN,
+ManufacturerPartNumber,
+Grade,
+lst.Item_id,
+lst.Slr_ID,
+  U.USER_SLCTD_ID,
+ -- lst.AUCT_START_DT,
+  cal.retail_year,
+  cal.retail_week,
+   CAT.meta_categ_id, 
+	 CAT.CATEG_LVL2_ID, 
+	 CAT.categ_lvl2_name, 
+	  CAT.CATEG_LVL3_ID, 
+	 CAT.categ_lvl3_name, 
+	  CAT.CATEG_LVL4_ID, 
+	 CAT.categ_lvl4_name,site_id
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+inner join ( select distinct  seller_id from  p_ichan_t.exaclinc_sellers)  c on lst.slr_id=c.seller_id-- select * from   P_ICHAN_T.recyclers_upload order by seller_id rank where seller_id =1077516705
+--inner join P_ICHAN_T.certified_ll   c on lst.Slr_ID=c.SLr_ID
+left join (select
+						upper(ASPCT_VLU_NM) as MPN,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('mpn' ) --and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) bbase
+				ON lst.ITEM_ID = bbase.ITEM_ID
+		
+				
+				left join (select
+						upper(ASPCT_VLU_NM) as ManufacturerPartNumber,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('manufacturer part number' ) --and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) cbase
+				ON lst.ITEM_ID = cbase.ITEM_ID
+		left join (select
+						upper(ASPCT_VLU_NM) as Grade,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('grade' ) --and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) gbase
+				ON lst.ITEM_ID = gbase.ITEM_ID
+		
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+--INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL         	ON CAL.CAL_DT =lst.AUCT_START_DT AND retail_year in (2021,2022) and age_for_rtl_week_id <= -1 and lst.AUCT_START_DT >= '2021-03-01'--  and  age_for_rtl_week_id >= -10
+--INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+--INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON  CAL.CAL_DT = lst.CREATED_DT AND 				RETAIL_YEAR >= 2017
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 	ON lst.AUCT_START_DT < CAL.CAL_DT AND lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2020  and AGE_FOR_RTL_WEEK_ID <=-1
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID and retail_year >=  2020
+--INNER JOIN dw_lstg_item_cold lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--WHERE lst.AUCT_end_dt >= date -- limiit on live listings
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+ and categ_lvl2_id in (6030)
+ --and categ_lvl2_name in ('Car Parts')
+ --and lst.AUCT_end_dt >= CURRENT_DATE
+ );
+ -- 362547 
+
+ -- update recycler lists
+--Select  USER_ID, USER_SLCTD_ID from  DW_USERs where USER_SLCTD_ID in ( 'i-need-spares');
+--select * from P_ICHAN_T.recyclers_upload where seller_id in (1161373565,1399251618,867162196,337981112,1031172561);
+--CONVERT TO DELTA  P_ICHAN_T.recyclers_upload
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'bradgatemotors', 'bradgatemotors',1161373565,1);
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'i-need-spares', 'i-need-spares',1399251618,1);
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'bradgatecommercial', 'bradgatecommercial',867162196,1);
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'netty4me', 'netty4me',337981112,1);
+--INSERT INTO P_ICHAN_T.recyclers_upload VALUES (100, 'gala_motors', 'gala_motors',1031172561,1);
+
+-- DELETE FROM P_ICHAN_T.recyclers_upload WHERE seller_name ='synetiq';
+ 
+--select * from p_ichan_t.gp_ll 
+dROP TABLE  if exists   p_ichan_t.gp_ll_mpn_a_all_ex ;
+create table   p_ichan_t.gp_ll_mpn_a_all_ex as (
+SELECT
+i.seller_id,i.USER_SLCTD_ID as seller_name,  --portal_seller,rank,
+Item_id,
+Retail_year, Retail_week,
+--AUCT_START_DT,
+Slr_ID,
+a.USER_SLCTD_ID,
+meta_categ_id,
+CATEG_LVL2_ID,
+categ_lvl2_name,
+CATEG_LVL3_ID,
+categ_lvl3_name,
+CATEG_LVL4_ID,
+categ_lvl4_name,
+MPN,
+case when MPN is null then 0
+	when MPN ='DOES NOT APPLY' then 0
+	when MPN ='DOESNOTAPPLY' then 0 
+	when MPN ='N/A' then 0
+	when MPN ='GENUINE' then 0 
+	else 1 end as MPN_Flag,
+ManufacturerPartNumber,
+case when ManufacturerPartNumber is null then 0
+	when ManufacturerPartNumber ='DOES NOT APPLY' then 0
+	when ManufacturerPartNumber ='DOESNOTAPPLY' then 0
+	when ManufacturerPartNumber ='N/A'  then 0
+	when ManufacturerPartNumber ='GENUINE' then 0
+	else 1 end as ManufacturerPartNumber_Flag,
+	
+Grade,
+Case when Grade is null then 0 else 1 end as Grade_y
+	from   p_ichan_t.gp_ll_all_ex a
+	inner join   P_ICHAN_T.exaclinc_sellers i on a.slr_id=i.seller_id);
+-- 429281 
+-- select * from p_ichan_t.gp_ll_mpn_a
+
+
+-- take max
+--select * from p_ichan_t.gp_ll 
+dROP TABLE  if exists   p_ichan_t.gp_ll_max_all_ex ;
+create table   p_ichan_t.gp_ll_max_all_ex as (
+SELECT
+seller_id,
+seller_name,  
+
+Item_id,
+Retail_year, 
+Retail_week,
+--AUCT_START_DT,
+Slr_ID,
+USER_SLCTD_ID,
+meta_categ_id,
+CATEG_LVL2_ID,
+categ_lvl2_name,
+CATEG_LVL3_ID,
+categ_lvl3_name,
+CATEG_LVL4_ID,
+categ_lvl4_name,
+max(MPN_flag)  as MPN_flag,
+max(ManufacturerPartNumber_Flag ) as ManufacturerPartNumber_Flag,
+max(Grade_y)  as Grade_y
+from p_ichan_t.gp_ll_mpn_a_all_ex
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14) ;
+-- 357711 
+
+
+
+-- Exactlinc overall listings
+
+select sub.slr_id, 
+seller_name, 
+fitment_adoption,
+sum(grade_y) grade_listing , 
+sum(mpn_y) mpn_y,
+count(*) total_listing ,
+sum(grade_y)/count(*) grade_pc , 
+sum(mpn_y)/count(*) mpn_pc 
+from (select  slr_id, seller_name,item_id,
+			sum(case when  MPN_flag+ManufacturerPartNumber_Flag >=1 then 1 else 0 end  ) as mpn_y,
+			 sum(grade_y) grade_y
+			from  p_ichan_t.gp_ll_max_all_ex 
+			where  retail_year=2022 and retail_week =39 group by 1 ,2 ,3 ) sub
+left join   p_ichan_t.gp_fitment_pc   f on sub.slr_id=f.slr_id
+
+group by 1 ,2 ,3;

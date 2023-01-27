@@ -1,0 +1,114 @@
+-- current refurb sellers
+drop table if exists p_macheung_t.current_refurb;
+create table p_macheung_t.current_refurb as (
+select seller_id, 'SR' as tag
+from (select distinct seller_id from p_macheung_t.sr_mobile_summary_gmv where item_condition in ('Refurb - Excellent','Refurb - Good','Refurb - Very Good')) a
+
+UNION
+
+select slr_id as seller_id, 'CR' as tag
+from p_macheung_t.cr_LL where item_condition in ('Refurb - Certified')
+
+);
+
+
+drop table if exists p_macheung_t.refurb_feedback; 
+CREATE TABLE  p_macheung_t.refurb_feedback  AS
+(select 
+retail_year,
+retail_week,
+slr_id,
+tag,
+(POSITIVE_FEEDBACK / (POSITIVE_FEEDBACK + NEGATIVE_FEEDBACK)) as feedback_score,
+(POSITIVE_FEEDBACK + NEGATIVE_FEEDBACK) as total_feedback
+from
+(select 
+slr_id,
+tag,
+retail_year,
+case when retail_year in (2020,2021) then RETAIL_WEEK - 1
+			else RETAIL_WEEK
+			end as RETAIL_WEEK,
+SUM(CASE WHEN BYR_FDBK_OVRL_RTNG_ID = 1 THEN 1 ELSE 0 END) AS POSITIVE_FEEDBACK,
+SUM(CASE WHEN BYR_FDBK_OVRL_RTNG_ID = 2 THEN 1 ELSE 0 END) AS NEGATIVE_FEEDBACK
+
+from  PRS_RESTRICTED_V.EBAY_TRANS_RLTD_EVENT bbe
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = bbe.trans_dt
+        AND CAL.RETAIL_YEAR in (2021,2022) and age_for_rtl_week_id <= -1 
+right join (select tag, seller_id from p_macheung_t.current_refurb group by 1,2) b 
+on bbe.slr_id = b.seller_id
+where trans_dt between (current_date -365) and current_date 
+group by 1,2,3,4) 
+cc);
+
+
+-- SNAD/ETRS
+
+-- add predicted future https://wiki.vip.corp.ebay.com/display/DW/SPS_EVAL_TYPE
+
+drop table if exists p_macheung_t.refurb_feedback_etrs;
+create table p_macheung_t.refurb_feedback_etrs as (
+select distinct u.user_slctd_id, 
+slr_id,
+a.tag,
+evaluate_year, evaluate_week, retail_week as feedback_week, retail_year as feedback_year, a.FEEDBACK_SCORE, a.total_feedback,u.FEEDBACK_SCORE as feedback_user,
+CASE WHEN SPS.SPS_SLR_LEVEL_CD = 1 THEN 'eTRS' 
+		WHEN SPS.SPS_SLR_LEVEL_CD = 2 THEN 'Above Standard' 
+		WHEN SPS.SPS_SLR_LEVEL_CD = 3 THEN 'Standard' 
+		WHEN SPS.SPS_SLR_LEVEL_CD = 4 THEN 'Below Standard' 
+		ELSE 'No seller standard'
+		END AS SELLER_STANDARD
+
+from p_macheung_t.refurb_feedback a
+inner join dw_users u on u.user_id = a.slr_id
+LEFT JOIN (select USER_ID,	SPS_SLR_LEVEL_CD,	retail_year as evaluate_year, retail_week as evaluate_week, last_eval_Dt from  PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM X 
+	INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL ON CAL.CAL_DT = X.last_eval_Dt
+	where SPS_EVAL_TYPE_CD = 1 AND SPS_PRGRM_ID = 3 
+	) SPS	ON a.slr_id = sps.user_id and a.retail_year = sps.evaluate_year and a.retail_week = sps.evaluate_week 
+
+);
+
+--current seller standard and future
+
+drop table if exists p_macheung_t.refurb_feedback_etrs_current;
+create table p_macheung_t.refurb_feedback_etrs_current as (
+select distinct u.user_slctd_id, slr_id, evaluate_year, evaluate_week, 
+CASE WHEN SPS.SPS_SLR_LEVEL_CD = 1 THEN 'eTRS' 
+		WHEN SPS.SPS_SLR_LEVEL_CD = 2 THEN 'Above Standard' 
+		WHEN SPS.SPS_SLR_LEVEL_CD = 3 THEN 'Standard' 
+		WHEN SPS.SPS_SLR_LEVEL_CD = 4 THEN 'Below Standard' 
+		ELSE 'No seller standard'
+		END AS SELLER_STANDARD,
+tag,
+EVAL_PERIOD,
+LATE_DELIVERY_CNT,
+SNAD_CNT,
+INR_CNT,
+DFCT_TRANS_CNT,
+TRANS_CNT
+
+from p_macheung_t.refurb_feedback a
+inner join dw_users u on u.user_id = a.slr_id
+LEFT JOIN (select USER_ID,	
+	SPS_SLR_LEVEL_CD,SPS_EVAL_RSN_CD, 
+	DFCT_TRANS_CNT,
+	ROUND((EVAL_MNTH_END_DT - EVAL_MNTH_BEG_DT)/30.5,0)+1 as EVAL_PERIOD,
+	case when ROUND((EVAL_MNTH_END_DT - EVAL_MNTH_BEG_DT)/30.5,0)+1 = 3 then 	DLVRY_SCAN_MISS_3M_CNT
+		else 	DLVRY_SCAN_MISS_12M_CNT
+		end as LATE_DELIVERY_CNT,
+	case when ROUND((EVAL_MNTH_END_DT - EVAL_MNTH_BEG_DT)/30.5,0)+1 = 3 then 	EBAY_CLOSE_SNAD_SAF_3M_CNT + PP_CLOSE_SNAD_SAF_3M_CNT
+		else 	EBAY_CLOSE_SNAD_SAF_12M_CNT + PP_CLOSE_SNAD_SAF_12M_CNT
+		end as SNAD_CNT,
+	case when ROUND((EVAL_MNTH_END_DT - EVAL_MNTH_BEG_DT)/30.5,0)+1 = 3 then 	EBAY_CLOSE_INR_SAF_3M_CNT + PP_CLOSE_INR_SAF_3M_CNT
+		else 	EBAY_CLOSE_INR_SAF_12M_CNT + PP_CLOSE_INR_SAF_12M_CNT
+		end as INR_CNT,
+	case when ROUND((EVAL_MNTH_END_DT - EVAL_MNTH_BEG_DT)/30.5,0)+1 = 3 then 	TRANS_3M_CNT
+		else 	TRANS_12M_CNT
+		end as TRANS_CNT,
+	retail_year as evaluate_year, retail_week as evaluate_week, last_eval_Dt from  PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM X 
+	INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL ON CAL.CAL_DT = X.last_eval_Dt
+	where SPS_EVAL_TYPE_CD = 1 AND SPS_PRGRM_ID = 3 
+	qualify (row_number() over (partition by user_id order by last_eval_Dt desc))=1) SPS	ON a.slr_id = sps.user_id 
+
+);

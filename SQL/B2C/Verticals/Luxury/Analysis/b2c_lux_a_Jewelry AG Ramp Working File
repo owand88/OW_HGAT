@@ -1,0 +1,1172 @@
+/*
+Author: Harshitha M G
+Created date: 06-01-2021
+
+Adapted By: Robbie Evans
+Adaptation Date: 25-08-2022
+
+Business Context: Jewellery AG Ramp to launch in Q1 2023.
+
+Required:
+"Deep dive into 5 core aspects and top values to see listing ccoverage, GMV coverage. Elise also suggested we look at it by price tranche as well.  Noting that we may need a refresh once aspects are mandated in Feb 2022.
+Brand= Branded / Unbranded
+Price= $300+
+Metal= Yellow Gold, White, Gold, Rose Gold, Platinum, Sterling Silver
+Metal Purity=10k, 14k, 18k, 950, 925
+Main Stone= No Stone, Diamond, Ruby, Sapphire, Emerald"
+
+Reference link for Branded/Unbranded: https://zeta.dss.vip.ebay.com/zeta/share/#/notebook?notebookId=8aad4456-e3e7-4d22-894c-b3a2e12c7086
+
+Brands grouped as BRANDED were shared by Liz
+*/
+
+---------------------2021 TRANS BASE--------
+DROP TABLE IF EXISTS JEWELRY_TRANS_BASE;
+CREATE TEMPORARY TABLE JEWELRY_TRANS_BASE AS 
+SELECT trans.ITEM_ID
+,trans.TRANSACTION_ID
+,trans.OMS_EXTRNL_RFRNC_ID
+,trans.SALE_TYPE
+,trans.GMV_DT AS CREATED_DT
+,trans.GMV_TIME AS CREATED_TIME
+,L.AUCT_END_DT
+,L.AUCT_TITL
+,cg.CATEG_LVL2_NAME
+,cg.CATEG_LVL2_ID
+,cg.CATEG_LVL3_NAME
+,cg.CATEG_LVL3_ID
+,oms.SRC_CRE_DT as ORDER_CREATE_DATE
+,CASE WHEN oms.SRC_CRE_DT IS NULL THEN 0 ELSE 1 END AS ORDER_CREATED_FLAG
+,oms.PYMNT_STS_ID
+,trans.BUYER_ID
+,trans.SELLER_ID
+,trans.SITE_ID
+,trans.TRANS_SITE_ID
+,TRANS.CHECKOUT_STATUS
+,TRANS.PAYMENT_METHOD
+,CASE WHEN (CAST(TRANS.ck_flags7 AS BIGINT) & 256) >= 1 THEN 1 ELSE 0 END AS P2_flag
+,TRANS.CHECKOUT_STATUS_DETAILS
+,TRANS.PAID_DT
+,oms.OMS_ORDER_ID
+,oms.ORDER_STS_ID
+,TRANS.WRHS_ADDR_ID
+,CASE WHEN trans.BYR_CNTRY_ID IN (-999, -1, 0, 1, 225, 679, 1000) THEN 0 ELSE trans.BYR_CNTRY_ID END AS BYR_CNTRY_ID
+,CASE WHEN trans.SLR_CNTRY_ID IN (-999, -1, 0, 1, 225, 679, 1000) THEN 0 ELSE trans.SLR_CNTRY_ID END AS SLR_CNTRY_ID
+,addr.CNTRY_ID AS SHIP_CNTRY_ID
+,CASE WHEN addr.CNTRY_ID=3 then 'UK' ELSE 'NON-UK' END AS SHIP_TO_UK_FLAG
+,L.ITEM_CNTRY_ID
+,CASE WHEN L.ITEM_CNTRY_ID=3 THEN 'UK' ELSE 'NON-UK' END AS ITEM_LOC_UK_FLAG
+,CASE WHEN trans.TRANS_SITE_ID IN (3) THEN 'UK' ELSE 'NON-UK' END AS TRANS_SITE_UK_FLAG
+,CASE 
+	WHEN  trans.item_price < 500 THEN 'A. <£500'
+	WHEN trans.item_price < 750 THEN 'B. £500-£750'
+	WHEN trans.item_price < 1000 THEN 'C. £750-£1000'
+	WHEN trans.item_price < 1500 THEN 'D. £1000-£1500'
+	WHEN trans.item_price < 2000 THEN 'E. £1500-£2000'
+	WHEN trans.item_price < 5000 THEN 'F. £2000-£5000'
+	WHEN trans.item_price < 10000 THEN 'G. £5000-£10000'
+	WHEN trans.item_price >=10000 THEN 'H. >=£10000'
+	ELSE 'OTHER'
+	END AS ASP_BUCKET
+,CASE 
+	WHEN  trans.item_price < 500 THEN 'A. <£500'
+	WHEN trans.item_price < 750 THEN 'B. £500-£750'
+	WHEN trans.item_price < 1000 THEN 'C. £750-£1000'
+	WHEN trans.item_price < 1500 THEN 'D. £1000-£1500'
+	WHEN trans.item_price < 2000 THEN 'E. £1500-£2000'
+	WHEN trans.item_price < 5000 THEN 'F. £2000-£5000'
+	WHEN trans.item_price < 10000 THEN 'G. £5000-£10000'
+	WHEN trans.item_price >=10000 THEN 'H. >=£10000'
+	ELSE 'OTHER'
+	END AS ASP_BUCKET_NEW	
+,SUM(trans.gmv_plan_usd) as GMV
+,SUM(trans.QUANTITY) AS SI
+FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS trans
+INNER JOIN DW_GEM2_CMN_CK_I GEM
+ON GEM.LSTG_ID=TRANS.ITEM_ID
+AND GEM.CK_TRANS_ID=TRANS.TRANSACTION_ID
+LEFT JOIN ACCESS_VIEWS.DW_OMS_ORDER oms
+	on (case when instr(trans.OMS_EXTRNL_RFRNC_ID,'!') > 0
+			   then substr(trans.OMS_EXTRNL_RFRNC_ID,instr(trans.OMS_EXTRNL_RFRNC_ID,'!')+1)
+			   else trans.OMS_EXTRNL_RFRNC_ID
+			   END) = coalesce(ORDER_REF_ID,cast(OMS_ORDER_ID as varchar(128)))
+INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cg
+	ON trans.LEAF_CATEG_ID = cg.LEAF_CATEG_ID AND cg.SITE_ID = trans.site_id
+	AND cg.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) --only core
+INNER JOIN DW_LSTG_ITEM L
+ON L.ITEM_ID=trans.ITEM_ID
+AND L.AUCT_END_DT>='2016-10-01'
+LEFT JOIN ACCESS_VIEWS.DW_USER_ADDRESSES addr
+	ON trans.SHIPPING_ADDRESS_ID = addr.ADDRESS_ID
+
+WHERE 1=1
+	AND trans.GMV_DT BETWEEN '2017-01-01' AND CURRENT_DATE-1--Changes dates to required time period
+	AND trans.PAID_IND=1
+	AND META_CATEG_ID = 281 AND CATEG_LVL2_ID NOT IN (260324) AND  trans.item_price >=500 --Jewelry category definition
+	AND trans.CK_WACKO_YN = 'N' --removing wacko transactions
+	AND trans.TRANS_COBRAND_ID IN (0,6,7,2)
+	AND trans.GMV_INCLD_YN = 'Y' 
+	AND trans.Sale_type NOT IN  (10,12,14,15)
+	AND GEM.ADJ_TYPE_ID NOT IN (3,5,-1,-7,27,29)  --to match with PnL and GRO
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14 ,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36;
+	
+
+----------------CURRENT LIVE LISTING BASE-------------
+DROP TABLE IF EXISTS JEWELRY_LISTINGS_LIVE;
+CREATE TEMPORARY TABLE JEWELRY_LISTINGS_LIVE AS
+SELECT
+L.ITEM_ID
+,L.AUCT_START_DT
+,L.AUCT_END_DT
+,L.AUCT_TITL
+,cg.CATEG_LVL2_NAME
+,cg.CATEG_LVL2_ID
+,cg.CATEG_LVL3_NAME
+,cg.CATEG_LVL3_ID
+,L.ITEM_CNTRY_ID
+,L.SLR_ID
+,CASE WHEN L.SLR_CNTRY_ID IN (-999, -1, 0, 1, 225, 679, 1000) THEN 0 ELSE L.SLR_CNTRY_ID END AS SLR_CNTRY_ID
+,CASE WHEN  l.item_site_id IN(3) THEN 'UK' ELSE 'NON-UK' END LSTG_SITE_UK_FLAG
+,CASE 
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end <500 THEN 'A. <£500'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end < 750 THEN 'B. £500-£750'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end < 1000 THEN 'C. £750-£1000'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end < 1500 THEN 'D. £1000-£1500'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end < 2000 THEN 'E. £1500-£2000'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end < 5000 THEN 'F. £2000-£5000'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end < 10000 THEN 'G. £5000-£10000'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end >=10000 THEN 'H. >=£10000'	
+	ELSE 'OTHER'
+	END AS ASP_BUCKET
+	
+,CASE 
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end <500 THEN 'A. <£500'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end < 750 THEN 'B. £500-£750'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end < 1000 THEN 'C. £750-£1000'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end < 1500 THEN 'D. £1000-£1500'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end < 2000 THEN 'E. £1500-£2000'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end < 5000 THEN 'F. £2000-£5000'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end < 10000 THEN 'G. £5000-£10000'
+	WHEN CASE WHEN l.START_PRICE_LSTG_CURNCY > l.RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end >=10000 THEN 'H. >=£10000'	
+	ELSE 'OTHER'
+	END AS ASP_BUCKET_NEW		
+FROM DW_LSTG_ITEM L
+INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cg
+	ON L.LEAF_CATEG_ID = cg.LEAF_CATEG_ID AND cg.SITE_ID = L.item_site_id
+	AND cg.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) --only core
+WHERE  META_CATEG_ID = 281 
+AND CATEG_LVL2_ID NOT IN (260324) 
+AND (CASE WHEN START_PRICE_LSTG_CURNCY > RSRV_PRICE_LIST_CRNCY THEN START_PRICE_LSTG_CURNCY ELSE RSRV_PRICE_LIST_CRNCY end) >=500 
+AND CURRENT_DATE BETWEEN AUCT_START_DT AND AUCT_END_DT ---Live listings as of current date
+AND ! l.auct_type_code IN(10, 12, 13, 15) 
+AND Lower(l.wacko_yn) = Lower('N') --Wacko listings are discarded for analysis
+AND LSTG_STATUS_ID=0; --- Listing status is live
+
+
+
+
+/* -------------------------------------------- 
+----------------- Jewelry GMV Aspects----------
+---------------------------------------------- */
+DROP TABLE IF EXISTS LSTG_BASE;
+CREATE TEMPORARY TABLE LSTG_BASE AS  
+SELECT  ITEM_ID,AUCT_END_DT 
+FROM  JEWELRY_TRANS_BASE
+GROUP BY 1,2
+UNION 
+SELECT ITEM_ID, AUCT_END_DT
+FROM JEWELRY_LISTINGS_LIVE
+GROUP BY 1,2;
+
+
+DROP TABLE IF EXISTS TEMP2;
+CREATE TEMPORARY TABLE TEMP2 AS  
+ SELECT  
+  aspct.item_id
+   ,aspct.auct_end_dt
+   ,aspct.ns_type_cd
+   ,1 AS priority
+   ,Upper(prdct_aspct_nm) AS aspect
+   ,Cast(Trim(Lower(aspct.aspct_vlu_nm)) AS VARCHAR(350)) AS aspct_vlu_nm 
+ FROM item_aspct_clssfctn AS aspct
+INNER JOIN LSTG_BASE AS item
+ON  (aspct.item_id=item.item_id AND aspct.auct_end_dt=item.auct_end_dt) 
+ WHERE  ( (aspct.auct_end_dt>=date_sub(To_Date('2016-09-16'),5) AND  Lower(ns_type_cd) IN (Lower('nf'),Lower('df' ) )) AND Lower(Upper(prdct_aspct_nm)) IN ('metal', 'metal purity', 'main stone','brand','secondary stone')) 
+ GROUP BY 1,2,3,4,5,6;
+ 
+INSERT INTO TABLE TEMP2
+ SELECT  
+  aspct.item_id
+   ,aspct.auct_end_dt
+   ,aspct.ns_type_cd
+   ,2 AS priority
+   ,Upper(prdct_aspct_nm) AS aspect
+   ,Cast(Trim(Lower(aspct.aspct_vlu_nm)) AS VARCHAR(350)) AS aspct_vlu_nm 
+ FROM item_aspct_clssfctn_cold AS aspct
+INNER JOIN LSTG_BASE AS item
+ON  (aspct.item_id=item.item_id AND aspct.auct_end_dt=item.auct_end_dt) 
+ WHERE  ( (aspct.auct_end_dt>=date_sub(To_Date('2016-09-16'),5) AND  Lower(ns_type_cd) IN (Lower('nf'),Lower('df' ) )) AND Lower(Upper(prdct_aspct_nm)) IN ('metal', 'metal purity', 'main stone','brand','secondary stone'))
+ GROUP BY 1,2,3,4,5,6;
+ 
+
+DROP TABLE IF EXISTS aspects_temp2;
+CREATE TEMPORARY TABLE aspects_temp2 AS  
+ SELECT  
+  ITEM_ID, AUCT_END_DT, NS_TYPE_CD, PRIORITY, ASPECT, ASPCT_VLU_NM
+ FROM  
+( SELECT  
+  *
+   ,(Row_Number() Over (PARTITION BY item_id,auct_end_dt,aspect ORDER BY priority,ns_type_cd,aspct_vlu_nm DESC)) AS alias_1781 
+ FROM temp2
+)alias_1782 
+ WHERE alias_1782.alias_1781 = 1;
+
+
+DROP TABLE IF EXISTS listing_aspects;
+CREATE TEMPORARY TABLE listing_aspects AS  
+ SELECT  
+  item_id
+   ,auct_end_dt
+   ,Coalesce(Max(CASE  WHEN Lower(aspect)=Lower('BRAND') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS BRAND
+   ,Coalesce(Max(CASE  WHEN Lower(aspect)=Lower('METAL') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS METAL
+   ,Coalesce(Max(CASE  WHEN Lower(aspect)=Lower('METAL PURITY') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS METAL_PURITY
+   ,Coalesce(Max(CASE  WHEN Lower(aspect)=Lower('MAIN STONE') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS MAIN_STONE 
+   ,Coalesce(Max(CASE  WHEN Lower(aspect)=Lower('SECONDARY STONE') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS SECONDARY_STONE 
+ FROM aspects_temp2
+ GROUP BY 1,2;
+
+	
+------------FINAL TRANSACTION TABLE--------------
+DROP TABLE IF EXISTS p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_TRANS_Aug;
+CREATE TABLE p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_TRANS_Aug AS
+SELECT T.*,
+A.METAL,
+A.METAL_PURITY,
+A.MAIN_STONE,
+A.SECONDARY_STONE,
+C.BRAND_TXT,
+A.BRAND,
+CASE 
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AARON %','% BASHA %') THEN 'AARON BASHA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXANDER %','% MCQUEEN %') THEN 'ALEXANDER MCQUEEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXIS %','% BITTAR %') THEN 'ALEXIS BITTAR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AUDEMARS %','% PIGUET %') THEN 'AUDEMARS PIGUET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BACCARAT %') THEN 'BACCARAT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BLUE %','% NILE %') THEN 'BLUE NILE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOTTEGA %','% VENETA %') THEN 'BOTTEGA VENETA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOUCHERON %') THEN 'BOUCHERON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BREITLING %') THEN 'BREITLING'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BVLGARI %') THEN 'BVLGARI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARTIER %') THEN 'CARTIER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% C LINE %','% CELINE %') THEN 'CELINE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHANEL %') THEN 'CHANEL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARRIOL %') THEN 'CHARRIOL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHAUMET %') THEN 'CHAUMET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHOPARD %') THEN 'CHOPARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHROME %','% HEARTS %') THEN 'CHROME HEARTS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAMIANI %') THEN 'DAMIANI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% WEBB %') THEN 'DAVID WEBB'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DIOR %') THEN 'DIOR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% EFFY %') THEN 'EFFY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ELIZABETH %','% LOCKE %') THEN 'ELIZABETH LOCKE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% FABERGE %','% FABERG  %') THEN 'FABERGE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORG %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORGE %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GIVENCHY %') THEN 'GIVENCHY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GUCCI %') THEN 'GUCCI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GURHAN %') THEN 'GURHAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% H %','% STERN %') THEN 'H STERN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HARRY %','% WINSTON %') THEN 'HARRY WINSTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HELZBERG %') THEN 'HELZBERG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMES %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMÈS %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% IPPOLITA %') THEN 'IPPOLITA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% ALLEN %') THEN 'JAMES ALLEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% AVERY %') THEN 'JAMES AVERY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JOHN %','% HARDY %') THEN 'JOHN HARDY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUDITH %','% RIPKA %') THEN 'JUDITH RIPKA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUICY %','% COUTURE %') THEN 'JUICY COUTURE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KARL %','% LAGERFELD %') THEN 'KARL LAGERFELD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KAY %','% JEWELERS %') THEN 'KAY JEWELERS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENDRA %','% SCOTT %') THEN 'KENDRA SCOTT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KONSTANTINO %') THEN 'KONSTANTINO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LAGOS %') THEN 'LAGOS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LE %','% VIAN %') THEN 'LE VIAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LOUIS %','% VUITTON %') THEN 'LOUIS VUITTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MARCO %','% BICEGO %') THEN 'MARCO BICEGO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIKIMOTO %') THEN 'MIKIMOTO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIRIAM %','% HASKELL %') THEN 'MIRIAM HASKELL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MONTBLANC %') THEN 'MONTBLANC'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MOVADO %') THEN 'MOVADO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NA %','% HOKU %') THEN 'NA HOKU'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NEIL %','% LANE %') THEN 'NEIL LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NURAGOLD %') THEN 'NURAGOLD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OMEGA %') THEN 'OMEGA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PANDORA %') THEN 'PANDORA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PIAGET %') THEN 'PIAGET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMELLATO %') THEN 'POMELLATO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMPEII3 %') THEN 'POMPEII3'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% RACHEL %','% KOEN %') THEN 'RACHEL KOEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROBERTO %','% COIN %') THEN 'ROBERTO COIN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROLEX %') THEN 'ROLEX'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROSS %','% SIMONS %') THEN 'ROSS SIMONS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SCOTT %','% KAY %') THEN 'SCOTT KAY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SHANE %','% CO %') THEN 'SHANE CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SIMON %','% G %') THEN 'SIMON G.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% STEPHEN %','% WEBSTER %') THEN 'STEPHEN WEBSTER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SWAROVSKI %') THEN 'SWAROVSKI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TACORI %') THEN 'TACORI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TAG %','% HEUER %') THEN 'TAG HEUER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TIFFANY %','% CO %') THEN 'TIFFANY & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VAN %','% CLEEF %') THEN 'VAN CLEEF'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERA %','% WANG %') THEN 'VERA WANG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERRAGIO %') THEN 'VERRAGIO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERSACE %') THEN 'VERSACE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VIVIENNE %','% WESTWOOD %') THEN 'VIVIENNE WESTWOOD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YVES %','% SAINT %','% LAURENT %') THEN 'YVES SAINT LAURENT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ZALES %') THEN 'ZALES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARRERA %','% CARRERA %') THEN 'CARRERA Y CARRERA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARLES %','% COLVARD %') THEN 'CHARLES & COLVARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DOLCE %','% GABBANA %') THEN 'DOLCE&GABBANA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GABRIEL %','% CO %') THEN 'GABRIEL & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HEARTS %','% ON %','% FIRE %') THEN 'HEARTS ON FIRE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENNETH %','% JAY %','% LANE %') THEN 'KENNETH JAY LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OSCAR %','% DE %','% LA %','% RENTA %') THEN 'OSCAR DE LA RENTA'
+
+
+-- From Auct titles
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AARON %','% BASHA %') THEN 'AARON BASHA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXANDER %','% MCQUEEN %') THEN 'ALEXANDER MCQUEEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXIS %','% BITTAR %') THEN 'ALEXIS BITTAR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AUDEMARS %','% PIGUET %') THEN 'AUDEMARS PIGUET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BACCARAT %') THEN 'BACCARAT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BLUE %','% NILE %') THEN 'BLUE NILE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOTTEGA %','% VENETA %') THEN 'BOTTEGA VENETA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOUCHERON %') THEN 'BOUCHERON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BREITLING %') THEN 'BREITLING'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BVLGARI %') THEN 'BVLGARI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARTIER %') THEN 'CARTIER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% C LINE %','% CELINE %') THEN 'CELINE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHANEL %') THEN 'CHANEL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARRIOL %') THEN 'CHARRIOL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHAUMET %') THEN 'CHAUMET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHOPARD %') THEN 'CHOPARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHROME %','% HEARTS %') THEN 'CHROME HEARTS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAMIANI %') THEN 'DAMIANI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% WEBB %') THEN 'DAVID WEBB'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DIOR %') THEN 'DIOR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% EFFY %') THEN 'EFFY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ELIZABETH %','% LOCKE %') THEN 'ELIZABETH LOCKE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% FABERGE %','% FABERG  %') THEN 'FABERGE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORG %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORGE %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GIVENCHY %') THEN 'GIVENCHY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GUCCI %') THEN 'GUCCI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GURHAN %') THEN 'GURHAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% H %','% STERN %') THEN 'H STERN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HARRY %','% WINSTON %') THEN 'HARRY WINSTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HELZBERG %') THEN 'HELZBERG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMES %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMÈS %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% IPPOLITA %') THEN 'IPPOLITA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% ALLEN %') THEN 'JAMES ALLEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% AVERY %') THEN 'JAMES AVERY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JOHN %','% HARDY %') THEN 'JOHN HARDY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUDITH %','% RIPKA %') THEN 'JUDITH RIPKA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUICY %','% COUTURE %') THEN 'JUICY COUTURE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KARL %','% LAGERFELD %') THEN 'KARL LAGERFELD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KAY %','% JEWELERS %') THEN 'KAY JEWELERS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENDRA %','% SCOTT %') THEN 'KENDRA SCOTT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KONSTANTINO %') THEN 'KONSTANTINO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LAGOS %') THEN 'LAGOS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LE %','% VIAN %') THEN 'LE VIAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LOUIS %','% VUITTON %') THEN 'LOUIS VUITTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MARCO %','% BICEGO %') THEN 'MARCO BICEGO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIKIMOTO %') THEN 'MIKIMOTO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIRIAM %','% HASKELL %') THEN 'MIRIAM HASKELL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MONTBLANC %') THEN 'MONTBLANC'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MOVADO %') THEN 'MOVADO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NA %','% HOKU %') THEN 'NA HOKU'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NEIL %','% LANE %') THEN 'NEIL LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NURAGOLD %') THEN 'NURAGOLD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OMEGA %') THEN 'OMEGA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PANDORA %') THEN 'PANDORA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PIAGET %') THEN 'PIAGET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMELLATO %') THEN 'POMELLATO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMPEII3 %') THEN 'POMPEII3'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% RACHEL %','% KOEN %') THEN 'RACHEL KOEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROBERTO %','% COIN %') THEN 'ROBERTO COIN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROLEX %') THEN 'ROLEX'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROSS %','% SIMONS %') THEN 'ROSS SIMONS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SCOTT %','% KAY %') THEN 'SCOTT KAY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SHANE %','% CO %') THEN 'SHANE CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SIMON %','% G %') THEN 'SIMON G.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% STEPHEN %','% WEBSTER %') THEN 'STEPHEN WEBSTER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SWAROVSKI %') THEN 'SWAROVSKI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TACORI %') THEN 'TACORI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TAG %','% HEUER %') THEN 'TAG HEUER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TIFFANY %','% CO %') THEN 'TIFFANY & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VAN %','% CLEEF %') THEN 'VAN CLEEF'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERA %','% WANG %') THEN 'VERA WANG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERRAGIO %') THEN 'VERRAGIO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERSACE %') THEN 'VERSACE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VIVIENNE %','% WESTWOOD %') THEN 'VIVIENNE WESTWOOD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YVES %','% SAINT %','% LAURENT %') THEN 'YVES SAINT LAURENT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ZALES %') THEN 'ZALES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARRERA %','% CARRERA %') THEN 'CARRERA Y CARRERA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARLES %','% COLVARD %') THEN 'CHARLES & COLVARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DOLCE %','% GABBANA %') THEN 'DOLCE&GABBANA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GABRIEL %','% CO %') THEN 'GABRIEL & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HEARTS %','% ON %','% FIRE %') THEN 'HEARTS ON FIRE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENNETH %','% JAY %','% LANE %') THEN 'KENNETH JAY LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OSCAR %','% DE %','% LA %','% RENTA %') THEN 'OSCAR DE LA RENTA'
+ELSE 'OTHERS' END AS BRAND_CLEAN
+FROM JEWELRY_TRANS_BASE T
+LEFT JOIN listing_aspects A
+ON A.ITEM_ID=T.ITEM_ID
+AND A.AUCT_END_DT=T.AUCT_END_DT
+LEFT JOIN  ACCESS_VIEWS.CTLG_ITEM_FACT C
+ON C.AUCT_END_DT >= To_Date('2016-10-01')
+AND T.ITEM_ID = C.ITEM_ID
+AND T.AUCT_END_DT = C.AUCT_END_DT 
+;
+
+
+-------------FINAL LISTING TABLE--------------
+DROP TABLE IF EXISTS p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_LL_Aug;
+CREATE TABLE p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_LL_Aug AS
+SELECT L.*,
+A.METAL,
+A.METAL_PURITY,
+A.MAIN_STONE,
+A.SECONDARY_STONE,
+C.BRAND_TXT,
+A.BRAND,
+CASE 
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AARON %','% BASHA %') THEN 'AARON BASHA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXANDER %','% MCQUEEN %') THEN 'ALEXANDER MCQUEEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXIS %','% BITTAR %') THEN 'ALEXIS BITTAR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AUDEMARS %','% PIGUET %') THEN 'AUDEMARS PIGUET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BACCARAT %') THEN 'BACCARAT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BLUE %','% NILE %') THEN 'BLUE NILE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOTTEGA %','% VENETA %') THEN 'BOTTEGA VENETA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOUCHERON %') THEN 'BOUCHERON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BREITLING %') THEN 'BREITLING'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BVLGARI %') THEN 'BVLGARI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARTIER %') THEN 'CARTIER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% C LINE %','% CELINE %') THEN 'CELINE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHANEL %') THEN 'CHANEL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARRIOL %') THEN 'CHARRIOL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHAUMET %') THEN 'CHAUMET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHOPARD %') THEN 'CHOPARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHROME %','% HEARTS %') THEN 'CHROME HEARTS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAMIANI %') THEN 'DAMIANI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% WEBB %') THEN 'DAVID WEBB'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DIOR %') THEN 'DIOR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% EFFY %') THEN 'EFFY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ELIZABETH %','% LOCKE %') THEN 'ELIZABETH LOCKE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% FABERGE %','% FABERG  %') THEN 'FABERGE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORG %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORGE %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GIVENCHY %') THEN 'GIVENCHY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GUCCI %') THEN 'GUCCI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GURHAN %') THEN 'GURHAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% H %','% STERN %') THEN 'H STERN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HARRY %','% WINSTON %') THEN 'HARRY WINSTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HELZBERG %') THEN 'HELZBERG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMES %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMÈS %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% IPPOLITA %') THEN 'IPPOLITA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% ALLEN %') THEN 'JAMES ALLEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% AVERY %') THEN 'JAMES AVERY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JOHN %','% HARDY %') THEN 'JOHN HARDY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUDITH %','% RIPKA %') THEN 'JUDITH RIPKA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUICY %','% COUTURE %') THEN 'JUICY COUTURE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KARL %','% LAGERFELD %') THEN 'KARL LAGERFELD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KAY %','% JEWELERS %') THEN 'KAY JEWELERS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENDRA %','% SCOTT %') THEN 'KENDRA SCOTT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KONSTANTINO %') THEN 'KONSTANTINO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LAGOS %') THEN 'LAGOS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LE %','% VIAN %') THEN 'LE VIAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LOUIS %','% VUITTON %') THEN 'LOUIS VUITTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MARCO %','% BICEGO %') THEN 'MARCO BICEGO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIKIMOTO %') THEN 'MIKIMOTO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIRIAM %','% HASKELL %') THEN 'MIRIAM HASKELL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MONTBLANC %') THEN 'MONTBLANC'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MOVADO %') THEN 'MOVADO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NA %','% HOKU %') THEN 'NA HOKU'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NEIL %','% LANE %') THEN 'NEIL LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NURAGOLD %') THEN 'NURAGOLD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OMEGA %') THEN 'OMEGA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PANDORA %') THEN 'PANDORA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PIAGET %') THEN 'PIAGET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMELLATO %') THEN 'POMELLATO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMPEII3 %') THEN 'POMPEII3'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% RACHEL %','% KOEN %') THEN 'RACHEL KOEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROBERTO %','% COIN %') THEN 'ROBERTO COIN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROLEX %') THEN 'ROLEX'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROSS %','% SIMONS %') THEN 'ROSS SIMONS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SCOTT %','% KAY %') THEN 'SCOTT KAY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SHANE %','% CO %') THEN 'SHANE CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SIMON %','% G %') THEN 'SIMON G.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% STEPHEN %','% WEBSTER %') THEN 'STEPHEN WEBSTER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SWAROVSKI %') THEN 'SWAROVSKI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TACORI %') THEN 'TACORI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TAG %','% HEUER %') THEN 'TAG HEUER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TIFFANY %','% CO %') THEN 'TIFFANY & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VAN %','% CLEEF %') THEN 'VAN CLEEF'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERA %','% WANG %') THEN 'VERA WANG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERRAGIO %') THEN 'VERRAGIO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERSACE %') THEN 'VERSACE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VIVIENNE %','% WESTWOOD %') THEN 'VIVIENNE WESTWOOD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YVES %','% SAINT %','% LAURENT %') THEN 'YVES SAINT LAURENT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ZALES %') THEN 'ZALES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARRERA %','% CARRERA %') THEN 'CARRERA Y CARRERA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARLES %','% COLVARD %') THEN 'CHARLES & COLVARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DOLCE %','% GABBANA %') THEN 'DOLCE&GABBANA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GABRIEL %','% CO %') THEN 'GABRIEL & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HEARTS %','% ON %','% FIRE %') THEN 'HEARTS ON FIRE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENNETH %','% JAY %','% LANE %') THEN 'KENNETH JAY LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OSCAR %','% DE %','% LA %','% RENTA %') THEN 'OSCAR DE LA RENTA'
+
+
+-- From Auct titles
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AARON %','% BASHA %') THEN 'AARON BASHA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXANDER %','% MCQUEEN %') THEN 'ALEXANDER MCQUEEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXIS %','% BITTAR %') THEN 'ALEXIS BITTAR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AUDEMARS %','% PIGUET %') THEN 'AUDEMARS PIGUET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BACCARAT %') THEN 'BACCARAT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BLUE %','% NILE %') THEN 'BLUE NILE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOTTEGA %','% VENETA %') THEN 'BOTTEGA VENETA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOUCHERON %') THEN 'BOUCHERON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BREITLING %') THEN 'BREITLING'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BVLGARI %') THEN 'BVLGARI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARTIER %') THEN 'CARTIER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% C LINE %','% CELINE %') THEN 'CELINE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHANEL %') THEN 'CHANEL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARRIOL %') THEN 'CHARRIOL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHAUMET %') THEN 'CHAUMET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHOPARD %') THEN 'CHOPARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHROME %','% HEARTS %') THEN 'CHROME HEARTS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAMIANI %') THEN 'DAMIANI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% WEBB %') THEN 'DAVID WEBB'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DIOR %') THEN 'DIOR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% EFFY %') THEN 'EFFY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ELIZABETH %','% LOCKE %') THEN 'ELIZABETH LOCKE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% FABERGE %','% FABERG  %') THEN 'FABERGE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORG %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORGE %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GIVENCHY %') THEN 'GIVENCHY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GUCCI %') THEN 'GUCCI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GURHAN %') THEN 'GURHAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% H %','% STERN %') THEN 'H STERN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HARRY %','% WINSTON %') THEN 'HARRY WINSTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HELZBERG %') THEN 'HELZBERG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMES %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMÈS %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% IPPOLITA %') THEN 'IPPOLITA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% ALLEN %') THEN 'JAMES ALLEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% AVERY %') THEN 'JAMES AVERY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JOHN %','% HARDY %') THEN 'JOHN HARDY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUDITH %','% RIPKA %') THEN 'JUDITH RIPKA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUICY %','% COUTURE %') THEN 'JUICY COUTURE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KARL %','% LAGERFELD %') THEN 'KARL LAGERFELD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KAY %','% JEWELERS %') THEN 'KAY JEWELERS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENDRA %','% SCOTT %') THEN 'KENDRA SCOTT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KONSTANTINO %') THEN 'KONSTANTINO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LAGOS %') THEN 'LAGOS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LE %','% VIAN %') THEN 'LE VIAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LOUIS %','% VUITTON %') THEN 'LOUIS VUITTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MARCO %','% BICEGO %') THEN 'MARCO BICEGO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIKIMOTO %') THEN 'MIKIMOTO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIRIAM %','% HASKELL %') THEN 'MIRIAM HASKELL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MONTBLANC %') THEN 'MONTBLANC'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MOVADO %') THEN 'MOVADO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NA %','% HOKU %') THEN 'NA HOKU'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NEIL %','% LANE %') THEN 'NEIL LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NURAGOLD %') THEN 'NURAGOLD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OMEGA %') THEN 'OMEGA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PANDORA %') THEN 'PANDORA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PIAGET %') THEN 'PIAGET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMELLATO %') THEN 'POMELLATO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMPEII3 %') THEN 'POMPEII3'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% RACHEL %','% KOEN %') THEN 'RACHEL KOEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROBERTO %','% COIN %') THEN 'ROBERTO COIN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROLEX %') THEN 'ROLEX'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROSS %','% SIMONS %') THEN 'ROSS SIMONS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SCOTT %','% KAY %') THEN 'SCOTT KAY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SHANE %','% CO %') THEN 'SHANE CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SIMON %','% G %') THEN 'SIMON G.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% STEPHEN %','% WEBSTER %') THEN 'STEPHEN WEBSTER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SWAROVSKI %') THEN 'SWAROVSKI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TACORI %') THEN 'TACORI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TAG %','% HEUER %') THEN 'TAG HEUER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TIFFANY %','% CO %') THEN 'TIFFANY & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VAN %','% CLEEF %') THEN 'VAN CLEEF'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERA %','% WANG %') THEN 'VERA WANG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERRAGIO %') THEN 'VERRAGIO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERSACE %') THEN 'VERSACE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VIVIENNE %','% WESTWOOD %') THEN 'VIVIENNE WESTWOOD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YVES %','% SAINT %','% LAURENT %') THEN 'YVES SAINT LAURENT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ZALES %') THEN 'ZALES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARRERA %','% CARRERA %') THEN 'CARRERA Y CARRERA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARLES %','% COLVARD %') THEN 'CHARLES & COLVARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DOLCE %','% GABBANA %') THEN 'DOLCE&GABBANA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GABRIEL %','% CO %') THEN 'GABRIEL & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HEARTS %','% ON %','% FIRE %') THEN 'HEARTS ON FIRE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENNETH %','% JAY %','% LANE %') THEN 'KENNETH JAY LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OSCAR %','% DE %','% LA %','% RENTA %') THEN 'OSCAR DE LA RENTA'
+ELSE 'OTHERS' END AS BRAND_CLEAN
+FROM JEWELRY_LISTINGS_LIVE L
+LEFT JOIN listing_aspects A
+ON A.ITEM_ID=L.ITEM_ID
+AND A.AUCT_END_DT=L.AUCT_END_DT
+LEFT JOIN  ACCESS_VIEWS.CTLG_ITEM_FACT C
+ON C.AUCT_END_DT >= To_Date('2020-10-01')
+AND L.ITEM_ID = C.ITEM_ID
+AND L.AUCT_END_DT = C.AUCT_END_DT ;
+
+
+----------------------============================================================================================================================================================================================================----------------------------------
+----------------------=========================================================                          DATA EXPLORATION DW_ATTR_LSTG_TAG_DTL                          ==========================================================----------------------------------
+----------------------============================================================================================================================================================================================================----------------------------------
+
+/* -------------------------------------------- 
+----------------- Jewelry GMV Aspects----------
+---------------------------------------------- */
+DROP TABLE IF EXISTS LSTG_BASE;
+CREATE TEMPORARY TABLE LSTG_BASE AS  
+SELECT  ITEM_ID,AUCT_END_DT 
+FROM  JEWELRY_TRANS_BASE
+GROUP BY 1,2
+UNION 
+SELECT ITEM_ID, AUCT_END_DT
+FROM JEWELRY_LISTINGS_LIVE
+GROUP BY 1,2;
+
+
+DROP TABLE IF EXISTS TEMP2;
+CREATE TEMPORARY TABLE TEMP2 AS  
+ SELECT  
+  aspct.item_id
+   ,aspct.auct_end_dt
+--    ,aspct.ns_type_cd
+   ,1 AS priority
+   ,Upper(tag_name) AS aspect
+   ,Cast(Trim(Lower(aspct.tag_value_txt)) AS VARCHAR(350)) AS aspct_vlu_nm 
+ FROM ACCESS_VIEWS.DW_ATTR_LSTG_TAG_DTL AS aspct
+INNER JOIN LSTG_BASE AS item
+ON  (aspct.item_id=item.item_id AND aspct.auct_end_dt=item.auct_end_dt) 
+WHERE ((aspct.auct_end_dt>=date_sub(To_Date('2016-09-16'),5) ) AND Lower(tag_name) IN ('metal', 'metal purity', 'main stone','brand','secondary stone')) 
+GROUP BY 1,2,3,4,5;
+  
+
+
+DROP TABLE IF EXISTS aspects_temp2;
+CREATE TEMPORARY TABLE aspects_temp2 AS  
+ SELECT  
+  ITEM_ID, AUCT_END_DT, PRIORITY, ASPECT, ASPCT_VLU_NM
+ FROM  
+( SELECT  
+  *
+   ,(Row_Number() Over (PARTITION BY item_id,auct_end_dt,aspect ORDER BY priority,aspct_vlu_nm DESC)) AS alias_1781 
+ FROM temp2
+)alias_1782 
+ WHERE alias_1782.alias_1781 = 1;
+
+
+DROP TABLE IF EXISTS listing_aspects;
+CREATE TEMPORARY TABLE listing_aspects AS  
+ SELECT  
+  item_id
+   ,auct_end_dt
+   ,Coalesce(Max(CASE  WHEN Lower(aspect)=Lower('BRAND') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS BRAND
+   ,Coalesce(Max(CASE  WHEN Lower(aspect)=Lower('METAL') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS METAL
+   ,Coalesce(Max(CASE  WHEN Lower(aspect)=Lower('METAL PURITY') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS METAL_PURITY
+   ,Coalesce(Max(CASE  WHEN Lower(aspect)=Lower('MAIN STONE') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS MAIN_STONE 
+   ,Coalesce(Max(CASE  WHEN Lower(aspect)=Lower('SECONDARY STONE') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS SECONDARY_STONE 
+ FROM aspects_temp2
+ GROUP BY 1,2;
+
+
+	
+------------FINAL TRANSACTION TABLE--------------
+DROP TABLE IF EXISTS p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_TRANS_Aug_ATTR;
+CREATE TABLE p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_TRANS_Aug_ATTR AS
+SELECT T.*,
+A.METAL,
+A.METAL_PURITY,
+A.MAIN_STONE,
+A.SECONDARY_STONE,
+C.BRAND_TXT,
+A.BRAND,
+CASE 
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AARON %','% BASHA %') THEN 'AARON BASHA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXANDER %','% MCQUEEN %') THEN 'ALEXANDER MCQUEEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXIS %','% BITTAR %') THEN 'ALEXIS BITTAR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AUDEMARS %','% PIGUET %') THEN 'AUDEMARS PIGUET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BACCARAT %') THEN 'BACCARAT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BLUE %','% NILE %') THEN 'BLUE NILE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOTTEGA %','% VENETA %') THEN 'BOTTEGA VENETA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOUCHERON %') THEN 'BOUCHERON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BREITLING %') THEN 'BREITLING'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BVLGARI %') THEN 'BVLGARI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARTIER %') THEN 'CARTIER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% C LINE %','% CELINE %') THEN 'CELINE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHANEL %') THEN 'CHANEL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARRIOL %') THEN 'CHARRIOL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHAUMET %') THEN 'CHAUMET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHOPARD %') THEN 'CHOPARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHROME %','% HEARTS %') THEN 'CHROME HEARTS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAMIANI %') THEN 'DAMIANI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% WEBB %') THEN 'DAVID WEBB'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DIOR %') THEN 'DIOR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% EFFY %') THEN 'EFFY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ELIZABETH %','% LOCKE %') THEN 'ELIZABETH LOCKE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% FABERGE %','% FABERG  %') THEN 'FABERGE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORG %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORGE %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GIVENCHY %') THEN 'GIVENCHY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GUCCI %') THEN 'GUCCI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GURHAN %') THEN 'GURHAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% H %','% STERN %') THEN 'H STERN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HARRY %','% WINSTON %') THEN 'HARRY WINSTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HELZBERG %') THEN 'HELZBERG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMES %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMÈS %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% IPPOLITA %') THEN 'IPPOLITA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% ALLEN %') THEN 'JAMES ALLEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% AVERY %') THEN 'JAMES AVERY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JOHN %','% HARDY %') THEN 'JOHN HARDY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUDITH %','% RIPKA %') THEN 'JUDITH RIPKA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUICY %','% COUTURE %') THEN 'JUICY COUTURE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KARL %','% LAGERFELD %') THEN 'KARL LAGERFELD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KAY %','% JEWELERS %') THEN 'KAY JEWELERS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENDRA %','% SCOTT %') THEN 'KENDRA SCOTT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KONSTANTINO %') THEN 'KONSTANTINO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LAGOS %') THEN 'LAGOS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LE %','% VIAN %') THEN 'LE VIAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LOUIS %','% VUITTON %') THEN 'LOUIS VUITTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MARCO %','% BICEGO %') THEN 'MARCO BICEGO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIKIMOTO %') THEN 'MIKIMOTO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIRIAM %','% HASKELL %') THEN 'MIRIAM HASKELL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MONTBLANC %') THEN 'MONTBLANC'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MOVADO %') THEN 'MOVADO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NA %','% HOKU %') THEN 'NA HOKU'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NEIL %','% LANE %') THEN 'NEIL LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NURAGOLD %') THEN 'NURAGOLD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OMEGA %') THEN 'OMEGA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PANDORA %') THEN 'PANDORA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PIAGET %') THEN 'PIAGET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMELLATO %') THEN 'POMELLATO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMPEII3 %') THEN 'POMPEII3'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% RACHEL %','% KOEN %') THEN 'RACHEL KOEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROBERTO %','% COIN %') THEN 'ROBERTO COIN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROLEX %') THEN 'ROLEX'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROSS %','% SIMONS %') THEN 'ROSS SIMONS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SCOTT %','% KAY %') THEN 'SCOTT KAY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SHANE %','% CO %') THEN 'SHANE CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SIMON %','% G %') THEN 'SIMON G.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% STEPHEN %','% WEBSTER %') THEN 'STEPHEN WEBSTER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SWAROVSKI %') THEN 'SWAROVSKI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TACORI %') THEN 'TACORI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TAG %','% HEUER %') THEN 'TAG HEUER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TIFFANY %','% CO %') THEN 'TIFFANY & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VAN %','% CLEEF %') THEN 'VAN CLEEF'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERA %','% WANG %') THEN 'VERA WANG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERRAGIO %') THEN 'VERRAGIO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERSACE %') THEN 'VERSACE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VIVIENNE %','% WESTWOOD %') THEN 'VIVIENNE WESTWOOD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YVES %','% SAINT %','% LAURENT %') THEN 'YVES SAINT LAURENT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ZALES %') THEN 'ZALES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARRERA %','% CARRERA %') THEN 'CARRERA Y CARRERA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARLES %','% COLVARD %') THEN 'CHARLES & COLVARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DOLCE %','% GABBANA %') THEN 'DOLCE&GABBANA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GABRIEL %','% CO %') THEN 'GABRIEL & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HEARTS %','% ON %','% FIRE %') THEN 'HEARTS ON FIRE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENNETH %','% JAY %','% LANE %') THEN 'KENNETH JAY LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OSCAR %','% DE %','% LA %','% RENTA %') THEN 'OSCAR DE LA RENTA'
+
+
+-- From Auct titles
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AARON %','% BASHA %') THEN 'AARON BASHA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXANDER %','% MCQUEEN %') THEN 'ALEXANDER MCQUEEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXIS %','% BITTAR %') THEN 'ALEXIS BITTAR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AUDEMARS %','% PIGUET %') THEN 'AUDEMARS PIGUET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BACCARAT %') THEN 'BACCARAT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BLUE %','% NILE %') THEN 'BLUE NILE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOTTEGA %','% VENETA %') THEN 'BOTTEGA VENETA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOUCHERON %') THEN 'BOUCHERON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BREITLING %') THEN 'BREITLING'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BVLGARI %') THEN 'BVLGARI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARTIER %') THEN 'CARTIER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% C LINE %','% CELINE %') THEN 'CELINE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHANEL %') THEN 'CHANEL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARRIOL %') THEN 'CHARRIOL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHAUMET %') THEN 'CHAUMET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHOPARD %') THEN 'CHOPARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHROME %','% HEARTS %') THEN 'CHROME HEARTS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAMIANI %') THEN 'DAMIANI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% WEBB %') THEN 'DAVID WEBB'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DIOR %') THEN 'DIOR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% EFFY %') THEN 'EFFY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ELIZABETH %','% LOCKE %') THEN 'ELIZABETH LOCKE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% FABERGE %','% FABERG  %') THEN 'FABERGE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORG %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORGE %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GIVENCHY %') THEN 'GIVENCHY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GUCCI %') THEN 'GUCCI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GURHAN %') THEN 'GURHAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% H %','% STERN %') THEN 'H STERN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HARRY %','% WINSTON %') THEN 'HARRY WINSTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HELZBERG %') THEN 'HELZBERG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMES %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMÈS %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% IPPOLITA %') THEN 'IPPOLITA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% ALLEN %') THEN 'JAMES ALLEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% AVERY %') THEN 'JAMES AVERY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JOHN %','% HARDY %') THEN 'JOHN HARDY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUDITH %','% RIPKA %') THEN 'JUDITH RIPKA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUICY %','% COUTURE %') THEN 'JUICY COUTURE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KARL %','% LAGERFELD %') THEN 'KARL LAGERFELD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KAY %','% JEWELERS %') THEN 'KAY JEWELERS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENDRA %','% SCOTT %') THEN 'KENDRA SCOTT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KONSTANTINO %') THEN 'KONSTANTINO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LAGOS %') THEN 'LAGOS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LE %','% VIAN %') THEN 'LE VIAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LOUIS %','% VUITTON %') THEN 'LOUIS VUITTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MARCO %','% BICEGO %') THEN 'MARCO BICEGO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIKIMOTO %') THEN 'MIKIMOTO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIRIAM %','% HASKELL %') THEN 'MIRIAM HASKELL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MONTBLANC %') THEN 'MONTBLANC'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MOVADO %') THEN 'MOVADO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NA %','% HOKU %') THEN 'NA HOKU'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NEIL %','% LANE %') THEN 'NEIL LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NURAGOLD %') THEN 'NURAGOLD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OMEGA %') THEN 'OMEGA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PANDORA %') THEN 'PANDORA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PIAGET %') THEN 'PIAGET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMELLATO %') THEN 'POMELLATO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMPEII3 %') THEN 'POMPEII3'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% RACHEL %','% KOEN %') THEN 'RACHEL KOEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROBERTO %','% COIN %') THEN 'ROBERTO COIN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROLEX %') THEN 'ROLEX'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROSS %','% SIMONS %') THEN 'ROSS SIMONS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SCOTT %','% KAY %') THEN 'SCOTT KAY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SHANE %','% CO %') THEN 'SHANE CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SIMON %','% G %') THEN 'SIMON G.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% STEPHEN %','% WEBSTER %') THEN 'STEPHEN WEBSTER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SWAROVSKI %') THEN 'SWAROVSKI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TACORI %') THEN 'TACORI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TAG %','% HEUER %') THEN 'TAG HEUER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TIFFANY %','% CO %') THEN 'TIFFANY & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VAN %','% CLEEF %') THEN 'VAN CLEEF'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERA %','% WANG %') THEN 'VERA WANG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERRAGIO %') THEN 'VERRAGIO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERSACE %') THEN 'VERSACE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VIVIENNE %','% WESTWOOD %') THEN 'VIVIENNE WESTWOOD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YVES %','% SAINT %','% LAURENT %') THEN 'YVES SAINT LAURENT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ZALES %') THEN 'ZALES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARRERA %','% CARRERA %') THEN 'CARRERA Y CARRERA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARLES %','% COLVARD %') THEN 'CHARLES & COLVARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DOLCE %','% GABBANA %') THEN 'DOLCE&GABBANA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GABRIEL %','% CO %') THEN 'GABRIEL & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HEARTS %','% ON %','% FIRE %') THEN 'HEARTS ON FIRE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENNETH %','% JAY %','% LANE %') THEN 'KENNETH JAY LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OSCAR %','% DE %','% LA %','% RENTA %') THEN 'OSCAR DE LA RENTA'
+ELSE 'OTHERS' END AS BRAND_CLEAN
+FROM JEWELRY_TRANS_BASE T
+LEFT JOIN listing_aspects A
+ON A.ITEM_ID=T.ITEM_ID
+AND A.AUCT_END_DT=T.AUCT_END_DT
+LEFT JOIN  ACCESS_VIEWS.CTLG_ITEM_FACT C
+ON C.AUCT_END_DT >= To_Date('2016-10-01')
+AND T.ITEM_ID = C.ITEM_ID
+AND T.AUCT_END_DT = C.AUCT_END_DT 
+;
+
+
+-------------FINAL LISTING TABLE--------------
+DROP TABLE IF EXISTS p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_LL_Aug_ATTR;
+CREATE TABLE p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_LL_Aug_ATTR AS
+SELECT L.*,
+A.METAL,
+A.METAL_PURITY,
+A.MAIN_STONE,
+A.SECONDARY_STONE,
+C.BRAND_TXT,
+A.BRAND,
+CASE 
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AARON %','% BASHA %') THEN 'AARON BASHA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXANDER %','% MCQUEEN %') THEN 'ALEXANDER MCQUEEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXIS %','% BITTAR %') THEN 'ALEXIS BITTAR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AUDEMARS %','% PIGUET %') THEN 'AUDEMARS PIGUET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BACCARAT %') THEN 'BACCARAT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BLUE %','% NILE %') THEN 'BLUE NILE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOTTEGA %','% VENETA %') THEN 'BOTTEGA VENETA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOUCHERON %') THEN 'BOUCHERON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BREITLING %') THEN 'BREITLING'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BVLGARI %') THEN 'BVLGARI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARTIER %') THEN 'CARTIER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% C LINE %','% CELINE %') THEN 'CELINE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHANEL %') THEN 'CHANEL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARRIOL %') THEN 'CHARRIOL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHAUMET %') THEN 'CHAUMET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHOPARD %') THEN 'CHOPARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHROME %','% HEARTS %') THEN 'CHROME HEARTS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAMIANI %') THEN 'DAMIANI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% WEBB %') THEN 'DAVID WEBB'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DIOR %') THEN 'DIOR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% EFFY %') THEN 'EFFY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ELIZABETH %','% LOCKE %') THEN 'ELIZABETH LOCKE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% FABERGE %','% FABERG  %') THEN 'FABERGE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORG %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORGE %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GIVENCHY %') THEN 'GIVENCHY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GUCCI %') THEN 'GUCCI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GURHAN %') THEN 'GURHAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% H %','% STERN %') THEN 'H STERN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HARRY %','% WINSTON %') THEN 'HARRY WINSTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HELZBERG %') THEN 'HELZBERG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMES %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMÈS %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% IPPOLITA %') THEN 'IPPOLITA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% ALLEN %') THEN 'JAMES ALLEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% AVERY %') THEN 'JAMES AVERY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JOHN %','% HARDY %') THEN 'JOHN HARDY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUDITH %','% RIPKA %') THEN 'JUDITH RIPKA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUICY %','% COUTURE %') THEN 'JUICY COUTURE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KARL %','% LAGERFELD %') THEN 'KARL LAGERFELD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KAY %','% JEWELERS %') THEN 'KAY JEWELERS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENDRA %','% SCOTT %') THEN 'KENDRA SCOTT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KONSTANTINO %') THEN 'KONSTANTINO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LAGOS %') THEN 'LAGOS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LE %','% VIAN %') THEN 'LE VIAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LOUIS %','% VUITTON %') THEN 'LOUIS VUITTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MARCO %','% BICEGO %') THEN 'MARCO BICEGO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIKIMOTO %') THEN 'MIKIMOTO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIRIAM %','% HASKELL %') THEN 'MIRIAM HASKELL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MONTBLANC %') THEN 'MONTBLANC'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MOVADO %') THEN 'MOVADO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NA %','% HOKU %') THEN 'NA HOKU'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NEIL %','% LANE %') THEN 'NEIL LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NURAGOLD %') THEN 'NURAGOLD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OMEGA %') THEN 'OMEGA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PANDORA %') THEN 'PANDORA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PIAGET %') THEN 'PIAGET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMELLATO %') THEN 'POMELLATO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMPEII3 %') THEN 'POMPEII3'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% RACHEL %','% KOEN %') THEN 'RACHEL KOEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROBERTO %','% COIN %') THEN 'ROBERTO COIN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROLEX %') THEN 'ROLEX'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROSS %','% SIMONS %') THEN 'ROSS SIMONS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SCOTT %','% KAY %') THEN 'SCOTT KAY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SHANE %','% CO %') THEN 'SHANE CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SIMON %','% G %') THEN 'SIMON G.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% STEPHEN %','% WEBSTER %') THEN 'STEPHEN WEBSTER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SWAROVSKI %') THEN 'SWAROVSKI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TACORI %') THEN 'TACORI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TAG %','% HEUER %') THEN 'TAG HEUER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TIFFANY %','% CO %') THEN 'TIFFANY & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VAN %','% CLEEF %') THEN 'VAN CLEEF'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERA %','% WANG %') THEN 'VERA WANG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERRAGIO %') THEN 'VERRAGIO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERSACE %') THEN 'VERSACE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VIVIENNE %','% WESTWOOD %') THEN 'VIVIENNE WESTWOOD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YVES %','% SAINT %','% LAURENT %') THEN 'YVES SAINT LAURENT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ZALES %') THEN 'ZALES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARRERA %','% CARRERA %') THEN 'CARRERA Y CARRERA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARLES %','% COLVARD %') THEN 'CHARLES & COLVARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DOLCE %','% GABBANA %') THEN 'DOLCE&GABBANA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GABRIEL %','% CO %') THEN 'GABRIEL & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HEARTS %','% ON %','% FIRE %') THEN 'HEARTS ON FIRE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENNETH %','% JAY %','% LANE %') THEN 'KENNETH JAY LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(A.BRAND,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OSCAR %','% DE %','% LA %','% RENTA %') THEN 'OSCAR DE LA RENTA'
+
+
+-- From Auct titles
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AARON %','% BASHA %') THEN 'AARON BASHA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXANDER %','% MCQUEEN %') THEN 'ALEXANDER MCQUEEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ALEXIS %','% BITTAR %') THEN 'ALEXIS BITTAR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% AUDEMARS %','% PIGUET %') THEN 'AUDEMARS PIGUET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BACCARAT %') THEN 'BACCARAT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BLUE %','% NILE %') THEN 'BLUE NILE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOTTEGA %','% VENETA %') THEN 'BOTTEGA VENETA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BOUCHERON %') THEN 'BOUCHERON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BREITLING %') THEN 'BREITLING'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% BVLGARI %') THEN 'BVLGARI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARTIER %') THEN 'CARTIER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% C LINE %','% CELINE %') THEN 'CELINE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHANEL %') THEN 'CHANEL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARRIOL %') THEN 'CHARRIOL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHAUMET %') THEN 'CHAUMET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHOPARD %') THEN 'CHOPARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHROME %','% HEARTS %') THEN 'CHROME HEARTS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAMIANI %') THEN 'DAMIANI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% WEBB %') THEN 'DAVID WEBB'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DAVID %','% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DIOR %') THEN 'DIOR'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% EFFY %') THEN 'EFFY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ELIZABETH %','% LOCKE %') THEN 'ELIZABETH LOCKE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ANY ('% FABERGE %','% FABERG  %') THEN 'FABERGE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORG %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GEORGE %','% JENSEN %') THEN 'GEORGE JENSEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GIVENCHY %') THEN 'GIVENCHY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GUCCI %') THEN 'GUCCI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GURHAN %') THEN 'GURHAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% H %','% STERN %') THEN 'H STERN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HARRY %','% WINSTON %') THEN 'HARRY WINSTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HELZBERG %') THEN 'HELZBERG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMES %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HERMÈS %') THEN 'HERMES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% IPPOLITA %') THEN 'IPPOLITA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% ALLEN %') THEN 'JAMES ALLEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JAMES %','% AVERY %') THEN 'JAMES AVERY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JOHN %','% HARDY %') THEN 'JOHN HARDY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUDITH %','% RIPKA %') THEN 'JUDITH RIPKA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% JUICY %','% COUTURE %') THEN 'JUICY COUTURE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KARL %','% LAGERFELD %') THEN 'KARL LAGERFELD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KAY %','% JEWELERS %') THEN 'KAY JEWELERS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENDRA %','% SCOTT %') THEN 'KENDRA SCOTT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KONSTANTINO %') THEN 'KONSTANTINO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LAGOS %') THEN 'LAGOS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LE %','% VIAN %') THEN 'LE VIAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% LOUIS %','% VUITTON %') THEN 'LOUIS VUITTON'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MARCO %','% BICEGO %') THEN 'MARCO BICEGO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIKIMOTO %') THEN 'MIKIMOTO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MIRIAM %','% HASKELL %') THEN 'MIRIAM HASKELL'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MONTBLANC %') THEN 'MONTBLANC'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% MOVADO %') THEN 'MOVADO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NA %','% HOKU %') THEN 'NA HOKU'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NEIL %','% LANE %') THEN 'NEIL LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% NURAGOLD %') THEN 'NURAGOLD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OMEGA %') THEN 'OMEGA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PANDORA %') THEN 'PANDORA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% PIAGET %') THEN 'PIAGET'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMELLATO %') THEN 'POMELLATO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% POMPEII3 %') THEN 'POMPEII3'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% RACHEL %','% KOEN %') THEN 'RACHEL KOEN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROBERTO %','% COIN %') THEN 'ROBERTO COIN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROLEX %') THEN 'ROLEX'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ROSS %','% SIMONS %') THEN 'ROSS SIMONS'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SCOTT %','% KAY %') THEN 'SCOTT KAY'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SHANE %','% CO %') THEN 'SHANE CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SIMON %','% G %') THEN 'SIMON G.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% STEPHEN %','% WEBSTER %') THEN 'STEPHEN WEBSTER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% SWAROVSKI %') THEN 'SWAROVSKI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TACORI %') THEN 'TACORI'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TAG %','% HEUER %') THEN 'TAG HEUER'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% TIFFANY %','% CO %') THEN 'TIFFANY & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VAN %','% CLEEF %') THEN 'VAN CLEEF'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERA %','% WANG %') THEN 'VERA WANG'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERRAGIO %') THEN 'VERRAGIO'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VERSACE %') THEN 'VERSACE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% VIVIENNE %','% WESTWOOD %') THEN 'VIVIENNE WESTWOOD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YURMAN %') THEN 'DAVID YURMAN'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% YVES %','% SAINT %','% LAURENT %') THEN 'YVES SAINT LAURENT'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% ZALES %') THEN 'ZALES'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CARRERA %','% CARRERA %') THEN 'CARRERA Y CARRERA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% CHARLES %','% COLVARD %') THEN 'CHARLES & COLVARD'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% DOLCE %','% GABBANA %') THEN 'DOLCE&GABBANA'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% GABRIEL %','% CO %') THEN 'GABRIEL & CO.'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% HEARTS %','% ON %','% FIRE %') THEN 'HEARTS ON FIRE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% KENNETH %','% JAY %','% LANE %') THEN 'KENNETH JAY LANE'
+WHEN (' ' || TRIM(UPPER(regexp_replace(AUCT_TITL,'[^A-Za-z0-9]'," "))) || ' ') LIKE ALL ('% OSCAR %','% DE %','% LA %','% RENTA %') THEN 'OSCAR DE LA RENTA'
+ELSE 'OTHERS' END AS BRAND_CLEAN
+FROM JEWELRY_LISTINGS_LIVE L
+LEFT JOIN listing_aspects A
+ON A.ITEM_ID=L.ITEM_ID
+AND A.AUCT_END_DT=L.AUCT_END_DT
+LEFT JOIN  ACCESS_VIEWS.CTLG_ITEM_FACT C
+ON C.AUCT_END_DT >= To_Date('2020-10-01')
+AND L.ITEM_ID = C.ITEM_ID
+AND L.AUCT_END_DT = C.AUCT_END_DT ;
+
+
+
+/*
+
+select SUM(GMV) AS GMV from p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_TRANS T INNER JOIN ACCESS_VIEWS.DW_GEM2_CMN_CK_I GEM ON GEM.LSTG_ID=T.ITEM_ID AND GEM.CK_TRANS_ID=T.TRANSACTION_ID WHERE GEM.adj_type_id IN(-7, -1, 5, 3, 27, 29) AND SITE_ID IN (0,100);
+
+select SUM(GMV) AS GMV from p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_TRANS T where site_id in (0,100);
+
+
+
+
+--------------------ASPECT EXPLORATION--------------
+SELECT * FROM  p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_TRANS ORDER BY CREATED_DT DESC LIMIT 10;
+
+
+SELECT *
+FROM item_aspct_clssfctn AS aspct
+WHERE ITEM_ID IN (
+134036957552
+--,332785469424
+--,294836899632
+--,325067565059
+--,264772450283
+--,265555952334
+--,152598041472
+--,304367800398
+--,353886462675
+)
+AND AUCT_END_DT>=TO_DATE('2022-01-01')
+
+
+
+SELECT PRDCT_ASPCT_NM,COUNT(DISTINCT(L.ITEM_ID)) AS ITEMS
+FROM item_aspct_clssfctn A
+INNER JOIN p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_LL L
+ON A.ITEM_ID=L.ITEM_ID
+AND A.AUCT_END_DT>=TO_DATE('2020-01-01')
+WHERE Lower(ns_type_cd) IN (Lower('nf'),Lower('df' ))
+GROUP BY 1;
+
+
+
+SELECT count(distinct(a.item_id)) as items
+FROM item_aspct_clssfctn A
+INNER JOIN p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_LL L
+ON A.ITEM_ID=L.ITEM_ID
+AND A.AUCT_END_DT>=TO_DATE('2022-01-01')
+WHERE Lower(ns_type_cd) IN (Lower('nf'),Lower('df' ))
+and lower(PRDCT_ASPCT_NM) like any ('%no. of stones%',
+'%number of stones%',
+'%no of stones%');
+
+
+SELECT PRDCT_ASPCT_NM,COUNT(DISTINCT(L.ITEM_ID)) AS ITEMS
+FROM item_aspct_clssfctn A
+INNER JOIN p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_LL L
+ON A.ITEM_ID=L.ITEM_ID
+AND A.AUCT_END_DT>=TO_DATE('2020-01-01')
+AND ASP_BUCKET<>'A. <$300'
+AND LSTG_SITE_US_FLAG='US'
+WHERE Lower(ns_type_cd) IN (Lower('nf'),Lower('df' ))
+GROUP BY 1
+
+
+
+
+
+SELECT COUNT(DISTINCT(ITEM_ID))
+FROM  p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_LL
+WHERE  ASP_BUCKET<>'A. <$300'
+AND LSTG_SITE_US_FLAG='US';*/
+
+
+-- select distinct brand_clean from p_robevans_t.JEWELRY_PSA_ASPECT_EXPLORATION_TRANS;

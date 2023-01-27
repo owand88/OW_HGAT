@@ -1,0 +1,29 @@
+select retail_year
+, retail_week
+, lkp.mpn_txt as style_code
+, case when mpn_txt = 'DD1391400' then 'Valerian Blue Dunk Low'
+	when mpn_txt = 'DM7866140' then 'Travis Scott Fragment 1 low'
+	when mpn_txt = 'DD1391103' then 'Grey Fog Dunks'
+	when mpn_txt = '554724078' then 'J1 Anthracite Mid'
+	when mpn_txt = 'DH6927111' then 'Jordan 4 Military Black'
+	End as style_name
+, lkp.item_id
+,cond.cndtn_descr
+, ck.ITEM_PRICE
+, sum(ck.QUANTITY) as sold_items
+, count(distinct ck.SELLER_ID) as seller_count
+, count (distinct ck.BUYER_ID) as buyers_count
+From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+INNER JOIN CTLG_ITEM_FACT lkp
+	on ck.item_id = lkp.item_id
+	and ck.AUCT_END_DT = lkp.auct_end_dt
+inner join DW_CAL_DT cal
+	on ck.GMV_DT = cal.CAL_DT
+	and cal.RETAIL_YEAR >= 2021
+LEFT JOIN p_robevans_t.item_cndtn_descr cond
+	on ck.CNDTN_ROLLUP_ID = cond.CNDTN_ROLLUP_ID
+Where lkp.MPN_TXT in ('DD1391400','DM7866140','DD1391103','554724078','DH6927111')
+and ck.SITE_ID = 3
+
+Group by 1,2,3,4,5,6,7
+

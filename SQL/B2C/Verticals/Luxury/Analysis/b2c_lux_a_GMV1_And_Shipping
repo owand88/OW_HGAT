@@ -1,0 +1,168 @@
+-----------------------------------------------------------------------------------------------------------
+------------------------------GMM and GMV 1.0 + Shipping For UK & DE---------------------------------------
+-----------------------------------------------------------------------------------------------------------
+--Watches--
+select 
+'Watches GMV1.0+Shipping' as target
+,site_name
+,rtl_year_Q
+,nvl(GMB,0)+nvl(gmb_shipping_fee,0)+nvl(gmb_shipping_xfee,0) as gmb
+,nvl(GMV,0)+nvl(gmv_shipping_fee,0)+nvl(gmv_shipping_xfee,0) as gmv
+
+From 
+(
+
+--UK--
+
+Select s.site_name
+,retail_year||' Q'||RTL_QTR_OF_RTL_YEAR_ID as rtl_year_Q
+,SUM(case when ck.BYR_CNTRY_ID = 3 then CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE End) AS GMB
+,SUM(case when ck.slr_CNTRY_ID = 3 then CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE End) AS GMV
+,sum(case when ck.BYR_CNTRY_ID = 3 then ck.SHIPPING_FEE* LPR.CURNCY_PLAN_RATE End) as gmb_shipping_fee
+,sum(case when ck.slr_CNTRY_ID = 3 then ck.SHIPPING_FEE* LPR.CURNCY_PLAN_RATE End) as gmv_shipping_fee
+,sum(case when ck.BYR_CNTRY_ID = 3 then ck.SHIPPING_XFEE* LPR.CURNCY_PLAN_RATE End) as gmb_shipping_xfee
+,sum(case when ck.SLR_CNTRY_ID = 3 then ck.SHIPPING_XFEE* LPR.CURNCY_PLAN_RATE End) as gmv_shipping_xfee
+
+From DW_CHECKOUT_TRANS ck
+INNER JOIN DW_CAL_DT cal
+	on ck.created_dt = cal.CAL_DT
+	and retail_year >= 2018
+	and AGE_FOR_RTL_QTR_ID < 0
+INNER JOIN DW_CATEGORY_GROUPINGS CAT
+	ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+	AND cat.site_id = 3
+	AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+inner JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID
+left join DW_SITES s
+	ON ck.SITE_ID = s.site_id
+
+Where 1=1
+and ck.SITE_ID in (3)
+and ck.SALE_TYPE not in (10,12,15)
+and cat.CATEG_LVL2_ID = 260324 --Watches
+and ck.ITEM_PRICE >= 500
+
+Group by 1,2
+
+
+UNION ALL
+
+
+--DE--
+
+Select s.site_name
+,retail_year||' Q'||RTL_QTR_OF_RTL_YEAR_ID as rtl_year_Q
+,SUM(case when ck.BYR_CNTRY_ID = 77 then CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE End) AS GMB
+,SUM(case when ck.slr_CNTRY_ID = 77 then CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE End) AS GMV
+,sum(case when ck.BYR_CNTRY_ID = 77 then ck.SHIPPING_FEE* LPR.CURNCY_PLAN_RATE End) as gmb_shipping_fee
+,sum(case when ck.slr_CNTRY_ID = 77 then ck.SHIPPING_FEE* LPR.CURNCY_PLAN_RATE End) as gmv_shipping_fee
+,sum(case when ck.BYR_CNTRY_ID = 77 then ck.SHIPPING_XFEE* LPR.CURNCY_PLAN_RATE End) as gmb_shipping_xfee
+,sum(case when ck.SLR_CNTRY_ID = 77 then ck.SHIPPING_XFEE* LPR.CURNCY_PLAN_RATE End) as gmv_shipping_xfee
+
+From DW_CHECKOUT_TRANS ck
+INNER JOIN DW_CAL_DT cal
+	on ck.created_dt = cal.CAL_DT
+	and retail_year >= 2018
+	and AGE_FOR_RTL_QTR_ID < 0
+INNER JOIN DW_CATEGORY_GROUPINGS CAT
+	ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+	AND cat.site_id = 77
+	AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+inner JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID
+left join DW_SITES s
+	ON ck.SITE_ID = s.site_id
+
+Where 1=1
+and ck.SITE_ID in (77)
+and ck.SALE_TYPE not in (10,12,15)
+and cat.CATEG_LVL2_ID = 260324 --Watches
+and ck.ITEM_PRICE >= 500
+
+Group by 1,2
+
+)
+
+
+
+
+UNION ALL
+--------------------------------------------------------------------------------------------------------
+---------------------------------------------------GMV 2.0----------------------------------------------
+--------------------------------------------------------------------------------------------------------
+Select
+'Sneakers GMV2.0' as target
+,site_name
+,rtl_year_Q
+,GMB
+,GMV
+
+From (
+
+--Sneakers-- 
+--UK-- 
+
+Select s.site_name
+,retail_year||' Q'||RTL_QTR_OF_RTL_YEAR_ID as rtl_year_Q
+,SUM(case when ck.BYR_CNTRY_ID = 3 then CK.GMV20_PLAN End) AS GMB
+,SUM(case when ck.SLR_CNTRY_ID = 3 then CK.GMV20_PLAN End) AS GMV
+
+From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+INNER JOIN DW_CAL_DT cal
+	on ck.GMV_DT = cal.CAL_DT
+	and retail_year >= 2018
+	and AGE_FOR_RTL_QTR_ID < 0
+INNER JOIN DW_CATEGORY_GROUPINGS CAT
+	ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+	AND cat.site_id = 3
+	AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+left join DW_SITES s
+	ON ck.SITE_ID = s.site_id
+	
+Where 1=1
+and ck.SITE_ID in (3)
+and ck.SALE_TYPE not in (10,12,15)
+and ck.BYR_CNTRY_ID = 3 -- Change to slr_cntry_id for GMV
+and cat.CATEG_LVL4_ID in (15709,95672) 
+and ck.ITEM_PRICE >= 100
+
+Group by 1,2
+
+
+
+UNION ALL
+
+
+
+Select s.site_name
+,retail_year||' Q'||RTL_QTR_OF_RTL_YEAR_ID as rtl_year_Q
+,SUM(case when ck.BYR_CNTRY_ID = 77 then CK.GMV20_PLAN End) AS GMB
+,SUM(case when ck.SLR_CNTRY_ID = 77 then CK.GMV20_PLAN End) AS GMV
+
+From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+INNER JOIN DW_CAL_DT cal
+	on ck.gmv_dt = cal.CAL_DT
+	and retail_year >= 2018
+	and AGE_FOR_RTL_QTR_ID < 0
+INNER JOIN DW_CATEGORY_GROUPINGS CAT
+	ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+	AND cat.site_id = 77
+	AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+left join DW_SITES s
+	ON ck.SITE_ID = s.site_id
+	
+Where 1=1
+and ck.SITE_ID in (77)
+and ck.SALE_TYPE not in (10,12,15)
+and ck.BYR_CNTRY_ID = 77 -- Change to slr_cntry_id for GMV
+and cat.CATEG_LVL4_ID in (15709,95672) 
+and ck.ITEM_PRICE >= 100
+
+Group by 1,2
+
+)
+
+
+
+

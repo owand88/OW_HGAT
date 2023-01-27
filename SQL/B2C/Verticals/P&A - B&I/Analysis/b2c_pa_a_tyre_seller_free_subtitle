@@ -1,0 +1,150 @@
+------ ------ ------ ------ ------ ------ ------
+-- Tyre Opted in for Free Subtitle
+-- UKPLAN-74
+------ ------ ------ ------ ------ ------
+-- PUll seller list
+-- Map seller name
+-- GMV and LL to prioritise sellers
+Drop table if exists  p_InventoryPlanning_T.pa_tyre_free_sub_seller ;
+CREATE table p_InventoryPlanning_T.pa_tyre_free_sub_seller as 
+select 
+a.USER_ID,
+b.USER_SLCTD_ID,
+a.RSVP_DT
+from (
+	SELECT
+       distinct  rsvp.USER_ID
+        ,rsvp.START_DT AS RSVP_DT
+    FROM
+        ACCESS_VIEWS.DW_USER_PRMTN_OPTIN rsvp
+    WHERE 1=1
+        AND rsvp.PRMTN_GRP_ID IN (1007810)) a 
+left join  DW_USERs b ON b.USER_ID= a.USER_ID 
+;
+
+select count(*), count( distinct user_id)  from p_InventoryPlanning_T.pa_tyre_free_sub_seller;
+
+-- gmv
+
+drop table if exists  p_InventoryPlanning_T.pa_tyre_free_sub_gmv;
+create table  p_InventoryPlanning_T.pa_tyre_free_sub_gmv as (
+select * from 
+(
+SELECT			
+Retail_year,
+ck.SELLER_ID,
+--cal.AGE_FOR_QTR_ID,
+--cal.QTR_OF_YEAR_ID,
+cal.RETAIL_week,
+--seller_id,
+--USER_SLCTD_ID,
+---New_Vertical,
+--meta_categ_id, 
+--CATEG_LVL2_ID, 
+--categ_lvl2_name, 
+categ_lvl3_name, 
+categ_lvl3_id,
+categ_lvl4_name, 
+categ_lvl4_id,
+	case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
+		when meta_categ_id in (26395) then 'Lifestyle'
+		when CATEG_LVL3_ID in (260325) then 'Lifestyle'
+		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+		when categ_lvl3_id in (3244) then 'Parts & Accessories'
+		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+		when categ_lvl2_id in (46576) then 'Parts & Accessories'
+		when bsns_vrtcl_name in ('Collectibles') and meta_categ_id in (220, 237, 550)  then 'Collectibles B2C'
+		when bsns_vrtcl_name in ('Collectibles') and categ_lvl2_id in (180250) then 'Collectibles B2C' 
+		else bsns_vrtcl_name end as vertical,
+
+case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 2 then 'Refurb' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  'Other'  end as Condition,
+--SUM(CAST(CK.QUANTITY AS DECIMAL(18,2))* CAST(CK.ITEM_PRICE AS DECIMAL(18,2))*CAST(LPR.CURNCY_PLAN_RATE AS DECIMAL(18,2))) AS GMV_10,
+sum(GMV_PLAN_USD) as GMV_20,
+--count(distinct  BUYER_ID) as buyer_count
+sum(QUANTITY) as BI
+--COALESCE(SUM(CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE),0) AS GMV
+
+
+			FROM   DW_CHECKOUT_TRANS ck 
+			inner join ( select DISTINCT user_id from  p_InventoryPlanning_T.pa_tyre_free_sub_seller) kr on ck.SELLER_ID=kr.user_id
+			INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS LPR
+				ON LPR.CURNCY_ID = CK.LSTG_CURNCY_ID
+			INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.CREATED_DT   and retail_year >= 2022 and AGE_FOR_RTL_WEEK_ID  = -1 -- and retail_week between 1 and 52  --change here for time period if needed
+			INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			INNER join dw_users b on CK.seller_id=b.user_id -- select * from  dw_users where user_id in (  59275107,777151520)
+			 
+			inner JOIN lstg_item_cndtn CNDTN ON ck.item_id = CNDTN.item_id  AND ck.auct_end_dt = CNDTN.AUCT_END_DT
+			INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+			WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				and ck.site_id = 3
+				and slr_cntry_id = 3
+				and SLR_CNTRY_ID=BYR_CNTRY_ID
+				--and   CATEG_LVL4_ID in (179680 )
+				 and cat.categ_lvl3_id in (33743)
+				--and   CATEG_LVL2_ID in (6030 )
+				--and  QTR_OF_YEAR_ID in ( select distinct  QTR_OF_YEAR_ID from ACCESS_VIEWS.DW_CAL_DT  where  AGE_FOR_RTL_WEEK_ID  = -1  )
+				-- and RETAIL_WEEK<= (SELECT distinct  RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID<=-1 GROUP BY 1)
+				--and CNDTN_ROLLUP_ID = 1 
+				--and vertical IN ('Parts & Accessories')
+				--and categ_lvl2_id = 6030
+				
+
+				GROUP BY 1,2,3,4,5,6,7,8,9
+) sub 
+
+where  vertical IN ('Parts & Accessories') );
+-- 52 
+select * from  p_InventoryPlanning_T.pa_tyre_free_sub_gmv;  
+select distinct  meta_categ_id, 
+CATEG_LVL2_ID, 
+categ_lvl2_name, 
+categ_lvl3_name, 
+categ_lvl3_id,
+categ_lvl4_name, 
+categ_lvl4_id
+from   DW_CATEGORY_GROUPINGS  where ( categ_lvl4_id in (  179680 , 124313) or  categ_lvl3_id in (  179680 , 124313) ) and site_id =3
+
+-- Tyre listing
+Drop table if exists   P_InventoryPlanning_T.pa_tyre_free_sub_ll ;
+create table  P_InventoryPlanning_T.pa_tyre_free_sub_ll as 
+(
+
+select 
+slr_id,
+count(distinct lst.Item_id) LL
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+	inner join ( select DISTINCT user_id from  p_InventoryPlanning_T.pa_tyre_free_sub_seller) kr on lst.slr_id=kr.user_id
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  
+INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 	ON lst.AUCT_START_DT < CAL.CAL_DT AND lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2021 
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and lst.SLR_CNTRY_ID=3
+and   CATEG_LVL4_ID in (179680 )
+  AND  COND.CNDTN_ROLLUP_ID =  1
+  and lst.AUCT_END_DT>=CURRENT_DATE
+  group by 1) 
+;
+ -- 46
+ 
+ -- select * from  p_InventoryPlanning_T.pa_tyre_free_sub_gmv;
+ select a.*,
+ b.GMV,
+ c.LL
+from  p_InventoryPlanning_T.pa_tyre_free_sub_seller  a
+ left join ( select seller_id, sum(GMV_20) GMV from  p_InventoryPlanning_T.pa_tyre_free_sub_gmv group by 1 ) b on a.user_id=b.seller_id 
+left join  P_InventoryPlanning_T.pa_tyre_free_sub_ll c on a.user_id=c.slr_id  

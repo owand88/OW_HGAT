@@ -1,0 +1,944 @@
+/*Rebuild Monday Tech report*/
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/******************************************************************************************************************Site Traffic****************************************************************************************************************/
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.Tech_Summary_trf;
+create table p_uk_bc_t.Tech_Summary_trf as(
+with imp as (
+select
+cal.retail_year
+,cal.retail_week
+,cal.age_for_rtl_week_id
+,cal.retail_wk_end_date
+,inv.new_vertical
+,inv.inventory_prop
+,sum(trf.srp_imprsn_cnt + trf.store_imprsn_cnt) as IMP
+from (select 
+	item_id 
+	,auct_end_dt
+    ,EU_B2C_C2C_flag
+	,slr_cntry_id
+	,lstg_site_id 
+	,iscore
+	,leaf_categ_id
+	from prs_restricted_v.slng_lstg_super_fact_ext
+	group by 1,2,3,4,5,6,7) lstg 
+
+inner join prs_restricted_v.slng_trfc_super_fact trf
+on lstg.item_id = trf.item_id and trf.site_id=3
+
+inner join access_views.dw_cal_dt as cal
+on trf.cal_dt = cal.cal_dt and cal.age_for_rtl_year_id in (-1, 0) and cal.age_for_rtl_week_id <= -1
+
+left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+on lstg.item_id = inv.item_id	
+
+where lstg.EU_B2C_C2C_flag='B2C'
+and lstg.slr_cntry_id=3    
+and lstg.lstg_site_id = 3
+and lstg.iscore = 1	
+and lstg.auct_end_dt >= '2018-12-29' 
+and inv.new_vertical in ('Electronics','Media')
+and inv.focus_flag='Focused'
+group by 1,2,3,4,5,6
+)
+--View (Bhagyada advised on 2022-03-24 that there is a significant step down in SRP_VI_CNT in the table SLNG_TRFC_SUPER_FACT hence using p_uk_iac_t.UK_VI for views)
+,VI as (
+select
+cal.retail_year
+,cal.retail_week
+,cal.age_for_rtl_week_id
+,cal.retail_wk_end_date
+,inv.new_vertical
+,inv.inventory_prop
+,sum(views) as VI
+
+from (select 
+	item_id 
+	,auct_end_dt
+    ,EU_B2C_C2C_flag
+	,slr_cntry_id
+	,lstg_site_id 
+	,iscore
+	,leaf_categ_id
+	from prs_restricted_v.slng_lstg_super_fact_ext
+	group by 1,2,3,4,5,6,7) lstg 
+	
+inner join 
+	(select
+	cal_dt
+	,item_id
+	,sum(VI) as views
+	from p_uk_iac_t.UK_VI view
+	group by 1,2
+	) vi
+on lstg.item_id=vi.item_id 
+
+inner join access_views.dw_cal_dt cal
+on vi.cal_dt = cal.cal_dt and cal.age_for_rtl_year_id in (-1,0) and cal.age_for_rtl_week_id <= -1
+
+left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+on lstg.item_id = inv.item_id		
+
+where 
+lstg.EU_B2C_C2C_flag='B2C'
+and lstg.slr_cntry_id=3    
+and lstg.lstg_site_id = 3
+and lstg.iscore = 1	
+and lstg.auct_end_dt > '2018-12-29'  
+and inv.new_vertical in ('Electronics','Media')
+and inv.focus_flag='Focused'
+group by 1,2,3,4,5,6
+)
+select 
+a.retail_year
+,a.retail_week
+,a.age_for_rtl_week_id
+,a.retail_wk_end_date
+,a.new_vertical as vertical
+,a.inventory_prop
+,a.imp
+,b.vi
+from imp a
+left join vi b
+on a.new_vertical = b.new_vertical and a.retail_wk_end_date = b.retail_wk_end_date and a.inventory_prop = b.inventory_prop
+);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/********************************************************************************************************************Summary*******************************************************************************************************************/
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.Tech_Summary;
+create table p_uk_bc_t.Tech_Summary as (
+select
+cal.age_for_rtl_week_id
+,cal.age_for_rtl_qtr_id
+,concat('Q',cal.rtl_qtr_of_rtl_year_id) as retail_quarter
+,a.retail_year
+,a.retail_week
+,a.vertical
+,a.inventory_prop
+,a.TY_GMV
+,aa.LW_GMV
+,b.LY_GMV
+,c.L2Y_GMV
+
+,forc.forecast
+
+,d.TY_seller_coupon_GMV
+,e.LY_seller_coupon_GMV 
+,f.L2Y_seller_coupon_GMV
+
+,g.TY_seller_offers_GMV
+,h.LY_seller_offers_GMV
+,i.L2Y_seller_offers_GMV
+
+,j.TY_ebay_funded_coupon_GMV
+,k.LY_ebay_funded_coupon_GMV
+,l.L2Y_ebay_funded_coupon_GMV
+
+,m.TY_imp
+,m.TY_vi
+,n.LY_imp
+,n.LY_vi
+--,z.TTL_Impressions as Impressions
+--,z.TTL_VI as Viewed_Items
+--,z.Funnel_BI
+
+,a.TY_BI
+,b.LY_BI
+
+from
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- GMV
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--TY GMV (2023)
+(select vertical, retail_year, retail_week, inventory_prop, sum(GMV) as TY_GMV, sum(BI) as TY_BI from P_CSI_TBS_T.UKI_FINAL where retail_year = 2023 and vertical in ('Electronics','Media') and inventory_prop like ('%Focus%') group by 1,2,3,4) a
+
+left join (select distinct retail_year, retail_week, age_for_rtl_week_id, age_for_rtl_qtr_id, age_for_rtl_year_id, rtl_qtr_of_rtl_year_id from access_views.dw_cal_dt where age_for_rtl_year_id=0) cal
+on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+
+--TYLW GMV (2023 WOW)
+left join (select vertical, retail_week+1 as retail_week, inventory_prop, sum(GMV) as LW_GMV from P_CSI_TBS_T.UKI_FINAL where retail_year = 2023 group by 1,2,3) aa 
+on a.vertical = aa.vertical and a.retail_week = aa.retail_week and a.inventory_prop = aa.inventory_prop
+
+/*
+--TYLW GMV (2023 WOW) Only used for 2023RW1 reporting
+left join (select vertical, retail_week, inventory_prop, sum(GMV) as LW_GMV from P_CSI_TBS_T.UKI_FINAL where retail_year = 2022 and retail_week = 52 group by 1,2,3) aa 
+on a.vertical = aa.vertical and a.inventory_prop = aa.inventory_prop
+*/
+
+--LY GMV (2022)
+left join (select vertical, retail_week, inventory_prop, sum(GMV) as LY_GMV, sum(BI) as LY_BI from P_CSI_TBS_T.UKI_FINAL where retail_year = 2022 group by 1,2,3) b 
+on a.vertical = b.vertical and a.retail_week = b.retail_week and a.inventory_prop = b.inventory_prop
+
+--L2Y GMV (2021)
+left join (select vertical, retail_week-1 as retail_week, inventory_prop, sum(GMV) as L2Y_GMV from P_CSI_TBS_T.UKI_FINAL where retail_year = 2021 group by 1,2,3) c 
+on a.vertical = c.vertical and a.retail_week = c.retail_week and a.inventory_prop = c.inventory_prop
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Seller Coupon GMV
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--TY coupon GMV (2023)
+left join (
+select vertical
+,retail_week
+,inventory_prop
+,sum(b2c_gmb_usd_plan) as TY_seller_coupon_GMV
+from  P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 
+where retail_year = 2023 
+and focus_flag in ('Focused') 
+and promotion_type = 'seller coupon' 
+and vertical in ('Electronics','Media')
+group by 1,2,3) d
+on a.vertical = d.vertical and a.retail_week = d.retail_week and a.inventory_prop = d.inventory_prop 
+
+--LY coupon GMV (2022)
+left join (
+select vertical
+,retail_week
+,inventory_prop
+,sum(b2c_gmb_usd_plan) as LY_seller_coupon_GMV 
+from  P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 
+where retail_year = 2022
+and focus_flag in ('Focused') 
+and promotion_type = 'seller coupon' 
+and vertical in ('Electronics','Media')
+group by 1,2,3) e 
+on a.vertical = e.vertical and a.retail_week = e.retail_week and a.inventory_prop = e.inventory_prop 
+
+--L2Y coupon GMV (2021)
+left join (
+select vertical
+,retail_week-1 as retail_week
+,inventory_prop
+,sum(b2c_gmb_usd_plan) as L2Y_seller_coupon_GMV
+from  P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 
+where retail_year = 2021 
+and focus_flag in ('Focused') 
+and promotion_type = 'seller coupon' 
+and vertical in ('Electronics','Media')
+group by 1,2,3) f
+on a.vertical = f.vertical and a.retail_week = f.retail_week and a.inventory_prop = f.inventory_prop 
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Seller Offers GMV (DAILY DEALS, SME, RPP, CODED COUPONS, STP)
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--TY seller offer GMV (2023)
+left join (
+select retail_year,retail_week,vertical,inventory_prop,sum(seller_offer_GMV) as TY_seller_offers_GMV
+from (
+	select 
+	retail_year
+	,retail_week
+	,vertical
+	,inventory_prop
+	,sum(promotion_GMV) as seller_offer_GMV
+	from P_SLR_TRACKER_T.seller_union_all_hist 
+	where retail_year = 2023
+	and vertical in ('Electronics','Media')
+	and inventory_prop_flag in ('Focused') 
+	and promotion_type in ('DAILY DEALS','SME','RPP','CODED COUPONS')
+	group by 1,2,3,4
+
+	union all
+
+	select
+	retail_year
+	,retail_week_2 as retail_week
+	,STP_Vertical as vertical
+	,inventory_prop
+	,sum(STP_GMV) as seller_offer_GMV
+	from P_SLR_TRACKER_T.STP_FINAL_HIST
+	where retail_year = 2023
+	and STP_vertical in ('Electronics','Media')
+	and inv_prop_flag in ('Focused') 
+	group by 1,2,3,4)
+group by 1,2,3,4
+) g
+on a.vertical = g.vertical and a.retail_week = g.retail_week and a.inventory_prop = g.inventory_prop 
+
+--LY seller offer GMV (2022)
+left join (
+select retail_year,retail_week,vertical,inventory_prop,sum(seller_offer_GMV) as LY_seller_offers_GMV
+from (
+	select 
+	retail_year
+	,retail_week
+	,vertical
+	,inventory_prop
+	,sum(promotion_GMV) as seller_offer_GMV
+	from P_SLR_TRACKER_T.seller_union_all_hist 
+	where retail_year = 2022
+	and vertical in ('Electronics','Media')
+	and inventory_prop_flag in ('Focused')  
+	and promotion_type in ('DAILY DEALS','SME','RPP','CODED COUPONS')
+	group by 1,2,3,4
+
+	union all
+
+	select
+	retail_year
+	,retail_week_2 as retail_week
+	,STP_Vertical as vertical
+	,inventory_prop
+	,sum(STP_GMV) as seller_offer_GMV
+	from P_SLR_TRACKER_T.STP_FINAL_HIST
+	where retail_year = 2022
+	and STP_vertical in ('Electronics','Media')
+	and inv_prop_flag in ('Focused') 
+	group by 1,2,3,4)
+group by 1,2,3,4
+) h
+on a.vertical = h.vertical and a.inventory_prop = h.inventory_prop and a.retail_week = h.retail_week
+
+--L2Y seller offer GMV (2021)
+left join (
+select retail_year,retail_week,vertical,inventory_prop,sum(seller_offer_GMV) as L2Y_seller_offers_GMV
+from (
+	select 
+	retail_year
+	,retail_week-1 as retail_week
+	,vertical
+	,inventory_prop
+	,sum(promotion_GMV) as seller_offer_GMV
+	from P_SLR_TRACKER_T.seller_union_all_hist 
+	where retail_year = 2021
+	and vertical in ('Electronics','Media')
+	and inventory_prop_flag in ('Focused')  
+	and promotion_type in ('DAILY DEALS','SME','RPP','CODED COUPONS')
+	group by 1,2,3,4
+	
+	union all
+
+	select
+	retail_year
+	,retail_week_2-1 as retail_week
+	,STP_Vertical as vertical
+	,inventory_prop
+	,sum(STP_GMV) as seller_offer_GMV
+	from P_SLR_TRACKER_T.STP_FINAL_HIST
+	where retail_year = 2021
+	and STP_vertical in ('Electronics','Media')
+	and inv_prop_flag in ('Focused') 
+	group by 1,2,3,4)
+group by 1,2,3,4
+) i
+on a.vertical = i.vertical and a.inventory_prop = i.inventory_prop and a.retail_week = i.retail_week
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- eBay funded Coupon GMV (Site wise / Price take over)
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--TY ebay funded coupon GMV (2023)
+left join (
+select vertical
+,retail_week
+,inventory_prop
+,sum(b2c_gmb_usd_plan) as TY_ebay_funded_coupon_GMV
+from  P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 
+where retail_year = 2023
+and focus_flag in ('Focused') 
+and promotion_type = 'ebay funded' 
+and vertical in ('Electronics','Media')
+group by 1,2,3) j
+on a.vertical = j.vertical and a.inventory_prop = j.inventory_prop and a.retail_week = j.retail_week
+
+--LY ebay funded coupon GMV (2022)
+left join (
+select vertical
+,retail_week
+,inventory_prop
+,sum(b2c_gmb_usd_plan) as LY_ebay_funded_coupon_GMV 
+from  P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 
+where retail_year = 2022
+and focus_flag in ('Focused') 
+and promotion_type = 'ebay funded' 
+and vertical in ('Electronics','Media')
+group by 1,2,3) k 
+on a.vertical = k.vertical and a.inventory_prop = k.inventory_prop and a.retail_week = k.retail_week
+
+--L2Y ebay funded coupon GMV (2021)
+left join (
+select vertical
+,retail_week-1 as retail_week
+,inventory_prop
+,sum(b2c_gmb_usd_plan) as L2Y_ebay_funded_coupon_GMV
+from  P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 
+where retail_year = 2021
+and focus_flag in ('Focused') 
+and promotion_type = 'ebay funded' 
+and vertical in ('Electronics','Media')
+group by 1,2,3) l
+on a.vertical = l.vertical and a.inventory_prop = l.inventory_prop and a.retail_week = l.retail_week
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Forecast
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+left join (
+select a.vertical
+,a.retail_week
+,b.initiative as inventory_prop 
+,b.phasing_ratio * a.GMV_Forecast as forecast
+from P_WAJ_T.Forecast_UK_Verticals1_v1 a--Finance forecast for overall verticals
+left join 
+(select vertical,initiative,focused,retail_week,phasing_ratio from P_Waj_T.Q32021_inv_phasing) b--Inv Prop phrasing 
+on a.vertical = b.vertical and a.retail_week = b.retail_week
+where a.vertical in ('Electronics','Media') 
+and a.forecast_period >=20230101
+and b.focused like ('%Focus%')
+) forc 
+on a.vertical = forc.vertical and a.retail_week = forc.retail_week and a.inventory_prop = forc.inventory_prop
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Impression / View
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--TY traffic (2023)
+left join (
+select vertical
+,retail_week
+,inventory_prop
+,sum(imp) as TY_imp
+,sum(vi) as TY_vi
+from p_uk_bc_t.Tech_Summary_trf 
+where retail_year=2023
+group by 1,2,3
+) m
+on a.vertical = m.vertical and a.retail_week = m.retail_week and a.inventory_prop = m.inventory_prop
+
+--LY traffic (2022)
+left join (
+select vertical
+,retail_week
+,inventory_prop
+,sum(imp) as LY_imp
+,sum(vi) as LY_vi
+from p_uk_bc_t.Tech_Summary_trf 
+where retail_year=2022
+group by 1,2,3
+) n
+on a.vertical = n.vertical and a.retail_week = n.retail_week and a.inventory_prop = n.inventory_prop
+
+
+/*
+-- Holly's Funnel Metrics  (Not accurate, seems to have duplicated figures)
+left join (
+select 
+retail_year
+,retail_week
+,new_vertical
+,inventory_prop
+,(sum(SRP_IMP_1)+sum(OFF_EBAY_SRP_1) + sum(Store_IMP_1)) as TTL_Impressions
+,sum(TTL_VI) as TTL_VI 
+,sum(BI) as Funnel_BI
+from p_hroon_t.vrtcl_funnel_final
+where retail_year = 2022 
+and new_vertical = 'Home & Garden' 
+and inventory_prop like ('%Focus%') 
+group by 1,2,3,4) z 
+on a.vertical = z.new_vertical and a.retail_week = z.retail_week and a.inventory_prop = z.inventory_prop 
+*/
+);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*************************************************************************************Summary to show historic data that is available beyond latest week of LY**********************************************************************************/
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--LY Performance
+drop table if exists p_uk_bc_t.Tech_Summary_LY;
+create table p_uk_bc_t.Tech_summary_LY as (
+select
+cal.age_for_rtl_week_id
+,cal.age_for_rtl_qtr_id
+,concat('Q',cal.rtl_qtr_of_rtl_year_id) as retail_quarter
+,a.retail_year
+,a.retail_week
+,a.vertical
+,a.inventory_prop
+,a.LY_GMV
+,a.LY_BI
+,b.LY_seller_coupon_GMV 
+,c.LY_seller_offers_GMV
+,d.LY_ebay_funded_coupon_GMV
+,e.LY_imp
+,e.LY_vi
+
+from
+--LY GMV (2022)
+(select vertical, retail_year, retail_week, inventory_prop, sum(GMV) as LY_GMV, sum(BI) as LY_BI from P_CSI_TBS_T.UKI_FINAL where retail_year = 2022 and vertical in ('Electronics','Media') and inventory_prop like ('%Focus%') group by 1,2,3,4) a 
+
+left join (select distinct retail_year, retail_week, age_for_rtl_week_id, age_for_rtl_qtr_id, age_for_rtl_year_id, rtl_qtr_of_rtl_year_id from access_views.dw_cal_dt where age_for_rtl_year_id=-1) cal
+on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+
+--LY coupon GMV (2022)
+left join (
+select vertical
+,retail_week
+,inventory_prop
+,sum(b2c_gmb_usd_plan) as LY_seller_coupon_GMV 
+from  P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 
+where retail_year = 2022
+and focus_flag in ('Focused') 
+and promotion_type = 'seller coupon' 
+and vertical in ('Electronics','Media')
+group by 1,2,3) b
+on a.vertical = b.vertical and a.retail_week = b.retail_week and a.inventory_prop = b.inventory_prop 
+
+--LY seller offer GMV (2022)
+left join (
+select retail_year,retail_week,vertical,inventory_prop,sum(seller_offer_GMV) as LY_seller_offers_GMV
+from (
+	select 
+	retail_year
+	,retail_week
+	,vertical
+	,inventory_prop
+	,sum(promotion_GMV) as seller_offer_GMV
+	from P_SLR_TRACKER_T.seller_union_all_hist 
+	where retail_year = 2022
+	and vertical in ('Electronics','Media')
+	and inventory_prop_flag in ('Focused')  
+	and promotion_type in ('DAILY DEALS','SME','RPP','CODED COUPONS')
+	group by 1,2,3,4
+
+	union all
+
+	select
+	retail_year
+	,retail_week_2 as retail_week
+	,STP_Vertical as vertical
+	,inventory_prop
+	,sum(STP_GMV) as seller_offer_GMV
+	from P_SLR_TRACKER_T.STP_FINAL_HIST
+	where retail_year = 2022
+	and STP_vertical in ('Electronics','Media')
+	and inv_prop_flag in ('Focused') 
+	group by 1,2,3,4)
+group by 1,2,3,4
+) c
+on a.vertical = c.vertical and a.inventory_prop = c.inventory_prop and a.retail_week = c.retail_week
+
+--LY ebay funded coupon GMV (2022)
+left join (
+select vertical
+,retail_week
+,inventory_prop
+,sum(b2c_gmb_usd_plan) as LY_ebay_funded_coupon_GMV 
+from  P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 
+where retail_year = 2022 
+and focus_flag in ('Focused') 
+and promotion_type = 'ebay funded' 
+and vertical in ('Electronics','Media')
+group by 1,2,3) d 
+on a.vertical = d.vertical and a.inventory_prop = d.inventory_prop and a.retail_week = d.retail_week
+
+--LY traffic (2022)
+left join (
+select vertical
+,retail_week
+,inventory_prop
+,sum(imp) as LY_imp
+,sum(vi) as LY_vi
+from p_uk_bc_t.Tech_Summary_trf 
+where retail_year=2022
+group by 1,2,3
+) e
+on a.vertical = e.vertical and a.retail_week = e.retail_week and a.inventory_prop = e.inventory_prop
+);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*****************************************************************************************************************Seller Coupon****************************************************************************************************************/
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.Tech_summary_seller_coupon;
+create table p_uk_bc_t.Tech_summary_seller_coupon as 
+(
+select
+cal.age_for_rtl_week_id
+,cal.age_for_rtl_qtr_id
+,concat('Q',cal.rtl_qtr_of_rtl_year_id) as retail_quarter
+,cal.age_for_rtl_year_id
+,a.vertical
+,a.inventory_prop
+,a.retail_year
+,a.retail_week
+,a.coupon_name
+,a.slr_id
+,b.user_slctd_id
+,sum(a.gmb_usd_plan) as coupon_gmb
+,sum(a.qty_bght) as bi
+,sum(a.contra_usd_plan) as coupon_spend
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 a
+left join access_views.dw_users b 
+on a.slr_id=b.user_id  
+inner join (select distinct retail_year,retail_week,age_for_rtl_week_id,age_for_rtl_qtr_id,age_for_rtl_year_id,rtl_qtr_of_rtl_year_id from access_views.dw_cal_dt where age_for_rtl_year_id between -1 and 0) cal
+on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+where 
+a.promotion_type='seller coupon'
+and a.vertical in ('Electronics','Media')
+and a.focus_flag in ('Focused') 
+group by 1,2,3,4,5,6,7,8,9,10,11
+);
+
+
+--Historic seller coupon description
+drop table if exists p_uk_bc_t.Tech_summary_seller_coupon_his;
+create table p_uk_bc_t.Tech_summary_seller_coupon_his as(
+select cal.age_for_rtl_week_id,cal.age_for_rtl_qtr_id,cal.age_for_rtl_year_id,a.retail_year, a.retail_week
+, a.promotion_type, a.coupon_name, a.coupon_desc, a.discount_offer, cast(a.start_date as date), cast(a.end_date as date), datediff(a.end_date, a.start_date)+1 as promo_duration_day
+, sum(a.B2C_GMB_USD_PLAN) as GMB
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 a
+inner join (select distinct retail_year,retail_week,age_for_rtl_week_id,age_for_rtl_qtr_id,age_for_rtl_year_id from access_views.dw_cal_dt where age_for_rtl_year_id between -1 and 0) cal
+on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+where a.promotion_type = 'seller coupon' and a.vertical in ('Electronics','Media') and a.focus_flag in ('Focused') 
+group by 1,2,3,4,5,6,7,8,9,10,11,12);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/************************************************************************************************Deep dive of inventory prop at L3 level History************************************************************************************************/
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.Tech_summary_L3_his;
+create table p_uk_bc_t.Tech_summary_L3_his as(
+select 
+cal.age_for_rtl_week_id
+,cal.age_for_rtl_qtr_id
+,cal.age_for_rtl_year_id
+,cal.rtl_qtr_of_rtl_year_id
+,a.retail_year
+,a.retail_week
+,a.vertical
+,a.inventory_prop
+,a.categ_lvl2_id
+,a.categ_lvl2_name
+,a.categ_lvl3_id
+,a.categ_lvl3_name
+,sum(GMV) as GMV
+,sum(BI) as BI
+from  P_CSI_TBS_T.UKI_FINAL_v2_trading a--created to reflect current category hierarchy of listing (in inventory prop report code)
+inner join (select distinct retail_year, retail_week, age_for_rtl_week_id, age_for_rtl_qtr_id, age_for_rtl_year_id, rtl_qtr_of_rtl_year_id from access_views.dw_cal_dt where age_for_rtl_year_id between -1 and 0) cal
+on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week
+where a.vertical in ('Electronics','Media') and inventory_prop like ('%Focus%')
+group by 1,2,3,4,5,6,7,8,9,10,11,12);
+
+--Summary with YoY
+drop table if exists p_uk_bc_t.Tech_summary_L3;
+create table p_uk_bc_t.Tech_summary_L3 as(
+select 
+cal.age_for_rtl_week_id
+,cal.age_for_rtl_qtr_id
+,concat('Q',cal.rtl_qtr_of_rtl_year_id) as retail_quarter
+,a.retail_year
+,a.retail_week
+,a.vertical
+,a.inventory_prop
+,a.categ_lvl2_id
+,a.categ_lvl2_name
+,a.categ_lvl3_id
+,a.categ_lvl3_name
+,a.TY_GMV
+,b.LY_GMV
+,a.TY_BI
+,b.LY_BI
+from
+(select vertical, retail_year, retail_week, inventory_prop, categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, sum(GMV) as TY_GMV, sum(BI) as TY_BI from p_uk_bc_t.Tech_summary_L3_his where age_for_rtl_week_id=-1 group by 1,2,3,4,5,6,7,8) a
+left join 
+(select vertical, retail_year, retail_week, inventory_prop, categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, sum(GMV) as LY_GMV, sum(BI) as LY_BI from p_uk_bc_t.Tech_summary_L3_his where age_for_rtl_week_id=-53 group by 1,2,3,4,5,6,7,8) b
+on a.vertical=b.vertical and a.inventory_prop=b.inventory_prop and a.categ_lvl3_id=b.categ_lvl3_id and a.retail_week=b.retail_week
+left join 
+(select distinct retail_year, retail_week, age_for_rtl_week_id, age_for_rtl_qtr_id, rtl_qtr_of_rtl_year_id from access_views.dw_cal_dt) cal
+on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*****************************************************************************************************************Focus Sellers****************************************************************************************************************/
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+--select * from P_SLR_TRACKER_T.seller_ops_summary_a;
+--select * from P_SLR_TRACKER_T.seller_gmv_yoy_weekly_a;
+--select * from P_SLR_TRACKER_T.seller_gmv_yoy_weekly_output;
+--select distinct retail_year from P_SLR_TRACKER_T.seller_gmv_yoy_weekly_output;
+
+drop table if exists p_uk_bc_t.Tech_summary_focus_slr;
+create table p_uk_bc_t.Tech_summary_focus_slr as (
+select 
+a.retail_year
+,a.year_yoy
+,a.retail_week
+,cal.age_for_rtl_qtr_id 
+,cal.age_for_rtl_week_id 
+,case when cal.retail_week between 1 and 13 then 'Q1'
+		 	  when cal.retail_week between 14 and 26 then 'Q2'
+		 	  when cal.retail_week between 27 and 39 then 'Q3'
+		 	  else 'Q4' end as QTR
+,a.vertical
+,case when a.inventory_prop = 'OTHERS' then 'Core' else 'Inventory Prop Focused' end as inv_prop_focus
+,a.inventory_prop
+,sum(a.GMV) as tot_GMV 
+from P_SLR_TRACKER_T.seller_gmv_yoy_weekly_output a
+inner join (select distinct retail_week, age_for_rtl_qtr_id, age_for_rtl_week_id from access_views.dw_cal_dt where age_for_rtl_year_id = 0 and age_for_rtl_week_id <= -1) cal--till latest full week
+on a.retail_week=cal.retail_week
+where a.vertical in ('Electronics', 'Media')
+group by 1,2,3,4,5,6,7,8,9
+order by retail_year,retail_week,inventory_prop
+);
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/************************************************************************************************************Top Seller (Latest Week)**********************************************************************************************************/
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.Tech_summary_top_slr;
+create table p_uk_bc_t.Tech_summary_top_slr as(
+
+--all seller's inventory prop with sales in -1 and -53
+	with base as (
+	select 
+	base.age_for_rtl_week_id
+	,base.age_for_rtl_qtr_id
+	,base.age_for_rtl_year_id
+	,concat('Q',base.rtl_qtr_of_rtl_year_id) as retail_quarter
+	,base.retail_year
+	,base.retail_week 
+	,base.seller_id
+	,usr.user_slctd_id as seller_name
+	,base.vertical
+	,base.inventory_prop
+
+	,case when CM_focus.seller_id is not null then 1 else 0 end as CMFocus
+	,case when ECM_focus.seller_id is not null then 1 else 0 end as ECMFocus
+	,case when MCM_focus.seller_id is not null then 1 else 0 end as MCMFocus
+	,case when PT_focus.seller_id is not null then 1 else 0 end as PTFocus
+
+	,sum(case when base.age_for_rtl_week_id = -1 then base.GMV end) as TY_GMV
+	,sum(case when base.age_for_rtl_week_id = -1 then base.BI end) as TY_BI
+	,sum(case when base.age_for_rtl_week_id = -53 then base.GMV end) as LY_GMV
+	,sum(case when base.age_for_rtl_week_id = -53 then base.BI end) as LY_BI
+
+	from P_CSI_TBS_T.UKI_Final_V1_trading_item base
+
+	inner join access_views.dw_users usr
+	on base.seller_id = usr.user_id 
+
+	left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+			   where seller_id is not null) CM_focus
+	on base.seller_id=CM_focus.seller_id
+
+	left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+			   where lower(seller_vertical)='electronics' and seller_id is not null) ECM_focus
+	on base.seller_id=ECM_focus.seller_id
+
+	left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+			   where lower(seller_vertical)='media' and seller_id is not null) MCM_focus
+	on base.seller_id=MCM_focus.seller_id
+
+	left join (select distinct user_id as seller_id from P_awang_opt_T.protrader_2021_Q2 
+			   where user_id is not null) PT_focus
+	on base.seller_id=PT_focus.seller_id
+
+	where 
+	base.vertical in ('Electronics', 'Media')
+	and base.inventory_prop like ('%Focus%')
+	and base.age_for_rtl_week_id in (-1,-53)
+	group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+	)
+	
+select
+cal.age_for_rtl_week_id
+,cal.age_for_rtl_qtr_id
+,cal.age_for_rtl_year_id
+,cal.retail_quarter
+,cal.retail_year
+,cal.retail_week
+,a.seller_id
+,a.seller_name
+,a.vertical
+,a.inventory_prop
+,a.CMFocus
+,a.ECMFocus
+,a.MCMFocus
+,a.PTFocus
+,coalesce(a.TY_GMV,0) as TY_GMV
+,coalesce(a.LY_GMV,0) as LY_GMV
+,coalesce(a.TY_BI,0) as TY_BI
+,coalesce(a.LY_BI,0) as LY_BI
+from
+	(select 
+	seller_id
+	,seller_name
+	,vertical
+	,inventory_prop
+	,CMFocus
+	,ECMFocus
+	,MCMFocus
+	,PTFocus
+	,sum(TY_GMV) as TY_GMV
+	,sum(TY_BI) as TY_BI
+	,sum(LY_GMV) as LY_GMV
+	,sum(LY_BI) as LY_BI
+	from base
+	group by 1,2,3,4,5,6,7,8) a
+	
+--add latest week info
+cross join 
+	(select 
+	distinct
+	age_for_rtl_week_id
+	,age_for_rtl_qtr_id
+	,age_for_rtl_year_id
+	,retail_quarter
+	,retail_year
+	,retail_week
+	from base
+	where age_for_rtl_week_id=-1) cal
+);
+
+
+/*Excel query added to connections
+
+--Forecast
+select 
+a.vertical
+,case when a.retail_week between 1 and 13 then 'Q1'
+	  when a.retail_week between 14 and 26 then 'Q2'
+	  when a.retail_week between 27 and 39 then 'Q3'
+	  else 'Q4' end as retail_quarter
+,a.retail_week
+,b.initiative as inventory_prop 
+,b.phasing_ratio * a.GMV_Forecast as forecast
+from P_WAJ_T.Forecast_UK_Verticals1_v1 a 
+left join (select vertical,initiative,focused,retail_week,phasing_ratio from P_Waj_T.Q32021_inv_phasing) b 
+on a.vertical = b.vertical and a.retail_week = b.retail_week
+where a.vertical in ('Electronics','Media') 
+and a.forecast_period >=20230101
+and b.focused like ('%Focus%')
+order by retail_week,vertical,inventory_prop;
+
+--Latest Week Summary at L3
+select * from p_uk_bc_t.Tech_summary_L3
+where age_for_rtl_week_id=-1;
+
+--Coupon description
+select * from p_uk_bc_t.Tech_summary_seller_coupon_his where GMB>1000 order by age_for_rtl_week_id desc;
+*/
+
+
+/*
+--Checking other trade deck figures:
+
+--Acquistion: D2C (Direct to Consumers) Sellers iGMV, getting new to eBay sellers on
+select 
+retail_week
+,vertical
+,acq_tag
+,sum(gmv_plan_usd) as gmv
+from p_eupricing_t.uk_new_sellers_kpis 
+where vertical in ('Electronics','Media') and retail_year=2022
+group by 1,2,3
+order by 1,2;
+
+--Acquistion: Reseller iGMV (Certain brands resist to work with eBay directly, might lower brand prestige, brands find a different channel to dispose their old items)
+select 
+retail_week 
+,iGMV
+from p_macheung_t.reseller_iGMV_adj_2021
+where vertical in ('Electronics','Media')
+order by 1; 
+
+--Acquisition target: 'https://ebayinc.sharepoint.com/sites/UKPlanning/Shared Documents/Planning Team Members/Mansie/Acquisition/[2022 Acquisition Targets v1.xlsx]input'!$A:$G
+select * from p_macheung_t.acquisition_target_2021
+where retail_year=2022
+and vertical in ('Electronics','Media') 
+order by retail_week;
+
+--Focused sellers (latest week)
+select retail_week,sum(GMV) FROM P_SLR_TRACKER_T.seller_gmv_yoy_new where vertical  = 'Electronics' group by 1;
+select * from P_SLR_TRACKER_T.seller_ops_summary_a order by 1;
+
+--Focused sellers (all weeks)
+select * from P_SLR_TRACKER_T.seller_gmv_yoy_weekly_a 
+where vertical  = 'Electronics' and retail_year=2022 and retail_week=22
+order by retail_week desc, GMV desc
+--Include LY and TY
+select * from P_SLR_TRACKER_T.seller_gmv_yoy_weekly_output
+
+--Robbie's listing table for trade deck (https://zeta.dss.vip.ebay.com/zeta/share/#/notebook?notebookId=400b20ae-1ae5-46ab-8218-4b030e769e99)
+select * from p_robevans_t.IP_LL_VI_LISTERS_WEEKLY
+where retail_year=2022 and retail_week=36 and vertical='Electronics' and focus_flag='Focused'
+
+--Contains LL of 2019-2022 but not at inventory prop level
+select retail_wk_end_date,slr_id,item_id,leaf_categ_id from p_csi_tbs_t.inv_health_daily
+where seller_segment = 'B2C'
+and trade_type = 'DOMESTIC'--item_site_id same as slr_cntry_id
+group by 1,2,3,4
+
+--Once inventory prop is updated in the new quarter, the inventory prop base table only has the new inventory props
+select retail_week, inventory_prop, sum(GMV) as LY_GMV, sum(BI) as LY_BI from P_CSI_TBS_T.UKI_FINAL 
+where retail_year = 2022 and vertical in ('Electronics') and inventory_prop like ('%Focus%') 
+group by 1,2 order by 1,2
+
+
+--LW All Vertical (Focused Only)
+select * from p_uk_bc_t.all_vert_focused;--Run in weekly HG Monday report code I built in Q4 2021
+
+select a.*,b.LYLW_GMV,c.focused_forecast 
+from
+--LW
+(select vertical, retail_year, retail_week, sum(GMV) as LW_GMV from P_CSI_TBS_T.UKI_FINAL where inventory_prop like ('%Focus%') group by 1,2,3)a
+
+inner join (select distinct retail_year, retail_week, age_for_rtl_week_id, age_for_rtl_qtr_id, age_for_rtl_year_id, rtl_qtr_of_rtl_year_id from access_views.dw_cal_dt where age_for_rtl_year_id=0) cal
+on a.retail_year=cal.retail_year and a.retail_week=cal.retail_week and cal.age_for_rtl_week_id=-1
+
+--L2YLW
+left join (select vertical, retail_week, sum(GMV) as LYLW_GMV from P_CSI_TBS_T.UKI_FINAL where retail_year = 2021 and inventory_prop like ('%Focus%') group by 1,2) b 
+on a.vertical = b.vertical and a.retail_week = b.retail_week 
+
+--Forecast
+left join (
+	select vertical,retail_week,sum(forecast) as focused_forecast
+	from
+	(select 
+	a.vertical
+	,a.retail_week
+	,b.initiative as inventory_prop 
+	,b.phasing_ratio * a.GMV_Forecast as forecast
+	from P_WAJ_T.Forecast_UK_Verticals1_v1 a 
+	left join P_Waj_T.Q32021_inv_phasing b 
+	on a.vertical = b.vertical and a.retail_week = b.retail_week
+	where b.focused ='Focused')
+	group by 1,2
+) c 
+on a.vertical = c.vertical and a.retail_week = c.retail_week
+*/
+
+
+/*
+--For Wk15, Finance forecast for Electronics is 22,351,974
+
+select * from P_Waj_T.Q32021_inv_phasing 
+where vertical = 'Electronics' and retail_week=17
+order by 2
+
+select 
+a.vertical
+,case when a.retail_week between 1 and 13 then 'Q1'
+	  when a.retail_week between 14 and 26 then 'Q2'
+	  when a.retail_week between 27 and 39 then 'Q3'
+	  else 'Q4' end as retail_quarter
+,a.retail_week
+,b.initiative as inventory_prop 
+,b.phasing_ratio * a.GMV_Forecast as forecast
+from P_WAJ_T.Forecast_UK_Verticals1_v1 a 
+left join P_Waj_T.Q32021_inv_phasing b 
+on a.vertical = b.vertical and a.retail_week = b.retail_week
+where a.vertical in ('Electronics','Media') 
+and a.forecast_period >=20220101
+--and b.focused like ('%Focus%') or b.initiative='Computing New Focus'
+order by retail_week,vertical,inventory_prop;
+*/
+
+/*
+--Check if lapping a coupon LY
+select
+retail_year
+,sum(gmb_usd_plan) as coupon_gmb
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 
+where 
+promotion_type='seller coupon'
+and vertical in ('Electronics')
+and focus_flag in ('Focused') 
+and retail_week=21
+group by 1
+*/

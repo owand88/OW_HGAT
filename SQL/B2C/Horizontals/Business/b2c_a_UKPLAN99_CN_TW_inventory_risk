@@ -1,0 +1,631 @@
+/* UKPLAN-99
+
+There is a need in January to pull together a view of:
+UK & DE inventory & GMV which is
+Off shore APAC (i.e. shipped from CN)
+Fwd deployed APAC
+Split by L2 category
+Growth YoY & Yo3Y
+An estimate of how much of that inventory by category is also duplicated with ‘similar’ items from domestic UK (for UK site) or domestic DE (for DE site) inventory
+
+The data is needed for Julie & Ziga (Risk) by end of w/c 16 Jan as a first pass to present to the Risk Committee.
+
+Context: Geo-political tension happening in China (China - Taiwan situation) which could lead to sanctions applied to China. 
+Risk Committee is looking to assess and bring the risk profile down, they need to present to Board the size of risk as well as assess whether we have sellers in other locations to substitute inventory that will be potentially lost from China.
+
+Off shore inventory (item location : China)
+Fwd deployed: forward deployed (inventory sourced from China) Inventory located in EMEA/USA by Chinese sellers (item_loc_region: EMEA / USA)
+
+Leaf_categ_id + Brand almost product level. Example: Samsung TV products
+
+Substitute: non-Chinese sellers with inventory not in China (only domestic)
+*/
+
+--select distinct glbl_rprt_geo_cd,glbl_rprt_geo_desc from access_views.glbl_rprt_geo_dim order by 1
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Tidy up / make sense of code supplied by Giovanni from DE team with comments
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/* create main transaction table */
+--GMB from UK/DE/US buyers
+create temporary table gem1
+select
+g.item_id
+,cat.bsns_vrtcl_name vertical
+,cat.meta_categ_name meta
+,cat.categ_lvl2_name l2
+,g.leaf_categ_id
+,g.lstg_site_id as site_id
+,case
+	when g.byr_cntry_id = 77 then 'DE'
+	when g.byr_cntry_id = 3 then 'UK'
+	when g.byr_cntry_id = 1 then 'US'
+end as byr_country
+ ,case
+	when b2cfingeo.finance_geo_group_name =  'EMEA' and g.user_dsgntn_id = 2 THEN 'B2C'
+	when b2cfingeo.finance_geo_group_name != 'EMEA' and b2cslr_type.seller_group_cd = 101 then 'B2C'
+	else 'C2C'
+end as b2c_c2c
+,geoitem.finance_geo_group_name as item_loc_region
+,c.rev_rollup as item_location
+,geoslr.finance_geo_group_name as slr_region
+,fd.rev_rollup as slr_country
+,case
+	when c.rev_rollup  in ('CN','TW') then 'stock in CN'--items locating in CN/TW (offshore)
+	when fd.rev_rollup in ('CN','TW') then 'CN fwd deployed'--CN/TW sellers (forwad deployed)
+	else 'non CN TW'--item not located in CN/TW or not CN/TW sellers
+end as inventory
+,sum(core_gmv_plan_usd_amt) gmv_plan_2022
+,sum(core_item_cnt) si_2022
+from
+	(
+	select
+		gmv_dt
+	   ,slr_id
+	   ,lstg_site_id
+	   ,leaf_categ_id
+	   ,lstg_id as item_id
+	   ,lstg_end_dt
+	   ,slr_cntry_id
+	   ,byr_cntry_id
+	   ,lstg_curncy_id
+	   ,seller_type_cd
+	   ,user_dsgntn_id
+	   ,core_gmv_plan_usd_amt
+	   ,core_item_cnt
+	   ,ck_trans_id
+	   ,oms_shpng_lstg_curncy_amt
+	from
+		access_views.dw_gem2_cmn_ck_i as gem
+	where 
+		gem.byr_cntry_id in (77,3,1)
+		and gem.incld_ck_yn_id=1--filter wacko
+		and gem.lstg_type_code not in (10,12,13,15)
+		and gem.adj_type_id not in (-7,-1,3,5)
+		and gem.lstg_end_dt >= '2022-01-02'
+		and gem.gmv_dt      >= '2022-01-02' and gem.gmv_dt < '2023-01-01'--retail year of 2022 starts 2022-01-02 and ends 2022-12-31
+		and gem.core_gmv_plan_usd_amt > 0
+	) g
+	
+inner join access_views.dw_category_groupings cat on cat.leaf_categ_id = g.leaf_categ_id and cat.site_id = g.lstg_site_id
+
+inner join access_views.dw_lstg_item i on i.item_id = g.item_id and i.auct_end_dt >= '2022-01-01'
+
+inner join access_views.dw_countries c on c.cntry_id = i.item_cntry_id--country of where the item locates
+inner join access_views.glbl_rprt_geo_dim geoitem on geoitem.rev_rollup_id = c.rev_rollup_id
+
+inner join access_views.dw_countries fd on fd.cntry_id = i.slr_cntry_id--country of seller
+inner join access_views.glbl_rprt_geo_dim geoslr on geoslr.rev_rollup_id = fd.rev_rollup_id
+
+inner join access_views.dw_countries b2ccntry on b2ccntry.cntry_id = g.slr_cntry_id
+inner join access_views.dw_rev_rollup b2crev on b2crev.rev_rollup_id = b2ccntry.rev_rollup_id
+inner join access_views.glbl_rprt_geo_dim  b2cfingeo on b2cfingeo.glbl_rprt_geo_cd < 300 and b2cfingeo.rev_rollup_id = b2crev.rev_rollup_id--standard filter that is always applied. For glbl_rprt_geo_cd > 300, all rev_rollup_id is null
+
+inner join ssa_seller_type_dim b2cslr_type on b2cslr_type.seller_type_cd = g.seller_type_cd--Identify if seller is B2C/C2C as different logic for non-EMEA
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13;
+
+
+/* build brand to item table */
+create temporary table brand using PARQUET -- drop table attr
+select distinct a.item_id, a.auct_end_dt, upper(a.tag_value_txt) as brand, tag_name, a.tag_value_txt
+,case
+	when upper(a.tag_name) = 'MARKE' 			then '1 MARKE'--Brand in English
+	when upper(a.tag_name) = 'HERSTELLER' 	then '2 HERSTELLER'--Manufacturer in English	
+	when upper(a.tag_name) = 'BRAND' 			then '3 BRAND' 			
+	when upper(a.tag_name) = 'MANUFACTURER'   then '4 MANUFACTURER' 
+	else upper(a.tag_value_txt)
+end as rankk
+,row_number() over(partition by a.item_id order by rankk) rank2
+from dw_attr_lstg_tag_dtl a
+inner join (select distinct item_id from gem1) g on g.item_id = a.item_id
+where
+a.auct_end_dt >= '2022-01-01'
+and upper(a.tag_name) like any ('BRAND', 'MARKE', 'MARQUE', 'HERSTELLER', 'MANUFACTURER', 'MARCA', 'MERK', 'MARKA', 'PRODUCENT', 'БРЕНД', 'PART MANUFACTURER', 'OBJET FABRICANT', 'REIFENHERSTELLER', 'FELGENHERSTELLER', 'HERSTELLER/ANBIETER')
+group by 1,2,3,4,5,6
+qualify rank2 = 1
+; 
+
+/*
+'BRAND'
+'MARKE': mark
+'MARQUE': brand
+'HERSTELLER':manufacturer
+'MANUFACTURER'
+'MARCA': mark
+'MERK': remember
+'MARKA': ??
+'PRODUCENT': ?? producer in Polish
+'БРЕНД': brand in Russian
+'PART MANUFACTURER'
+'OBJET FABRICANT'
+'REIFENHERSTELLER': tyre manufacturer
+'FELGENHERSTELLER': rim manifacturer
+'HERSTELLER/ANBIETER': manufacturer/provider
+
+--Data check using Dyson listing
+select * from dw_attr_lstg_tag_dtl
+where item_id=134330223251;
+*/
+
+
+/* Add brand info to gmv */
+create TEMPORARY table CNrisk
+SELECT
+gem.*
+,brand.brand
+FROM
+gem1 gem
+left join brand on brand.item_id = gem.item_id
+;
+
+/*
+--Data check
+select * from CNrisk
+where item_id=134330223251;
+*/
+
+/* check GMB 2022 vs QSX */
+SELECT
+ byr_country gmb_cntry
+,sum(gmv_plan_2022) gmb_2022
+FROM
+CNrisk
+WHERE
+B2C_C2C = 'B2C'
+group by 1
+;
+
+/* optional check inventory grouping and country attribution */
+select
+byr_country
+,'All' vertical
+,'All' meta
+,'All' l2
+,item_loc_region
+,item_location
+,slr_region
+,slr_country
+,inventory
+,sum(gmv_plan_2022) gmb_2022
+FROM
+CNrisk
+group by 1,2,3,4,5,6,7,8,9
+;
+
+/* main output per country */
+select
+byr_country
+,inventory
+,sum(gmv_plan_2022) gmb_2022
+from cnrisk
+where B2C_C2C = 'B2C'
+group by 1,2
+;
+
+/*Export to check against Giovanni's output
+select
+byr_country
+,B2C_C2C
+,inventory
+,sum(gmv_plan_2022) gmb_2022
+from cnrisk
+group by 1,2,3
+order by 1,2;
+*/
+
+/*
+Following code (L2 naming normalization) which generates the temporary table, l2eng, didn't run 
+and logic appears incorrect as only capturing categories which have leaf cat ID equals to L2 ID, this would exclude a lot of categories which only have lower level ID being the same as the leaf cat ID
+Giovanni will provide updated code.
+
+select * from cnrisk
+where item_id=115256697362--L2 (175672), L3 / leaf cat (111422)
+					
+select * from access_views.dw_category_groupings c
+where site_id=0 and leaf_categ_id=175672;	
+*/
+
+/* L2 naming normalization */
+create temporary table l2eng
+select distinct
+ c.bsns_vrtcl_name vertical
+,c.meta_categ_name meta
+,c.categ_lvl2_name l2
+,c.l2id
+from dw_category_groupings c
+where site_id in (0)--US category hierarchy
+and leaf_categ_id in (
+					select distinct c.categ_lvl2_id as l2id 
+					from gem1 
+					inner join dw_category_groupings c 
+					on c.leaf_categ_id = gem1.leaf_categ_id and c.site_id = 0
+					);
+				
+select leaf_categ_id, sum(1) from l2eng group by 1 having sum(1) > 1;
+
+select distinct 
+cnrisk.site_id
+,l2eng.vertical
+,l2eng.meta
+,l2eng.l2
+,cnrisk.vertical
+,cnrisk.meta
+,cnrisk.l2
+,l2eng.leaf_categ_id, cnrisk.leaf_categ_id
+from
+cnrisk
+left join l2eng on l2eng.leaf_categ_id = cnrisk.leaf_categ_id
+where isnull(l2eng.vertical)
+and cnrisk.site_id = 0
+;
+
+/* main output per l2 */
+select
+ byr_country
+,l2eng.vertical
+,l2eng.meta
+,l2eng.l2
+,CNrisk.vertical
+,CNrisk.meta
+,CNrisk.l2
+,l2eng.leaf_categ_id
+,CNRisk.leaf_categ_id
+,sum(case when inventory = 'CN fwd deployed' then gmv_plan_2022 else 0 end) as gmv_2022_CN_fwd_deployed
+,sum(case when inventory = 'non CN TW'       then gmv_plan_2022 else 0 end) as gmv_2022_non_CNTW
+,sum(case when inventory = 'stock in CN'     then gmv_plan_2022 else 0 end) as gmv_2022_stock_in_CN  
+from
+CNrisk
+left join l2eng on l2eng.leaf_categ_id = CNrisk.leaf_categ_id
+group by 1,2,3,4,5,6,7,8,9
+;
+
+
+/*
+Following code (Inventory substitution opportunity) didn't run. Giovanni will provide updated code
+*/
+
+/* Inventory substitution opportunity */
+select
+coalesce(apac.byr_country,domestic.byr_country) byr_country
+,case
+	when IsNotNull(apac.vertical)  and IsNull(domestic.vertical) then 'only CN'
+	when IsNull(apac.vertical)     and IsNotNull(domestic.vertical) then 'only domestic'
+	when IsNotNull(apac.vertical)  and IsNotNull(domestic.vertical) then 'duped'
+	else 'err'
+	end as inventory
+,sum(apac.gmb_CnStock_2022  ) gmb_CnStock_2022  
+,sum(apac.gmb_FwdDeployed_2022) gmb_FwdDeployed_2022
+,sum(domestic.gmb_NonCN_2022) gmb_NonCN_2022
+from
+	(select
+	byr_country
+	,vertical
+	,meta    
+	,l2      
+	,leaf_categ_id
+	,brand   
+	,B2C_C2C
+	,sum(case when inventory = 'stock in CN'     then gmv_plan_2022 else 0 end) gmb_CNStock_2022 
+	,sum(case when inventory = 'CN fwd deployed' then gmv_plan_2022 else 0 end) gmb_FwdDeployed_2022 
+	from
+	CNrisk
+	where
+	inventory in ('stock in CN', 'CN fwd deployed')
+	group by 1,2,3,4,5,6,7
+	) apac
+full outer join (
+	select
+	byr_country
+	,vertical
+	,meta    
+	,l2      
+	,leaf_categ_id
+	,brand   
+	,B2C_C2C
+	,sum(gmv_plan_2022) gmb_NonCN_2022
+	from
+	CNrisk
+	where
+	inventory = 'non CN TW'
+	group by 1,2,3,4,5,6,7
+	) domestic
+		on
+		    apac.byr_country       = domestic.byr_country
+			and apac.leaf_categ_id = domestic.leaf_categ_id 
+			and apac.brand         = domestic.brand  
+			and apac.B2C_C2C       = domestic.B2C_C2C
+			and apac.vertical      = domestic.vertical 
+			and apac.meta          = domestic.meta     
+			and apac.l2            = domestic.l2     
+			and apac.site_id       = domestic.site_id--listing site ID
+group by 1,2
+;
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Go through updated code sent by Giovanni on 2023-01-20
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/* create main transaction table */
+create temporary table gem1
+select
+g.item_id
+,cat.bsns_vrtcl_name vertical
+,cat.meta_categ_name meta
+,cat.categ_lvl2_name l2
+,g.leaf_categ_id
+,g.lstg_site_id site_id
+,case
+	when g.byr_cntry_id = 77 then 'DE'
+	when g.byr_cntry_id = 3 then 'UK'
+	when g.byr_cntry_id = 1 then 'US'
+end as byr_country
+,case
+	when b2cfingeo.finance_geo_group_name =  'EMEA' and g.user_dsgntn_id = 2        THEN 'B2C'
+	when b2cfingeo.finance_geo_group_name != 'EMEA' and b2cslr_type.seller_group_cd = 101 then 'B2C'
+	else 'C2C'
+end as b2c_c2c
+,geoitem.finance_geo_group_name item_loc_region
+,c.rev_rollup item_location
+,geoslr.finance_geo_group_name slr_region
+,fd.rev_rollup slr_country
+,case
+	when c.rev_rollup  in ('CN','TW') then 'stock in CN'
+	when fd.rev_rollup in ('CN','TW') then 'CN fwd deployed'
+	else 'non CN TW'
+end as inventory
+,sum(case when gmv_dt >= current_date-364*1-2 and gmv_dt <= current_date-364*0-2 then core_gmv_plan_usd_amt else 0 end) gmv_plan_t1y
+,sum(case when gmv_dt >= current_date-364*1-2 and gmv_dt <= current_date-364*0-2 then core_item_cnt         else 0 end)       si_t1y
+,sum(case when gmv_dt >= current_date-364*2-2 and gmv_dt <= current_date-364*1-2 then core_gmv_plan_usd_amt else 0 end) gmv_plan_t2y
+,sum(case when gmv_dt >= current_date-364*2-2 and gmv_dt <= current_date-364*1-2 then core_item_cnt         else 0 end)       si_t2y
+,sum(case when gmv_dt >= current_date-364*3-2 and gmv_dt <= current_date-364*2-2 then core_gmv_plan_usd_amt else 0 end) gmv_plan_t3y
+,sum(case when gmv_dt >= current_date-364*3-2 and gmv_dt <= current_date-364*2-2 then core_item_cnt         else 0 end)       si_t3y
+,sum(case when gmv_dt >= current_date-364*4-2 and gmv_dt <= current_date-364*3-2 then core_gmv_plan_usd_amt else 0 end) gmv_plan_t4y
+,sum(case when gmv_dt >= current_date-364*4-2 and gmv_dt <= current_date-364*3-2 then core_item_cnt         else 0 end)       si_t4y
+from
+(
+select
+    GMV_dt
+   ,slr_id
+   ,lstg_site_id
+   ,leaf_categ_id
+   ,lstg_id item_id
+   ,lstg_end_dt
+   ,slr_cntry_id
+   ,byr_cntry_id
+   ,lstg_curncy_id
+   ,seller_type_cd
+   ,user_dsgntn_id
+   ,core_gmv_plan_usd_amt
+   ,core_item_cnt
+   ,ck_trans_id
+   ,oms_shpng_lstg_curncy_amt
+from
+	dw_gem2_cmn_ck_i as gem
+where 
+	gem.byr_cntry_id in (77,3,1)
+	and gem.incld_ck_yn_id=1
+	and gem.lstg_type_code not in (10,12,13,15)
+	and gem.adj_type_id not in (-7,-1,3,5)
+	and gem.lstg_end_dt >= current_date-(364*4)-2
+	and gem.gmv_dt      >= current_date-(364*4)-2 and gem.gmv_dt < current_date-2
+	and gem.core_gmv_plan_usd_amt > 0
+) g
+inner join dw_category_groupings cat on cat.leaf_categ_id = g.leaf_categ_id and cat.site_id = g.lstg_site_id
+inner join dw_lstg_item i on i.item_id = g.item_id and i.auct_end_dt >= current_date-(364*4)-2
+inner join dw_countries c on c.cntry_id = i.item_cntry_id
+inner join access_views.glbl_rprt_geo_dim geoitem on geoitem.rev_rollup_id = c.rev_rollup_id
+inner join dw_countries fd on fd.cntry_id = i.slr_cntry_id
+inner join access_views.glbl_rprt_geo_dim geoslr on geoslr.rev_rollup_id = fd.rev_rollup_id
+
+inner join dw_countries b2ccntry on b2ccntry.cntry_id = g.slr_cntry_id
+inner join dw_rev_rollup b2crev on b2crev.rev_rollup_id = b2ccntry.rev_rollup_id
+inner join glbl_rprt_geo_dim  b2cfingeo on b2cfingeo.glbl_rprt_geo_cd < 300 and b2cfingeo.rev_rollup_id = b2crev.rev_rollup_id
+inner join ssa_seller_type_dim b2cslr_type on b2cslr_type.seller_type_cd = g.seller_type_cd
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13;
+
+/* build brand to item table */
+create temporary table brand using PARQUET -- drop table attr
+select distinct a.item_id, a.auct_end_dt, upper(a.tag_value_txt) as brand, tag_name, a.tag_value_txt
+,case
+	when upper(a.tag_name) = 'MARKE' 			then '1 MARKE' 			
+	when upper(a.tag_name) = 'HERSTELLER' 	then '2 HERSTELLER' 	
+	when upper(a.tag_name) = 'BRAND' 			then '3 BRAND' 			
+	when upper(a.tag_name) = 'MANUFACTURER'   then '4 MANUFACTURER' 
+	else upper(a.tag_value_txt)
+end as rankk
+,row_number() over(partition by a.item_id order  by rankk) rank2
+from dw_attr_lstg_tag_dtl a
+inner join (select distinct item_id from gem1) g on g.item_id = a.item_id
+where
+a.auct_end_dt >= current_date-(364*4)-2
+and upper(a.tag_name) like any ('BRAND', 'MARKE', 'MARQUE', 'HERSTELLER', 'MANUFACTURER', 'MARCA', 'MERK', 'MARKA', 'PRODUCENT', 'БРЕНД', 'PART MANUFACTURER', 'OBJET FABRICANT', 'REIFENHERSTELLER', 'FELGENHERSTELLER', 'HERSTELLER/ANBIETER')
+group by 1,2,3,4,5,6
+qualify rank2 = 1
+; 
+
+/* add brand info to gmv */
+create temporary table cnrisk
+select
+gem.*
+,brand.brand
+from
+gem1 gem
+left join brand on brand.item_id = gem.item_id
+;
+
+/* check gmb 2022 vs qsx */
+select
+ byr_country gmb_cntry
+,sum(gmv_plan_t1y) gmv_t1y
+,sum(gmv_plan_t2y) gmv_t2y
+,sum(gmv_plan_t3y) gmv_t3y
+,sum(gmv_plan_t4y) gmv_t4y
+,gmv_t1y/gmv_t2y-1 yoy
+,gmv_t1y/gmv_t3y-1 yo2y
+,gmv_t1y/gmv_t4y-1 yo3y
+from
+cnrisk
+where
+b2c_c2c = 'b2c'
+group by 1
+;
+
+/* main output per country */
+select
+byr_country
+,inventory
+,sum(gmv_plan_t1y) gmv_t1y
+,sum(gmv_plan_t2y) gmv_t2y
+,sum(gmv_plan_t3y) gmv_t3y
+,sum(gmv_plan_t4y) gmv_t4y
+from
+cnrisk
+where
+b2c_c2c = 'b2c'
+group by 1,2
+;
+
+/* L2 naming normalization */
+create temporary table l2eng
+select distinct
+ c.bsns_vrtcl_name vertical
+,c.meta_categ_name meta
+,c.categ_lvl2_name l2
+,c.leaf_categ_id
+from
+dw_category_groupings c
+where
+site_id = 0
+and c.leaf_categ_id in (select distinct gem1.leaf_categ_id from gem1 inner join dw_category_groupings c on c.leaf_categ_id = gem1.leaf_categ_id and c.site_id = 0)
+;
+select leaf_categ_id, sum(1) from l2eng group by 1 having sum(1) > 1
+;
+
+/* main output per l2 */
+select
+ byr_country
+,l2eng.vertical
+,l2eng.meta
+,l2eng.l2
+/* ,CNrisk.vertical
+,CNrisk.meta
+,CNrisk.l2 
+,l2eng.leaf_categ_id, CNRisk.leaf_categ_id
+*/
+,sum(case when inventory = 'CN fwd deployed' then gmv_plan_t1y else 0 end) as gmv_t1y_CN_fwd_deployed
+,sum(case when inventory = 'non CN TW'       then gmv_plan_t1y else 0 end) as gmv_t1y_non_CNTW
+,sum(case when inventory = 'stock in CN'     then gmv_plan_t1y else 0 end) as gmv_t1y_stock_in_CN  
+
+,sum(case when inventory = 'CN fwd deployed' then gmv_plan_t2y else 0 end) as gmv_t2y_CN_fwd_deployed
+,sum(case when inventory = 'non CN TW'       then gmv_plan_t2y else 0 end) as gmv_t2y_non_CNTW
+,sum(case when inventory = 'stock in CN'     then gmv_plan_t2y else 0 end) as gmv_t2y_stock_in_CN  
+
+,sum(case when inventory = 'CN fwd deployed' then gmv_plan_t3y else 0 end) as gmv_t3y_CN_fwd_deployed
+,sum(case when inventory = 'non CN TW'       then gmv_plan_t3y else 0 end) as gmv_t3y_non_CNTW
+,sum(case when inventory = 'stock in CN'     then gmv_plan_t3y else 0 end) as gmv_t3y_stock_in_CN  
+
+,sum(case when inventory = 'CN fwd deployed' then gmv_plan_t4y else 0 end) as gmv_t4y_CN_fwd_deployed
+,sum(case when inventory = 'non CN TW'       then gmv_plan_t4y else 0 end) as gmv_t4y_non_CNTW
+,sum(case when inventory = 'stock in CN'     then gmv_plan_t4y else 0 end) as gmv_t4y_stock_in_CN  
+FROM
+CNrisk
+left join l2eng on l2eng.leaf_categ_id = CNrisk.leaf_categ_id
+group by 1,2,3,4 ,5,6,7,8,9
+;
+
+/* Inventory substitution opportunity */
+select
+coalesce(apac.byr_country,dome.byr_country) byr_country
+,case
+	when IsNotNull(apac.vertical)  and IsNull(dome.vertical   ) then 'only CN'
+	when IsNull(   apac.vertical)  and IsNotNull(dome.vertical) then 'only domestic'
+	when IsNotNull(apac.vertical)  and IsNotNull(dome.vertical) then 'duped'
+	else 'err'
+	end as inventory
+,sum(apac.t1y_gmb_CNStock    )  t1y_gmb_CnStock
+,sum(apac.t1y_gmb_FwdDeployed)  t1y_gmb_FwdDeployed
+,sum(dome.t1y_gmb_NonCN      )  t1y_gmb_NonCN
+
+,sum(apac.t2y_gmb_CNStock    ) t2y_gmb_CnStock
+,sum(apac.t2y_gmb_FwdDeployed) t2y_gmb_FwdDeployed
+,sum(dome.t2y_gmb_NonCN      ) t2y_gmb_NonCN
+
+,sum(apac.t3y_gmb_CNStock    ) t3y_gmb_CnStock
+,sum(apac.t3y_gmb_FwdDeployed) t3y_gmb_FwdDeployed
+,sum(dome.t3y_gmb_NonCN      ) t3y_gmb_NonCN
+
+,sum(apac.t4y_gmb_CNStock    ) t4y_gmb_CnStock
+,sum(apac.t4y_gmb_FwdDeployed) t4y_gmb_FwdDeployed
+,sum(dome.t4y_gmb_NonCN      ) t4y_gmb_NonCN
+FROM
+	(select
+	byr_country
+	,vertical
+	,meta    
+	,l2      
+	,leaf_categ_id
+	,brand   
+	,B2C_C2C
+	,sum(case when inventory = 'stock in CN'     then gmv_plan_t1y else 0 end) t1y_gmb_CNStock 
+	,sum(case when inventory = 'CN fwd deployed' then gmv_plan_t1y else 0 end) t1y_gmb_FwdDeployed 
+	
+	,sum(case when inventory = 'stock in CN'     then gmv_plan_t2y else 0 end) t2y_gmb_CNStock 
+	,sum(case when inventory = 'CN fwd deployed' then gmv_plan_t2y else 0 end) t2y_gmb_FwdDeployed 
+	
+	,sum(case when inventory = 'stock in CN'     then gmv_plan_t3y else 0 end) t3y_gmb_CNStock 
+	,sum(case when inventory = 'CN fwd deployed' then gmv_plan_t3y else 0 end) t3y_gmb_FwdDeployed 
+	
+	,sum(case when inventory = 'stock in CN'     then gmv_plan_t4y else 0 end) t4y_gmb_CNStock 
+	,sum(case when inventory = 'CN fwd deployed' then gmv_plan_t4y else 0 end) t4y_gmb_FwdDeployed 
+	from
+	CNrisk
+	where
+	inventory in ('stock in CN', 'CN fwd deployed')
+	group by 1,2,3,4,5,6,7
+	) apac
+full outer join (
+	select
+	byr_country
+	,vertical
+	,meta    
+	,l2      
+	,leaf_categ_id
+	,brand   
+	,B2C_C2C
+	,sum(gmv_plan_t1y) t1y_gmb_NonCN
+	,sum(gmv_plan_t2y) t2y_gmb_NonCN
+	,sum(gmv_plan_t3y) t3y_gmb_NonCN
+	,sum(gmv_plan_t4y) t4y_gmb_NonCN
+	from
+	CNrisk
+	where
+	inventory = 'non CN TW'
+	group by 1,2,3,4,5,6,7
+	) dome
+		on
+			    apac.byr_country   = dome.byr_country
+			and apac.leaf_categ_id = dome.leaf_categ_id 
+			and apac.vertical      = dome.vertical
+			and apac.meta          = dome.meta    
+			and apac.l2            = dome.l2      
+			and apac.brand         = dome.brand  
+			and apac.B2C_C2C       = dome.B2C_C2C
+group by 1,2
+;
+
+/* optional check inventory grouping and country attribution */
+select
+byr_country
+,'All' vertical
+,'All' meta
+,'All' l2
+,item_loc_region
+,item_location
+,slr_region
+,slr_country
+,inventory
+,sum(gmv_plan_2022) gmb_2022
+FROM
+CNrisk
+group by 1,2,3,4,5,6,7,8,9
+;

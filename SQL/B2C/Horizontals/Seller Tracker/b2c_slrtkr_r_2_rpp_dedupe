@@ -1,0 +1,1090 @@
+/*set spark.sql.dynamic.partition.maxPartitionsPerTask = 1000;
+set spark.sql.dynamic.partition.maxPartitions = 10000;
+desc rpp_event
+select * from P_SLR_TRACKER_T.rh_sello_2_evesum 
+where event_name in ('pet food & treats','save on air fresheners','cleaning supplies special offers','household special offers','laundry supplies special offers','dog food 2020')
+where event_name like '%personal care%'
+
+select event_grp_name,re.event_name,re.URL_TXT, 
+cast(START_TS as date) as START_TS,
+cast(END_TS as date) as END_TS,
+case when cast(START_TS as date) >=DATE_SUB('2021-03-07',370) then 1 else 0 end as  start_inc_flg,
+case when cast(END_TS as  date) <=DATE_ADD('2021-03-07', 370) then 1 else 0 end as  end_inc_flg
+from rpp_event re 
+join rpp_event_group reg ON re.rpp_event_grp_id = reg.rpp_event_grp_id
+where re.URL_TXT in ('https://www.ebay.co.uk/e/_everyday-essentials/pet-food-treats',
+'https://www.ebay.co.uk/e/_everyday-essentials/dog-food-2020','https://www.ebay.co.uk/e/_everyday-essentials/household-special-offers',
+'https://www.ebay.co.uk/e/_everyday-essentials/cleaning-supplies-special-offers',
+'https://www.ebay.co.uk/e/_everyday-essentials/laundry-supplies-special-offers',
+'https://www.ebay.co.uk/e/_everyday-essentials/save-on-air-fresheners'
+,'https://www.ebay.co.uk/e/_everyday-essentials/loreal-maybelline-offers') group by 1,2,3,4,5,6,7;
+;
+select distinct vertical,event_name from P_SLR_TRACKER_T.aw_sello_1_gmvout3 where event_name in ('pet food & treats','save on air fresheners','cleaning supplies special offers','household special offers','laundry supplies special offers','dog food 2020')
+select * from 'Personal Care Offers'
+select distinct event_grp_name from rpp_event_group where event_grp_name like '%_Everyday Essentials%'
+*/
+-- select count(distinct event_name) from P_SLR_TRACKER_T.rh_sello_2_evesum
+
+drop table if exists P_SLR_TRACKER_T.rh_sello_2_evesum;
+CREATE TABLE P_SLR_TRACKER_T.rh_sello_2_evesum using parquet
+AS (
+select
+-- re.rpp_event_id,
+-- event_grp_name as event_grp,
+event_name,
+week_beg_dt,
+week_end_dt,
+retail_year,
+retail_week,
+-- re.URL_TXT,
+MIN(cast(START_TS as date)) as start_dt,
+MIN(cast(END_TS as date)) as end_dt
+
+-- item_id
+from rpp_event re
+join RPP_ITEM ri on ri.rpp_crtn_id = re.rpp_crtn_id
+join rpp_event_group reg ON re.rpp_event_grp_id = reg.rpp_event_grp_id
+cross JOIN 
+(select week_beg_dt,
+week_end_dt,
+retail_year,
+RETAIL_WEEK
+-- select AGE_FOR_RTL_WEEK_ID,retail_week from ACCESS_VIEWS.DW_CAL_DT CAL where retail_week in (12,13,14) and retail_year=2020 group by 1,2 
+from ACCESS_VIEWS.DW_CAL_DT CAL
+where AGE_FOR_RTL_WEEK_ID = -1
+group by 1,2,3,4) a
+-- on a.cal_dt=cast(END_TS as date)
+where re.DLT_IND = 0
+and ri.dlt_ind = 0
+and re.SITE_ID = 3
+and cast(START_TS as date) >= DATE_SUB(week_beg_dt,120)
+and cast(END_TS as date) <= DATE_ADD(week_beg_dt, 120)
+ and event_grp_name in  ('Electronics',
+'Home & Garden',
+'Everyday Essentials',
+'Toys & Games',
+'Fashion',
+'Health & Beauty',
+'Motors',
+'Sports & Leisure',
+'Home Entertainment',
+'Sales & Events',
+'Everyday',
+'Health Beauty',
+'Sports',
+'Media',
+'business-industrial',
+'Business & Industrial'
+)
+group by 1,2,3,4,5
+UNION ALL 
+select
+-- re.rpp_event_id,
+-- event_grp_name as event_grp,
+event_name,
+week_beg_dt,
+week_end_dt,
+retail_year,
+retail_week,
+-- re.URL_TXT,
+MIN(cast(START_TS as date)) as start_dt,
+MIN(cast(END_TS as date)) as end_dt
+-- item_id
+from rpp_event re
+join RPP_ITEM ri on ri.rpp_crtn_id = re.rpp_crtn_id
+join rpp_event_group reg ON re.rpp_event_grp_id = reg.rpp_event_grp_id
+cross JOIN 
+(select week_beg_dt,
+week_end_dt,
+retail_year,
+RETAIL_WEEK
+-- select AGE_FOR_RTL_WEEK_ID,retail_week from ACCESS_VIEWS.DW_CAL_DT CAL where retail_week in (12,13,14) and retail_year=2020 group by 1,2 
+from ACCESS_VIEWS.DW_CAL_DT CAL
+where AGE_FOR_RTL_WEEK_ID = -1
+group by 1,2,3,4) a
+-- on a.cal_dt=cast(END_TS as date)
+where re.DLT_IND = 0
+and ri.dlt_ind = 0
+and re.SITE_ID = 3
+-- and cast(START_TS as date) >= DATE_SUB(week_beg_dt,120)
+-- and cast(END_TS as date) <= DATE_ADD(week_beg_dt, 120)
+ and event_grp_name in  (
+ 'Everyday'
+)
+group by 1,2,3,4,5);
+
+/*
+select event_name,vertical,categ_lvl2_id,count(distinct item_id) 
+from P_SLR_TRACKER_T.rh_sello_2_ittt
+group by 1,2,3;
+select retail_Week,event_name,count(distinct item_id) as items
+from P_SLR_TRACKER_T.rh_sello_2_ittt where event_name = 'Up to 20% off garden hand tools buyaparcel'
+group by 1,2;
+select * from P_SLR_TRACKER_T.rh_sello_2_ittt
+where event_name = 'Up to 20% off garden hand tools buyaparcel'
+
+
+*/
+
+drop table if exists P_SLR_TRACKER_T.rh_sello_2_ittt;
+create table P_SLR_TRACKER_T.rh_sello_2_ittt 
+/*PARTITIONED BY (EVENT_NAME ,ITEM_ID ,LEAF_CATEG_ID  )*/
+as ( 
+select a.*
+
+from 
+(
+select
+a.retail_year,
+a.retail_week,
+event_name, 
+ri.item_id, 
+itm.slr_id as  seller_id,
+us.USER_SLCTD_ID AS seller,
+cat.LEAF_CATEG_ID,              
+a.week_beg_dt,
+a.week_end_dt,
+itm.START_PRICE_LSTG_CURNCY AS LISTED_PRICE_LC,
+CAT.categ_lvl2_name, 
+CAT.categ_lvl2_id,
+CAT.categ_lvl3_name, 
+CAT.categ_lvl3_id,
+CAT.categ_lvl4_id,
+CAT.categ_lvl4_name,
+inv.new_vertical as vertical,  
+min(cast(START_TS as date)) as item_st,
+max(cast(end_TS as date))  as item_end
+from rpp_event re
+join RPP_ITEM ri on ri.rpp_crtn_id = re.rpp_crtn_id
+join rpp_event_group reg ON re.rpp_event_grp_id = reg.rpp_event_grp_id 
+left join access_viewS.DW_USERS us ON us.USER_SLCTD_ID=re.EVENT_CRE_USER_NAME
+left join dw_lstg_item itm on itm.item_id=ri.item_id
+cross JOIN 
+(select retail_year,
+retail_week,
+week_beg_dt,
+week_end_dt
+from 
+ACCESS_VIEWS.DW_CAL_DT CAL 
+where AGE_FOR_RTL_WEEK_ID = -1
+group by 1,2,3,4) a  
+-- on cub.RTL_YR = a.retail_year
+-- and cub.RTL_WEEK_NUM = a.retail_week
+INNER JOIN 
+ access_views.DW_CATEGORY_GROUPINGS CAT 
+ON CAT.LEAF_CATEG_ID = itm.LEAF_CATEG_ID 
+AND CAT.SITE_ID = itm.item_site_id
+AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+ON ri.ITEM_ID = INV.ITEM_ID
+where re.DLT_IND = 0
+and ri.dlt_ind = 0
+and re.SITE_ID = 3
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+)a
+where item_st<=week_end_dt and item_end>=week_beg_dt
+);
+
+/*
+select vertical,INVENTORY_PROP,
+count(*),count(distinct event_name),count(distinct item_id),count(distinct seller_id) 
+from P_SLR_TRACKER_T.rh_sello_2_itfin2  
+group by 1,2;*/
+/* CHANGE INVENTORY PROP DEFINITION FOR ALL ECEPT P&A AND MEDIA
+select distinct INVENTORY_PROP from P_SLR_TRACKER_T.rh_sello_2_itfin2
+select * from P_SLR_TRACKER_T.rh_sello_2_itfin2  where categ_lvl2_id in (15273) and categ_lvl3_id in (28066, 28064, 28059)
+
+*/
+
+
+drop table if exists P_SLR_TRACKER_T.rh_sello_2_itfin2;
+create table P_SLR_TRACKER_T.rh_sello_2_itfin2 
+/*using parquet
+PARTITIONED BY (EVENT_NAME ,ITEM_ID ,LEAF_CATEG_ID ,AUCT_END_DT )*/
+as (
+select 
+itt.retail_year
+,itt.retail_week
+,itt.event_name
+,itt.item_id
+,itt.seller_id
+,itt.seller
+,itt.LEAF_CATEG_ID
+,itt.week_beg_dt
+,itt.week_end_dt
+,itt.LISTED_PRICE_LC
+,itt.categ_lvl2_name
+,itt.categ_lvl2_id
+,itt.categ_lvl3_name
+,itt.categ_lvl3_id
+,itt.categ_lvl4_name
+,itt.categ_lvl4_id
+,itt.vertical
+,itt.item_st
+,itt.item_end,
+ /*INVENTORY PROPS - new inventory prop table*/
+
+inv.INVENTORY_PROP, 
+
+lstg.auct_end_dt,
+eve.start_dt as event_start_dt,
+eve.end_dt as event_end_dt,
+
+cast(null as date) as base_start_dt,
+cast(null as date) as base_end_dt
+
+from P_SLR_TRACKER_T.rh_sello_2_ittt itt /* events live last week inner joined to cal_dt  HELP TABLE P_awang_ops_T.rh_sello_2_ittt */
+inner join P_SLR_TRACKER_T.rh_sello_2_evesum eve /*live events*/
+on itt.event_name  = eve.event_name
+inner join ACCESS_VIEWS.dw_lstg_item lstg /*fashion prop definition*/
+on itt.item_id = lstg.item_id
+-- left outer join ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN /*p&a prop definition */
+-- on itt.ITEM_ID = CNDTN.ITEM_ID
+LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+ON itt.ITEM_ID = INV.ITEM_ID
+INNER JOIN 
+ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT 
+ON CAT.LEAF_CATEG_ID = itt.LEAF_CATEG_ID 
+AND CAT.SITE_ID = lstg.item_site_id
+AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+and lstg.item_site_id=3); 
+
+
+drop table if exists P_SLR_TRACKER_T.rh_sello_2_trbas2;
+create table P_SLR_TRACKER_T.rh_sello_2_trbas2 
+/*using parquet
+PARTITIONED BY (item_id ,created_dt )*/
+as ( 
+select 
+item_id,
+created_dt
+,VERTICAL,
+auct_end_dt,
+BI,
+GMV
+from (
+select
+ck.item_id,
+GMV_dt as created_dt,--rename to created_dt since it is used in below code throughout
+inv.new_vertical as vertical, 
+ck.auct_end_dt,
+SUM(CK.QUANTITY) AS BI
+,SUM(CK.GMV_PLAN_USD) AS GMV
+FROM access_views.DW_CHECKOUT_TRANS AS CK
+INNER JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM AS SSA 
+	ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID     
+INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+	ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+	AND CK.SITE_ID = CAT.SITE_ID
+LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+ON ck.ITEM_ID = INV.ITEM_ID	
+	
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL 
+	ON CAL.CAL_DT = CK.GMV_DT /*--and cal_dt >= date - 120*/
+	AND CAL.RETAIL_YEAR >= 2020 
+inner join 
+(select item_id,
+auct_end_dt from P_SLR_TRACKER_T.rh_sello_2_itfin2 group by 1,2) e
+on ck.item_id = e.item_id and ck.auct_end_dt = e.auct_end_dt
+WHERE 1=1    
+	AND CK.RPRTD_WACKO_YN = 'N'
+	AND CK.AUCT_END_DT >= '2015-12-30'
+	AND CK.GMV_DT >= '2015-12-30'        
+GROUP BY 1,2,3,4)A
+where VERTICAL NOT IN ('Vehicles', 'Unknown', 'Real Estate')  /*Add Media from EU_FUNNEL below*/);
+
+
+/*select distinct P_SLR_TRACKER_T.rh_sello_2_gmveve2
+describe P_SLR_TRACKER_T.rh_sello_2_gmveve2*/
+drop table if exists P_SLR_TRACKER_T.rh_sello_2_gmveve2;
+create table P_SLR_TRACKER_T.rh_sello_2_gmveve2 
+/*using parquet
+PARTITIONED BY (item_id )*/
+as ( 
+select d.item_id,
+created_dt, /*--bring back created_Dt*/
+event_name,
+(gmv/multip) as gmv_event
+
+from
+(select item_id,
+created_dt, /*--bring back created_Dt*/
+event_name,
+sum((GMV)) as GMV
+from
+(select tra.*, event_name from P_SLR_TRACKER_T.rh_sello_2_trbas2 tra
+
+inner join P_SLR_TRACKER_T.rh_sello_2_itfin2 itf
+on tra.item_id = itf.item_id
+and tra.created_dt between itf.item_st and item_end /*--in event from cube rpp table */
+and tra.created_dt between itf.week_beg_dt and week_end_dt /*-- transactions within week reporting*/
+) a
+group by 1,2,3 /*--listing base in event inner join to listing gmv base from ck2*/
+)
+d /*--listing gmv by distinct event name */
+inner join 
+(select item_id,
+count(distinct event_name) as multip
+from P_SLR_TRACKER_T.rh_sello_2_itfin2 itf
+group by 1) c /*-- where item appears in multiple events*/
+on d.item_id = c.item_id /*-- take gmv divided across number of event appears (distribute gmv rather than credit total multiple times*/
+); 
+
+
+drop table if exists P_SLR_TRACKER_T.rh_sello_2_fintrack2;
+create table P_SLR_TRACKER_T.rh_sello_2_fintrack2  
+/*using parquet
+PARTITIONED BY (ITEM_ID ,AUCT_END_DT )*/
+as (
+select c.*,
+cast(null as DECIMAL(38,6)) as final_base
+
+from
+
+(select b.*,
+case when beg_check_final <= end_check_final then beg_check_final else end_check_final end as final_offset
+
+from
+
+(select a.*,
+case when beg_check >= 7 then 7 else beg_check+1 end as beg_check_final,
+case when end_check >=7 then 7 else end_check+1 end as end_check_final
+
+from 
+
+
+(select itf.*,
+gmv_event,
+gmve.created_dt, /*--bring back create date from event gmv table*/
+cast(null as decimal(38,6)) as gmv_base,
+datediff(item_end,Week_beg_dt) as beg_check,
+datediff(week_end_dt,item_st) as end_check
+
+from P_SLR_TRACKER_T.rh_sello_2_itfin2 itf
+
+left outer join P_SLR_TRACKER_T.rh_sello_2_gmveve2 gmve  /*-- listing gmv within event live last week to deduped listing base for live events*/
+on itf.item_id = gmve.item_id
+and itf.event_name = gmve.event_name) a ) b
+) c); 
+
+
+drop table if exists P_SLR_TRACKER_T.rh_sello_2_fintrack4;
+CREATE TABLE P_SLR_TRACKER_T.rh_sello_2_fintrack4 
+/*using parquet
+PARTITIONED BY (ITEM_ID ,AUCT_END_DT )*/
+AS (
+SELECT 
+RETAIL_YEAR,
+RETAIL_WEEK,
+EVENT_NAME,
+ITEM_ID,
+SELLER_ID,
+SELLER,
+LEAF_CATEG_ID,
+WEEK_BEG_DT,
+WEEK_END_DT,
+LISTED_PRICE_LC,
+CATEG_LVL2_NAME,
+CATEG_LVL2_ID,
+CATEG_LVL3_NAME,
+CATEG_LVL3_ID,
+VERTICAL,
+item_st,
+item_end,
+INVENTORY_PROP,
+AUCT_END_DT,
+event_start_dt,
+event_end_dt,
+base_start_dt,
+base_end_dt,
+gmv_event,
+created_dt,
+0 as gmv_base,
+beg_check,
+end_check,
+beg_check_final,
+end_check_final,
+final_offset,
+0 as final_base
+
+from P_SLR_TRACKER_T.rh_sello_2_fintrack2);
+
+
+
+drop table if exists P_SLR_TRACKER_T.rh_sello_2_ttgmv12;
+CREATE TABLE P_SLR_TRACKER_T.rh_sello_2_ttgmv12
+/*using parquet
+PARTITIONED BY (ITEM_ID ,AUCT_END_DT  )*/
+AS (
+selECT
+t.*,
+case when event_end_dt<=week_end_dt then event_end_dt else week_end_dt end as gmv_end,
+(DATEDIFF(gmv_end,event_start_dt) + 1) as live_time
+/*--Week_beg_dt-last_reported+1 as  days_reported */
+from P_SLR_TRACKER_T.rh_sello_2_fintrack4 t); 
+
+
+/*COLLECT STATS P_SLR_TRACKER_T.rh_sello_2_ttgmv12 COLUMN(item_id, auct_end_dt); 
+ COLLECT STATS P_SLR_TRACKER_T.rh_sello_2_ttgmv12 COLUMN(item_id); 
+COLLECT STATS P_SLR_TRACKER_T.rh_sello_2_ttgmv12 COLUMN( auct_end_dt);
+*/
+
+/*
+select focused_flag,COUNT(DISTINCT ITEM_ID),COUNT(DISTINCT SELLER_ID)
+,SUM(gmv_base_priced),SUM(gmv_event_priced),count(*),sum(price_dup) ,SUM(GMV_LW_INVENTORY_PROP),
+SUM(GMV_LW_FOCUS_SELLER),SUM(GMV_TOTAL_INVENTORY_PROP),SUM(GMV_TOTAL_FOCUS_SELLER)
+from P_SLR_TRACKER_T.rh_sello_2_gmvout2
+GROUP BY 1;
+*/
+
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.rh_sello_2_gmvout2;
+CREATE TABLE P_SLR_TRACKER_T.rh_sello_2_gmvout2 
+/*using parquet
+PARTITIONED BY (RETAIL_YEAR,RETAIL_WEEK,ITEM_ID) */
+AS ( 
+SELECT a.RETAIL_YEAR
+,a.RETAIL_WEEK
+,a.EVENT_NAME
+,a.ITEM_ID
+,a.SELLER_ID
+,a.SELLER
+,a.LEAF_CATEG_ID
+,a.WEEK_BEG_DT
+,a.WEEK_END_DT
+,a.LISTED_PRICE_LC
+,a.CATEG_LVL2_NAME
+,a.CATEG_LVL2_ID
+,a.CATEG_LVL3_NAME
+,a.CATEG_LVL3_ID
+,a.VERTICAL
+,a.item_st
+,a.item_end
+,a.INVENTORY_PROP
+,a.AUCT_END_DT
+,a.event_start_dt
+,a.event_end_dt
+,a.base_start_dt
+,a.base_end_dt
+,a.gmv_event
+,a.created_dt
+,a.gmv_base
+,a.beg_check
+,a.end_check
+,a.beg_check_final
+,a.end_check_final
+,a.final_offset
+,a.final_base
+,a.price_dup,
+CAST(null as DECIMAL(38,6)) AS base_tot,
+CAST(null as DECIMAL(38,6)) as gmv_tot,
+gmv_event/price_dup as gmv_event_priced,
+CAST(null as DECIMAL(38,6)) as gmv_base_priced,
+CAST(null as DECIMAL(38,6)) as final_base_priced,
+CAST(null as DECIMAL(38,6)) as base_tot_priced,
+CAST(null as DECIMAL(38,6)) as gmv_tot_priced,
+/*--inputted_intiative as initiative, */
+case when focused_flag is not null then 'focus' else 'other' end as focused_flag, 
+AM_name, 
+sum(case when ( INVENTORY_PROP= 'OTHERS' or INVENTORY_PROP is null) then 0 else gmv_event_priced end) as GMV_LW_INVENTORY_PROP, /*--gmv associated with an inventory prop excluding others and null */
+sum(case when focused_flag is null then 0 else gmv_event_priced end) as GMV_LW_FOCUS_SELLER, /*--changed here */
+/*--sum(case when ( focused_flag='Not completed' or focused_flag is null) then 0 else gmv_event end) as GMV_LW_FOCUS_SELLER, --gmv associated with focus seller excluded empty and null */
+sum(case when ( INVENTORY_PROP= 'OTHERS' or INVENTORY_PROP is null) then 0 else gmv_tot_priced end) as GMV_TOTAL_INVENTORY_PROP, /*--inventory prop gmv for total live time */
+sum(case when focused_flag is null then 0 else gmv_tot_priced end) as GMV_TOTAL_FOCUS_SELLER /*-- focus seller gmv for total live time */
+from 
+(
+selECT 
+b.*, /*--32*/
+price_dup
+from 
+ P_SLR_TRACKER_T.rh_sello_2_fintrack4 b
+
+inner join 
+(selECT
+item_id,
+created_dt, /*--- added create date */
+event_name, 
+count(distinct(LISTED_PRICE_LC)) as price_dup
+from P_SLR_TRACKER_T.rh_sello_2_fintrack4
+group by 1,2,3)c
+on b.item_id=c.item_id and b.event_name=c.event_name and b.created_dt=c.created_dt
+)a
+/*--33 field*/
+
+left join P_awang_ops_t.seller_ops_83 c /*--focus seller table */
+on a.seller_id=c.seller_id and a.vertical=c.seller_vertical 
+/*--where vertical='fashion*/
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42);
+
+
+
+
+drop table if exists P_SLR_TRACKER_T.rh_sello_2_gmvout2_coup;
+create table P_SLR_TRACKER_T.rh_sello_2_gmvout2_coup as (
+select 
+a.*,
+c.seller_id as seller_coup_flag
+/*--start_date,
+--end_date*/
+from P_SLR_TRACKER_T.rh_sello_2_gmvout2 a
+left outer join 
+P_SLR_TRACKER_T.aw_rh_2_coup2 c /*---new dynamic table from separate automation*/
+on c.seller_id = case when c.promotion_type='site_wide' then 1 else a.seller_id end 
+
+and  created_dt=redmd_date
+/*--between start_date and end_date --transactions between coupon start and end -- this is on the day*/
+);
+/*--where seller_name='ao'
+--where seller_coup_flag is null */
+ 
+
+
+Drop table if exists P_SLR_TRACKER_T.coucou;
+create table P_SLR_TRACKER_T.coucou as ( 
+
+select hhh.*,
+price_flag,
+new_item_flag
+
+from P_SLR_TRACKER_T.rh_sello_2_gmvout2_coup hhh /*---- run from live code*/ 
+
+left outer join
+
+(select 
+item_id,
+event_name,
+price_flag,
+new_item_flag
+from 
+(select 
+ccc.*,
+case when price_b4_event > price_event_beg then 'cheaper'
+when price_b4_event = price_event_beg then 'no change'
+when price_b4_event < price_event_beg then 'more expensive'
+when price_b4_event is null then 'no previous price'
+else 'other' end as price_flag
+from 
+
+(select bbb.*,
+priceh2.curnt_price_lstg_curncy as price_event_beg
+
+from 
+
+(select aaa.*,
+case when aaa.auct_start_dt >= item_st then 'new' else 'not new' end as new_item_flag,
+priceh.curnt_price_lstg_curncy as price_b4_event
+
+from 
+
+(select 
+gmv2.*,
+auct_start_dt
+
+from P_SLR_TRACKER_T.rh_sello_2_gmvout2_coup gmv2 /*----run from live code ll cube*/ 
+
+inner join ACCESS_VIEWS.dw_lstg_item lstg 
+on gmv2.item_id = lstg.item_id
+and gmv2.auct_end_dt >= date_sub(current_date,7)
+) aaa
+
+left outer join ACCESS_VIEWS.CTLG_ITEM_PRICE_TRACK_HST priceh
+on aaa.item_id = priceh.item_id
+and efctv_start_dt <= date_sub(item_st,7)
+and efctv_end_dt >= date_sub(item_st,7)
+) bbb
+
+left outer join ACCESS_VIEWS.CTLG_ITEM_PRICE_TRACK_HST priceh2
+on bbb.item_id = priceh2.item_id
+and efctv_start_dt <= item_st 
+and efctv_end_dt >= item_st 
+) ccc
+
+) ddd
+group by 1,2,3,4
+)  rrr
+
+on hhh.item_id = rrr.item_id
+and hhh.event_name = rrr.event_name);
+
+/*COLLECT STATS P_awang_ops_T.coucou COLUMN(event_name, item_id); */
+
+/*SELECT * FROM P_SLR_TRACKER_T.aw_sello_1_gmvout3 WHERE INVENTORY_PROP IS NULL;*/
+
+/*
+select  count(*),sum(cheaper_gmv),sum(no_prev_gmv),sum(GMV_LW_INVENTORY_PROP),sum(GMV_LW_FOCUS_SELLER),sum(GMV_TOTAL_INVENTORY_PROP) 
+from P_SLR_TRACKER_T.aw_sello_1_gmvout3;
+
+*/
+
+DROP TABLE if exists P_SLR_TRACKER_T.aw_sello_1_gmvout3;
+CREATE TABLE P_SLR_TRACKER_T.aw_sello_1_gmvout3 AS (
+select 
+X.vertical,
+X.retail_week,
+X.event_name,
+CASE WHEN X.INVENTORY_PROP IS NULL THEN 'NA' ELSE X.INVENTORY_PROP END AS INVENTORY_PROP,
+X.categ_lvl2_name,
+X.categ_lvl3_name,
+X.seller_id,
+X.seller,
+X.focused_flag, 
+X.AM_name,
+X.igmv_event_lw, /*--price deduped change*/
+X.igmv_event_total,  /*--price deduped change*/
+X.igmv_event_lw_0,  /*--price deduped change*/
+X.igmv_event_total_0,  /*--price deduped change*/
+X.cheaper_gmv,
+X.no_prev_gmv,
+X.gmv_event,  /*--price deduped change*/
+X.final_base,  /*--price deduped change*/
+X.base_tot,  /*--price deduped change*/
+X.gmv_tot,  /*--price deduped change*/
+X.GMV_LW_INVENTORY_PROP,  /*--price deduped change*/
+X.GMV_LW_FOCUS_SELLER,  /*--price deduped change*/
+X.GMV_TOTAL_INVENTORY_PROP,  /*--price deduped change*/
+X.GMV_TOTAL_FOCUS_SELLER,  /*--price deduped change*/
+X.listing,  /*--count(distinct(event_name)) as event_count*/
+store_GMV
+from (
+
+select 
+vertical,
+retail_week,
+event_name,
+INVENTORY_PROP,
+categ_lvl2_name,
+categ_lvl3_name,
+seller_id,
+seller,
+
+focused_flag, 
+AM_name,
+
+cast(null as decimal(38,6)) as igmv_event_lw, /*--price deduped change*/
+cast(null as decimal(38,6)) as igmv_event_total,  /*--price deduped change*/
+
+cast(null as decimal(38,6)) as igmv_event_lw_0,  /*--price deduped change*/
+cast(null as decimal(38,6)) as igmv_event_total_0,  /*--price deduped change*/
+
+sum(case when price_flag='cheaper' then gmv_event_priced else 0 end) as cheaper_gmv,
+sum(case when price_flag='no previous price' then gmv_event_priced else 0 end) as no_prev_gmv,
+
+sum((gmv_event_priced)) as gmv_event,  /*--price deduped change*/
+cast(null as decimal(38,6))  as final_base,  /*--price deduped change*/
+cast(null as decimal(38,6))  as base_tot,  /*--price deduped change*/
+cast(null as decimal(38,6))  as gmv_tot,  /*--price deduped change*/
+sum((GMV_LW_INVENTORY_PROP)) as GMV_LW_INVENTORY_PROP,  /*--price deduped change*/
+sum((GMV_LW_FOCUS_SELLER)) as GMV_LW_FOCUS_SELLER,  /*--price deduped change*/
+sum((GMV_TOTAL_INVENTORY_PROP)) as GMV_TOTAL_INVENTORY_PROP,  /*--price deduped change*/
+sum((GMV_TOTAL_FOCUS_SELLER)) as GMV_TOTAL_FOCUS_SELLER,  /*--price deduped change*/
+count(distinct(item_id)) as listing  /*--count(distinct(event_name)) as event_count*/
+from P_SLR_TRACKER_T.coucou
+group by 1,2,3,4,4,5,6,7,8,9,10,11,12,13,14
+)x
+left outer join 
+(select z.* from 
+(SELect
+       /* --CAL.RETAIL_YEAR
+       -- ,retail_week*/
+        seller_id
+     
+,inv.new_vertical as vertical, 
+
+    SUM(ck.GMV_PLAN_USD) AS store_GMV
+    
+    FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS AS CK
+    INNER JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID     
+    INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT  AND CAL.age_for_rtl_week_id=-1
+        AND CAL.RETAIL_YEAR >=2020
+	LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+    ON ck.ITEM_ID = INV.ITEM_ID		
+    INNER JOIN ACCESS_VIEWS.DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 /*--B2C only sellers*/
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2015-12-30'        
+    INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+    WHERE 1=1
+        AND CK.SLR_CNTRY_ID = 3 
+        AND CK.BYR_CNTRY_ID = 3 
+        AND CK.SLR_CNTRY_ID = CK.BYR_CNTRY_ID /*--DOM*/
+        AND CK.RPRTD_WACKO_YN = 'N'
+        AND CK.AUCT_END_DT >= '2015-12-30'
+        AND CK.GMV_DT >= '2015-12-30'        
+    GROUP BY 1,2 ) z
+	where  z.VERTICAL NOT IN ('Vehicles', 'Unknown', 'Real Estate'))r  /*--Add Media from EU_FUNNEL below*/
+    on x.vertical=r.vertical and x.seller_id=r.seller_id);
+	
+
+/* COLLECT STATS P_awang_ops_T.aw_sello_1_gmvout3 COLUMN(event_name, seller_id); 
+ COLLECT STATS P_awang_ops_T.aw_sello_1_gmvout3 COLUMN(event_name); 
+COLLECT STATS P_awang_ops_T.aw_sello_1_gmvout3 COLUMN( seller_id);  */
+
+/*
+select distinct INVENTORY_PROP
+from P_SLR_TRACKER_T.rh_sello_2_gmvout3vert
+*/
+
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.rh_sello_2_gmvout3vert;
+CREATE TABLE P_SLR_TRACKER_T.rh_sello_2_gmvout3vert  AS (
+selECT 
+vertical,
+retail_week,
+case when INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end as INVENTORY_PROP,
+sum((no_prev_gmv)) as no_prev_gmv,
+sum((cheaper_gmv)) as cheaper_gmv,
+sum((gmv_event)) as gmv_event,
+cast(null as decimal(38,6)) as final_base,
+cast(null as decimal(38,6)) as base_tot,
+cast(null as decimal(38,6)) as gmv_tot,
+sum((GMV_LW_INVENTORY_PROP)) as GMV_LW_INVENTORY_PROP,
+sum((GMV_LW_FOCUS_SELLER)) as GMV_LW_FOCUS_SELLER,
+sum((GMV_TOTAL_INVENTORY_PROP)) as GMV_TOTAL_INVENTORY_PROP,
+sum((GMV_TOTAL_FOCUS_SELLER)) as GMV_TOTAL_FOCUS_SELLER,
+cast(null as decimal(38,6)) as igmv_event_lw,
+cast(null as decimal(38,6)) as igmv_event_total,
+cast(null as decimal(38,6)) as igmv_event_lw_0,
+cast(null as decimal(38,6)) as igmv_event_total_0,
+cast(null as decimal(38,6)) as count_igmv_event_lw,
+sum((event_count)) as event_count,
+
+sum((listing)) as listing
+from (
+selECT 
+f.*,
+gmv_event-final_base as igmv_event_lw, 
+gmv_tot-base_tot as igmv_event_total, 
+cast(null as decimal(38,6)) as igmv_event_lw_0,
+cast(null as decimal(38,6)) as igmv_event_total_0,
+cast(null as decimal(38,6))  as count_igmv_event_lw
+
+from (
+selECT 
+vertical,
+retail_week,
+event_name,
+INVENTORY_PROP,
+/*--categ_lvl2_name,
+--categ_lvl3_name,
+--seller_id,
+--seller,
+--event_start_dt,
+--event_end_dt,
+--focused_flag, 
+--initiative, 
+--AM_name,*/
+sum(case when price_flag='cheaper' then gmv_event_priced else 0 end) as cheaper_gmv,
+sum(case when price_flag='no previous price' then gmv_event_priced else 0 end) as no_prev_gmv,
+sum((gmv_event_priced)) as gmv_event, /*--price dedup corrected*/
+cast(null as decimal(38,6)) as final_base, /*--price dedup corrected*/
+cast(null as decimal(38,6)) as base_tot, /*--price dedup corrected*/
+cast(null as decimal(38,6)) as gmv_tot, /*--price dedup corrected*/
+sum((GMV_LW_INVENTORY_PROP)) as GMV_LW_INVENTORY_PROP,
+sum((GMV_LW_FOCUS_SELLER)) as GMV_LW_FOCUS_SELLER,
+sum((GMV_TOTAL_INVENTORY_PROP)) as GMV_TOTAL_INVENTORY_PROP,
+sum((GMV_TOTAL_FOCUS_SELLER)) as GMV_TOTAL_FOCUS_SELLER,
+count(distinct(item_id)) as listing,
+count(distinct(event_name)) as event_count
+from P_SLR_TRACKER_T.coucou /*---changed here to coupon table base when coupon in week reported -with price drop on listing*/
+group by 1,2,3,4 /*--,4,5,6,7,8,9,10,11,12*/ 
+)f
+) a group by 1,2,3); 
+
+/*
+COLLECT STATS P_awang_ops_T.rh_sello_2_gmvout3vert COLUMN(vertical, retail_week, inventory_prop); 
+ COLLECT STATS P_awang_ops_T.rh_sello_2_gmvout3vert COLUMN(vertical); 
+COLLECT STATS P_awang_ops_T.rh_sello_2_gmvout3vert COLUMN( retail_week); 
+COLLECT STATS P_awang_ops_T.rh_sello_2_gmvout3vert COLUMN( inventory_prop); */
+
+/*
+select VERTICAL_WBR,inv_prop_flag,INVENTORY_PROP,sum(GMV) from P_SLR_TRACKER_T.rh_sello_2_gmvout3a group by 1,2,3;
+
+select distinct INVENTORY_PROP from P_SLR_TRACKER_T.rh_sello_2_gmvout3a 
+where vertical_wbr IN ( 'Home & Garden');*/
+
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.rh_sello_2_gmvout3a;
+CREATE TABLE P_SLR_TRACKER_T.rh_sello_2_gmvout3a AS (
+selECT 
+RETAIL_YEAR
+,RETAIL_WEEK_1
+,VERTICAL_WBR
+,case when inv_prop_flag  = 'NA' then 'NA' 
+when INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end
+as INVENTORY_PROP
+,BYR_CNT
+,BI
+,GMV
+,inv_prop_flag 
+from (
+select a.*,
+CASE WHEN INVENTORY_PROP LIKE ('%Focus%') THEN 'Focused'
+WHEN INVENTORY_PROP LIKE ('%Scal%') THEN 'Scaling'
+WHEN INVENTORY_PROP LIKE ('%Other%') THEN 'ROVertical'
+WHEN a.INVENTORY_PROP LIKE ('%Protrader%') THEN 'Protrader'
+ELSE 'NA' end as inv_prop_flag
+from 
+
+(
+SELECT
+
+        CAL.RETAIL_YEAR
+        ,CAL.RETAIL_WEEK as RETAIL_WEEK_1
+		
+		,inv.new_vertical AS VERTICAL_WBR,
+  /* --INVENTORY PROPS*/
+inv.INVENTORY_PROP 
+    ,0 as BYR_CNT       
+    ,SUM(CK.QUANTITY) AS BI
+    ,SUM(ck.GMV_PLAN_USD) AS GMV
+   
+    from  DW_CHECKOUT_TRANS AS CK
+        
+    INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID     
+        
+    INNER JOIN ( select CATEG_LVL2_ID,categ_lvl3_id,categ_lvl4_id,LEAF_CATEG_ID,meta_categ_id,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS group by 1,2,3,4,5,6,7 )  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+        
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+        AND CAL.RETAIL_YEAR >=2020    AND CAL.age_for_rtl_week_id=-1
+	LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+    ON ck.ITEM_ID = INV.ITEM_ID		
+        
+    INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+        AND USEGM_ID = 206 /*--B2C only sellers*/
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5   )AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        
+    LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+    WHERE 1=1
+       
+            and  CK.SLR_CNTRY_ID = 3 
+        AND CK.BYR_CNTRY_ID = 3 
+        AND CK.SLR_CNTRY_ID = CK.BYR_CNTRY_ID 
+        AND CK.RPRTD_WACKO_YN = 'N'
+        AND CK.AUCT_END_DT >= '2018-12-29'
+        AND Ck.GMV_DT >= '2018-12-29'    
+    GROUP BY 1,2,3,4
+    
+
+ )a
+ WHERE  VERTICAL_WBR NOT IN ('Vehicles', 'Unknown', 'Real Estate') /*--Add Media from EU_FUNNEL below*/)z); 	
+ 
+/* COLLECT STATS P_awang_ops_T.rh_sello_2_gmvout3a COLUMN(VERTICAL_WBR, INVENTORY_PROP); 
+ COLLECT STATS P_awang_ops_T.rh_sello_2_gmvout3a COLUMN(VERTICAL_WBR); 
+COLLECT STATS P_awang_ops_T.rh_sello_2_gmvout3a COLUMN( INVENTORY_PROP); */
+
+/*
+select VERTICAL,INVENTORY_PROP,sum(GMV_USD) from P_SLR_TRACKER_T.aw_vert_1_dd_list group by 1,2 order by 3;
+select focused_flag,sum(GMV_USD),count(distinct item_id) from P_SLR_TRACKER_T.aw_vert_1_dd_list group by 1;
+select distinct INVENTORY_PROP from P_SLR_TRACKER_T.aw_vert_1_dd_list;
+*/
+
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.aw_vert_1_dd_list;
+CREATE TABLE P_SLR_TRACKER_T.aw_vert_1_dd_list AS (
+selECT 
+cub.item_id,
+cub.cal_dt,
+LSTG_TITLE_NAME    as listing_title,
+cub.rtl_yr as retail_year,
+cat.categ_lvl2_id,
+cat.categ_lvl2_name,
+cat.categ_lvl3_id,
+cat.categ_lvl3_name,
+/*-- ATTR_PAGE_FLOW_L1,
+--DEAL_TYPE,
+--EVENT_GRP_NAME, */                     
+event_name,
+cub.RTL_WEEK_NUM as retail_week,    
+cub.SLR_ID AS SELLER_ID,
+AGE_FOR_RTL_WEEK_ID,                              
+inv.new_vertical as vertical, 
+  /* --INVENTORY PROPS*/
+ inv.INVENTORY_PROP AS INVENTORY_PROP 
+,inv.FOCUS_FLAG AS INV_PROP_FLAG,
+case when focused_flag is not null then 'focus' else 'other' end as focused_flag,    
+sum((GMV_USD_AMT)) as GMV_USD,
+sum((cub.LSTG_PRCHSD_QTY  )) as quantity,
+sum((DEDUPED_GMV_USD_AMT )) as GMV_dedup,
+sum((DEDUPED_QTY )) as quant_dedup
+ from ACCESS_VIEWS.AP_QCP_TRANS_CUBE_SUM  cub
+INNER JOIN DW_CAL_DT CAL ON CAL.CAL_DT = cub.cal_DT  and AGE_FOR_RTL_WEEK_ID =-1
+inner join dw_lstg_item lstg /*--fashion prop definition HELP TABLE  ACCESS_VIEWS.LSTG_ITEM_CNDTN*/
+on cub.item_id = lstg.item_id
+left outer join ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN /*--p&a prop definition*/ 
+on cub.ITEM_ID = CNDTN.ITEM_ID
+INNER JOIN 
+ DW_CATEGORY_GROUPINGS CAT 
+ON CAT.LEAF_CATEG_ID = cub.LEAF_CATEG_ID 
+AND CAT.SITE_ID = lstg.item_site_id
+AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+and lstg.item_site_id=3
+left join P_awang_ops_t.seller_ops_83 c /*--focus seller table*/ 
+on cub.SLR_ID=c.seller_id and cub.VRTCL_NAME=c.seller_vertical 
+LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+ON cub.ITEM_ID = INV.ITEM_ID	
+
+where
+DEAL_TYPE_DESC in ('1_DAILYDEALS') /*--, '2_WEEKLYDEALS')*/
+and AGE_FOR_RTL_WEEK_ID=-1
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16);
+
+
+/*select distinct INVENTORY_PROP from P_SLR_TRACKER_T.aw_vert_1_dd_roll
+COLLECT STATS P_SLR_TRACKER_T.aw_vert_1_dd_list COLUMN(item_id, vertical, retail_week); 
+COLLECT STATS P_SLR_TRACKER_T.aw_vert_1_dd_list COLUMN(item_id); 
+COLLECT STATS P_SLR_TRACKER_T.aw_vert_1_dd_list COLUMN( vertical); 
+COLLECT STATS P_SLR_TRACKER_T.aw_vert_1_dd_list COLUMN( retail_week);*/
+
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.aw_vert_1_dd_roll;
+CREATE TABLE  P_SLR_TRACKER_T.aw_vert_1_dd_roll  AS (
+selECT 
+
+retail_year,
+retail_week,
+vertical,
+case when inv_prop_flag  = 'NA' then 'NA' else INVENTORY_PROP end as INVENTORY_PROP,
+INV_PROP_FLAG,
+
+sum((GMV_USD)) as GMV,
+sum((quantity)) as SI,
+sum((GMV_dedup)) as dedup_GMV,
+sum((quant_dedup)) as SI_dedup, 
+count(distinct(item_id)) as dd_listing
+
+from P_SLR_TRACKER_T.aw_vert_1_dd_list
+
+group by 1,2,3,4,5);
+
+/*COLLECT STATS P_SLR_TRACKER_T.aw_vert_1_dd_roll COLUMN(retail_week,vertical,inventory_prop); 
+COLLECT STATS P_SLR_TRACKER_T.aw_vert_1_dd_roll COLUMN(retail_week); 
+COLLECT STATS P_SLR_TRACKER_T.aw_vert_1_dd_roll COLUMN(vertical); 
+COLLECT STATS P_SLR_TRACKER_T.aw_vert_1_dd_roll COLUMN(inventory_prop); */
+
+drop table if exists P_SLR_TRACKER_T.aw_sello_1_gmvout4;
+create table  P_SLR_TRACKER_T.aw_sello_1_gmvout4 as (
+select 
+a.vertical
+,a.retail_week
+,a.INVENTORY_PROP
+,a.no_prev_gmv
+,a.cheaper_gmv
+,a.gmv_event
+,a.final_base
+,a.base_tot
+,a.gmv_tot
+,a.GMV_LW_INVENTORY_PROP
+,a.GMV_LW_FOCUS_SELLER
+,a.GMV_TOTAL_INVENTORY_PROP
+,a.GMV_TOTAL_FOCUS_SELLER
+,a.igmv_event_lw
+,a.igmv_event_total
+,a.igmv_event_lw_0
+,a.igmv_event_total_0
+,a.count_igmv_event_lw
+,a.event_count
+,a.listing
+,a.inv_prop_flag
+,a.Inventory_prop_official
+,a.retail_week_final
+,case when a.Proposition_name is null then 'NA' else Inventory_prop_official end as Proposition_name
+,a.vertical_final
+,a.GMV_Inv_Prop_Overall
+,a.slr_cnt
+,sum((dedup_GMV)) as GMV_daily_deals
+from 
+
+(select 
+x.*,
+slr_cnt
+/*--sum(zeroifnull(dedup_GMV)) as GMV_daily_deals*/
+from 
+
+(select 
+b.*,
+ inv_prop_flag,
+a. Inventory_prop as Inventory_prop_official,
+coalesce(b.retail_week,retail_week_1) as retail_week_final,/*--use as retail week in tableau */
+coalesce(b.INVENTORY_PROP,Inventory_prop_official) as Proposition_name, /*--show this field in report for inventory prop official */
+coalesce(b.vertical,a.vertical_wbr) as vertical_final, /*-- show this field in report for vertical */
+GMV as GMV_Inv_Prop_Overall
+
+from 
+P_SLR_TRACKER_T.rh_sello_2_gmvout3a a  
+left  join 
+P_SLR_TRACKER_T.rh_sello_2_gmvout3vert b 
+on b.retail_week = a.retail_week_1 
+and b.Inventory_prop=a.inventory_prop
+and a.VERTICAL_WBR =b.vertical
+) x
+
+left outer join 
+(select 
+vertical,
+INVENTORY_PROP,
+
+count(distinct(seller)) as slr_cnt
+from P_SLR_TRACKER_T.aw_sello_1_gmvout3 where focused_flag is not null group by 1,2 )y /*--event rollup table */
+
+on x.vertical_final=y.vertical and x.Proposition_name=y.INVENTORY_PROP 
+
+/*--------------add for daily deals*/
+) a
+
+left outer join P_SLR_TRACKER_T.aw_vert_1_dd_roll z
+
+on z.retail_week = a.retail_week_final 
+and z.Inventory_prop=a.Proposition_name
+and z.INV_PROP_FLAG=a.inv_prop_flag
+and a.vertical_final =z.vertical
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27);
+
+
+
+/*
+SELECT 
+-- case when INVENTORY_PROP like '%Protrader%' then 'Protrader' else 'Others' end as INVENTORY_PROP,
+sum(gmv_event) as gmv_event
+from P_SLR_TRACKER_T.aw_sello_1_gmvout4 where 1=1 -- vertical = 'Home & Garden' 
+group by 1;
+
+SELECT PROMOTION_TYPE,
+case when INVENTORY_PROP like '%Protrader%' then 'Protrader' else 'Others' end as INVENTORY_PROP,
+sum(PROMOTION_GMV) as PROMOTION_GMV
+from P_SLR_TRACKER_T.seller_union_all_hist where RETAIL_YEAR=2021 AND RETAIL_WEEK=15 group by 1,2;
+
+
+select distinct Proposition_name from P_SLR_TRACKER_T.aw_sello_1_gmvout4;
+select distinct INVENTORY_PROP from P_SLR_TRACKER_T.rh_sello_2_gmvout3a;
+select distinct INVENTORY_PROP from P_SLR_TRACKER_T.rh_sello_2_gmvout3vert;
+select distinct INVENTORY_PROP from P_SLR_TRACKER_T.aw_sello_1_gmvout3;
+
+
+COLLECT STATS P_SLR_TRACKER_T.aw_sello_1_gmvout4 COLUMN(vertical_final, retail_week_final, Proposition_name); 
+ COLLECT STATS P_SLR_TRACKER_T.aw_sello_1_gmvout4 COLUMN(vertical_final); 
+COLLECT STATS P_SLR_TRACKER_T.aw_sello_1_gmvout4 COLUMN( retail_week_final); 
+COLLECT STATS P_SLR_TRACKER_T.aw_sello_1_gmvout4 COLUMN( Proposition_name);*/
+-- select event_count
+/*
+
+select RETAIL_WEEK,count(*),sum(gmv_event),sum(cheaper_gmv) ,sum(no_prev_gmv) ,sum(GMV_Inv_Prop_Overall)
+from P_SLR_TRACKER_T.aw_sello_1_gmvout4 group by 1;
+
+select  retail_week,vertical,Inventory_prop,inv_prop_flag,sum(gmv_event) as RPP from P_SLR_TRACKER_T.aw_sello_1_gmvout4 group by 1,2,3,4;
+select  retail_week_1,VERTICAL_WBR,Inventory_prop from P_SLR_TRACKER_T.rh_sello_2_gmvout3a group by 1,2,3;
+select sum(event_count) from  P_SLR_TRACKER_T.aw_sello_1_gmvout4
+
+*/

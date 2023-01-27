@@ -1,0 +1,206 @@
+/*Aim: Seller Refurb Daily Performance
+
+Data connection used in SR Daily report
+select * from p_macheung_t.sr_listing_output;
+select distinct categ_lvl2_name, user_slctd_id, seller_id from p_macheung_t.sr_listing_output;
+select * from p_macheung_t.sr_gmv_listing_report where created_dt >= '2022-01-01'
+
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- SR Listings on UK site from UK B2C sellers + Brand
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_macheung_t.sr_listing_base;
+create table p_macheung_t.sr_listing_base as 
+(select 
+lstg.slr_id as seller_id
+,lstg.item_id
+,cal.retail_week--Week of listing start date, include so report will run
+,lstg.auct_start_dt
+,lstg.auct_end_dt
+,case when lstg.item_cndtn_id = 1000 then 'New'
+	 when lstg.item_cndtn_id = 1500 then 'New - Other'
+	 when lstg.item_cndtn_id = 1750 then 'New - With defects'
+	 
+	 when lstg.auct_end_dt < '2021-02-15' and lstg.item_cndtn_id = 2000 then 'Refurb - Manufacturer'
+	 when lstg.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	 
+	 when sr.launch_category is not null and lstg.auct_end_dt < sr.launch_date and lstg.item_cndtn_id in (2010,2020,2030,2500) then 'Refurb - Seller'
+	 when sr.launch_category is not null and lstg.auct_end_dt >= sr.launch_date and lstg.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	 when sr.launch_category is not null and lstg.auct_end_dt >= sr.launch_date and lstg.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	 when sr.launch_category is not null and lstg.auct_end_dt >= sr.launch_date and lstg.item_cndtn_id = 2030 then 'Refurb - Good'
+	 when lstg.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	 	  
+	 when lstg.item_cndtn_id = 3000 then 'Used'
+	 when lstg.item_cndtn_id = 4000 then 'Used - Very Good'
+	 when lstg.item_cndtn_id = 5000 then 'Used - Good'
+	 when lstg.item_cndtn_id = 6000 then 'Used - Acceptable'
+	 when lstg.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	 else 'Other'
+	 end as item_condition
+,cat.meta_categ_name
+,cat.categ_lvl2_name
+,lstg.qty_avail - lstg.qty_sold as qty_remaining
+,brand.lcase_aspect_name
+,brand.brand 
+,1 as RNum--include so report will run
+,case when lstg.qty_avail - lstg.qty_sold = 0 then 'out of stock'
+	when lstg.qty_avail - lstg.qty_sold > 0 then 'in stock'
+	else 'N/A'
+	end as stock_flag, 
+'' as contract_signed--include so report will run
+,u.user_slctd_id 
+
+from prs_restricted_v.slng_lstg_super_fact lstg
+
+inner join access_views.dw_cal_dt cal 
+on lstg.auct_start_dt = cal.cal_dt and cal.retail_year >= 2018 
+
+inner join (
+	select meta_categ_name,meta_categ_id,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,leaf_categ_name,site_id
+	,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+          when meta_categ_id in (26395) then 'Lifestyle'
+          when categ_lvl3_id in (260325) then 'Lifestyle'
+          when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+          when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+          when categ_lvl3_id in (3244) then 'Parts & Accessories'
+          when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+          when categ_lvl2_id in (46576) then 'Parts & Accessories'
+          when categ_lvl2_id in (63, 29223) then 'Collectibles'
+          else bsns_vrtcl_name end as new_vertical
+	from access_views.dw_category_groupings 
+	where sap_category_id not in (5,7,41,23,-999) 
+    group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat																
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id = 3 
+
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+left join p_uk_bc_t.SR_categories sr
+on cat.categ_lvl2_id=sr.categ_lvl2_id and cat.categ_lvl3_id=sr.categ_lvl3_id and cat.categ_lvl4_id=sr.categ_lvl4_id
+
+left join
+(select 
+item_id
+,auct_end_dt
+,lower(prdct_aspct_nm) as lcase_aspect_name
+,upper(aspct_vlu_nm) as brand
+from access_views.item_aspct_clssfctn
+where lower(prdct_aspct_nm) = 'brand' 
+and ns_type_cd in ('df','nf')
+qualify (row_number() over (partition by item_id,prdct_aspct_nm order by prdct_aspct_nm))=1--acquire just one row for brand
+)brand
+on lstg.item_id = brand.item_id and lstg.auct_end_dt = brand.auct_end_dt
+
+where 
+lstg.EU_B2C_C2C_flag='B2C'
+and lstg.slr_cntry_id=3    
+and lstg.lstg_site_id = 3
+and lstg.iscore = 1	
+and lstg.auct_end_dt > '2018-12-29'
+and sr.launch_category is not null--only inventory that are part of the SR program
+and cat.new_vertical in ('Electronics','Home & Garden')--Only Electronics inventory launched in SR before 2022-09-14, H&G launched on 2022-09-14
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+having item_condition in ('Refurb - Excellent','Refurb - Very Good','Refurb - Good','Refurb - Seller')
+);
+
+drop table if exists p_macheung_t.sr_listing_output;
+create table p_macheung_t.sr_listing_output as (
+select * from p_macheung_t.sr_listing_base
+where auct_end_dt >= (current_date - 1)
+);
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- GMV by brand 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_macheung_t.sr_gmv_listing_report;
+create table p_macheung_t.sr_gmv_listing_report as 
+(
+select
+'' as contract_signed--include so report will run
+,ck.seller_id
+,u.user_slctd_id 
+,ck.GMV_dt as created_dt
+,cat.meta_categ_name
+,cat.categ_lvl2_name
+,br.brand
+,ck.item_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when ck.GMV_dt < '2021-02-15' and cndtn.item_cndtn_id = 2000 then 'Refurb - Manufacturer'
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when sr.launch_category is not null and ck.GMV_dt < sr.launch_date and cndtn.item_cndtn_id in (2010,2020,2030,2500) then 'Refurb - Seller'
+	  when sr.launch_category is not null and ck.GMV_dt >= sr.launch_date and cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when sr.launch_category is not null and ck.GMV_dt >= sr.launch_date and cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when sr.launch_category is not null and ck.GMV_dt >= sr.launch_date and cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller'  -- 2500 will be going away 15/10/21 according to Angie 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+,sum(ck.GMV20_plan) as GMV
+,sum(ck.GMV20_sold_quantity) AS BI
+
+from prs_restricted_v.slng_trans_super_fact  ck 
+
+inner join (select meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id
+			,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+             when meta_categ_id in (26395) then 'Lifestyle'
+             when categ_lvl3_id in (260325) then 'Lifestyle'
+             when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+             when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+             when categ_lvl3_id in (3244) then 'Parts & Accessories'
+             when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+             when categ_lvl2_id in (46576) then 'Parts & Accessories'
+             when categ_lvl2_id in (63, 29223) then 'Collectibles'
+             else bsns_vrtcl_name end as new_vertical from access_views.dw_category_groupings 
+			 where sap_category_id not in (5,7,41,23,-999) 
+			 group by 1,2,3,4,5,6,7,8,9,10,11) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt and cal.age_for_rtl_year_id = 0 
+        
+inner join (select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+			where usegm_grp_id = 48 																						
+			and usegm_id = 206 																								
+			and end_date >= '2015-12-30' group by 1,2,3,4,5) as hist 	
+on ck.seller_id=hist.user_id
+and ck.GMV_dt between hist.beg_date and hist.end_date
+
+inner join access_views.dw_users u 
+on ck.seller_id = u.user_id
+
+left join (select item_id,item_cndtn_id,cndtn_rollup_id 
+			from access_views.lstg_item_cndtn 
+            where cndtn_rollup_id = 2 -- refurb only
+            group by 1,2,3) as cndtn
+on ck.item_id = cndtn.item_id 
+
+left join (select item_id,brand from p_macheung_t.sr_listing_base group by 1,2) br 
+on ck.item_id = br.item_id
+		
+left join p_uk_bc_t.SR_categories sr
+on cat.categ_lvl2_id=sr.categ_lvl2_id and cat.categ_lvl3_id=sr.categ_lvl3_id and cat.categ_lvl4_id=sr.categ_lvl4_id
+
+where ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = byr_cntry_id --DOM
+and ck.lstg_site_id = 3 
+and ck.iscore = 1
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+and sr.launch_category is not null--only inventory that are part of the SR program
+and cat.new_vertical in ('Electronics','Home & Garden')--Only Electronics inventory launched in SR before 2022-09-14, H&G launched on 2022-09-14
+and ck.GMV_dt <= current_date
+group by 1,2,3,4,5,6,7,8,9
+having item_condition in ('Refurb - Excellent','Refurb - Very Good','Refurb - Good','Refurb - Seller')
+);

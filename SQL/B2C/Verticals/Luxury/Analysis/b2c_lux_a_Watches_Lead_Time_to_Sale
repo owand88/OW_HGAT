@@ -1,0 +1,29 @@
+
+
+Select ck.item_id, lstg.AUCT_START_DT, ck.first_sale_dt, datediff(ck.first_sale_dt,lstg.AUCT_START_DT) as duration
+From 
+	(select ck1.item_id, ck1.AUCT_END_DT, ck1.LEAF_CATEG_ID, ck1.CK_TRANS_DT as first_sale_dt
+	from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck1
+	INNER JOIN DW_CAL_DT cal1
+		on ck1.CK_TRANS_DT = cal1.CAL_DT
+		and AGE_FOR_RTL_WEEK_ID >= -52
+	INNER JOIN DW_CATEGORY_GROUPINGS CAT1
+		ON CAT1.LEAF_CATEG_ID = ck1.LEAF_CATEG_ID 
+		AND CAT1.SITE_ID = 3
+		AND CAT1.SAP_CATEGORY_ID NOT in (5,7,41,23,-999)   
+	Where 1=1
+	and (cat1.categ_lvl3_id=169291 OR cat1.categ_lvl4_id=52357)
+	and ck1.START_PRICE_LSTG_CURNCY_AMT >= 500
+	and ck1.SITE_ID = 3
+	and ck1.SLR_CNTRY_ID = 3
+	Group by 1,2,3,4) ck
+INNER JOIN PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+	on ck.item_id = lstg.ITEM_ID and ck.auct_end_dt = lstg.AUCT_END_DT
+
+Where 1=1
+
+Group by 1,2,3
+
+Having duration >= 0
+
+Order by duration asc

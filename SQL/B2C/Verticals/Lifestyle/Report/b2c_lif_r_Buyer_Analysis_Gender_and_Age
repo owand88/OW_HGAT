@@ -1,0 +1,172 @@
+-- select retail_year, retail_qtr, retail_period, categ_lvl2_name, fm_seg_2, macro_cl_name, age_group, gender, seller_Segment, sum(t52W_gmb), sum(t52w_bi), sum(t52w_txn), sum(pd_buckeet) from P_CSI_TBS_T.UK_CATEG_AB_SUMM where meta_Categ_id = 26395 group by 1,2,3,4,5,6,7,8,9
+-- select * from  P_CSI_TBS_T.UK_CATEG_AB_SUMM
+select
+RETAIL_YEAR,
+ case when  inac.max_dt <= date '2020-03-03' then 'inactive buyer' when  inac.max_dt < date '2021-01-03' then 'active buyer' else 'other' end as activebuyer_flag,
+  case when  inacs.max_dt <= date '2020-03-03' then 'inactive buyer' when  inacs.max_dt < date '2021-01-03' then 'active buyer' else 'other' end as activeseller_flag,
+case when categ_lvl2_id in (20710, 69197) then 'Electronics'
+when meta_categ_id in (26395) then 'lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486) then 'Home & Garden'
+else bsns_vrtcl_name end as new_vertical,
+CASE WHEN HIST.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END BUS_FLAG,
+meta_categ_id, meta_categ_name,
+case when user_age between 18 and 24 then "18-24" 
+	when user_age between 25 and 30 then "25-30"
+	when user_age between 30 and 40 then "30-40"
+	when user_age between 40 and 50 then "40-50"
+	else "Other" end as young_person_flag,
+case when USER_AGE_GRP_ID = 134 THEN 'A. <18' 
+when USER_AGE_GRP_ID = 134 THEN 'A. <18' 
+when USER_AGE_GRP_ID = 138 THEN 'A. <18' 
+when USER_AGE_GRP_ID = 133 THEN 'F. UNKNOWN' 
+when USER_AGE_GRP_ID = 136 THEN 'C. 25-44' 
+when USER_AGE_GRP_ID = 137 THEN 'A. <18' 
+when USER_AGE_GRP_ID = 135 THEN 'B. 18-24' 
+
+end as age_Tranches,PRDCTV_GNDR,ACX_USER_AGE_GRP_ID,
+SUM(CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE) AS GMB_PLAN, 
+SUM(QUANTITY) AS BI,
+count(distinct ck.buyer_id),
+count(distinct ck.seller_id)
+
+from DW_CHECKOUT_TRANS ck
+
+left join (select buyer_id,max(created_dt) as max_dt from DW_CHECKOUT_TRANS ck group by 1) inac on ck.buyer_id = inac.buyer_id
+left join (select seller_id,max(created_dt) as max_dt from DW_CHECKOUT_TRANS ck group by 1) inacs on ck.seller_id = inacs.selleR_id
+
+ INNER  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+
+INNER JOIN ( select meta_categ_id, meta_categ_name,CATEG_LVL2_ID,CATEG_LVL2_name, categ_lvl3_id,CATEG_LVL3_name, LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   
+            from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS 
+            where sap_category_id not in (5,7,41,23,-999) )  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+        and CAT.SITE_ID in (3)
+ INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+ON CAL.CAL_DT = ck.CREATED_DT and retail_year in (2019,2020)
+
+inner  JOIN DW_USEGM_HIST HIST ON HIST.USER_ID=ck.Seller_ID AND HIST.USEGM_GRP_ID  = 48 
+AND CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+
+left join (
+select user_id, user_age,PRDCTV_GNDR,USER_AGE_GRP_ID   ,ACX_USER_AGE_GRP_ID   
+from 
+ PRS_SECURE_V.USER_DNA_DIM
+group by 1,2,3,4,5
+)u
+on ck.buyer_id = u.user_id
+
+
+
+WHERE
+slr_cntry_id=3
+and byr_cntry_id =3
+and SLR_CNTRY_ID = BYR_CNTRY_ID
+and ck.site_id = 3
+and ck.sale_type not in (10,15)
+group by 1,2,3,4,5,6,7,8,9,10,11;
+---------------------------------------------------
+select
+RETAIL_YEAR,
+CASE WHEN HIST.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END BUS_FLAG,
+case when user_age between 18 and 24 then "18-24" 
+	when user_age between 25 and 30 then "25-30"
+	when user_age between 30 and 40 then "30-40"
+	when user_age between 40 and 50 then "40-50"
+	else "Other" end as young_person_flag,
+case when USER_AGE_GRP_ID = 134 THEN 'A. <18' 
+when USER_AGE_GRP_ID = 134 THEN 'A. <18' 
+when USER_AGE_GRP_ID = 138 THEN 'A. <18' 
+when USER_AGE_GRP_ID = 133 THEN 'F. UNKNOWN' 
+when USER_AGE_GRP_ID = 136 THEN 'C. 25-44' 
+when USER_AGE_GRP_ID = 137 THEN 'A. <18' 
+when USER_AGE_GRP_ID = 135 THEN 'B. 18-24' 
+
+end as age_Tranches,
+SUM(CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE) AS GMB_PLAN, 
+SUM(QUANTITY) AS BI,
+count(distinct ck.buyer_id),
+count(distinct ck.seller_id)
+
+from DW_CHECKOUT_TRANS ck
+
+left join (select buyer_id,max(created_dt) as max_dt from DW_CHECKOUT_TRANS ck group by 1) inac on ck.buyer_id = inac.buyer_id
+left join (select seller_id,max(created_dt) as max_dt from DW_CHECKOUT_TRANS ck group by 1) inacs on ck.seller_id = inacs.selleR_id
+
+ INNER  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+
+INNER JOIN ( select meta_categ_id, meta_categ_name,CATEG_LVL2_ID,CATEG_LVL2_name, categ_lvl3_id,CATEG_LVL3_name, LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   
+            from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS 
+            where sap_category_id not in (5,7,41,23,-999) )  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+        and CAT.SITE_ID in (3)
+ INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+ON CAL.CAL_DT = ck.CREATED_DT and retail_year in (2019,2020)
+
+inner  JOIN DW_USEGM_HIST HIST ON HIST.USER_ID=ck.Seller_ID AND HIST.USEGM_GRP_ID  = 48 
+AND CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+
+left join (
+select user_id, user_age,PRDCTV_GNDR,USER_AGE_GRP_ID   ,ACX_USER_AGE_GRP_ID   
+from 
+ PRS_SECURE_V.USER_DNA_DIM
+group by 1,2,3,4,5
+)u
+on ck.buyer_id = u.user_id
+
+
+
+WHERE
+slr_cntry_id=3
+and byr_cntry_id =3
+and SLR_CNTRY_ID = BYR_CNTRY_ID
+and ck.site_id = 3
+and ck.sale_type not in (10,15)
+group by 1,2,3,4
+------------------------------------------
+-- select * from p_Hroon_t.hb_buyer
+create table p_Hroon_t.buyer as (select 
+retail_year,
+META_CATEG_name,
+case when user_age between 18 and 24 then "18-24" 
+	when user_age between 25 and 30 then "25-30"
+	when user_age between 30 and 40 then "30-40"
+	when user_age between 40 and 50 then "40-50"
+	else "Other" end as young_person_flag,
+case when USER_AGE_GRP_ID = 134 THEN 'A. <18' 
+when USER_AGE_GRP_ID = 134 THEN 'A. <18' 
+when USER_AGE_GRP_ID = 138 THEN 'A. <18' 
+when USER_AGE_GRP_ID = 133 THEN 'F. UNKNOWN' 
+when USER_AGE_GRP_ID = 136 THEN 'C. 25-44' 
+when USER_AGE_GRP_ID = 137 THEN 'A. <18' 
+when USER_AGE_GRP_ID = 135 THEN 'B. 18-24' 
+
+end as age_Tranches,
+CASE WHEN PRDCTV_GNDR = 'M' Then 'Male' WHEN PRDCTV_GNDR = 'F' THEN 'Female' ElSE 'OTHER' END AS GENDER,
+CATEG_LVL2_ID,
+CATEG_LVL2_name,
+-- focused_flag,
+SUM(CK.ITEM_PRICE*QUANTITY* LPR.CURNCY_PLAN_RATE) AS GMB_PLAN, 
+SUM(QUANTITY) AS BI,
+count(distinct ck.buyer_id) as buyer_cnt,
+count(distinct ck.seller_id) as slr_cnt
+
+from ACCESS_VIEWS.DW_CHECKOUT_TRANS  ck
+INNER  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ( select meta_categ_id, meta_categ_name,CATEG_LVL2_ID,CATEG_LVL2_name, categ_lvl3_id,CATEG_LVL3_name,categ_lvl4_id,categ_lvl4_name, LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME  
+from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS 
+where sap_category_id not in (5,7,41,23,-999) )  AS CAT
+ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID       
+AND CK.SITE_ID = CAT.SITE_ID
+and CAT.SITE_ID in (3)
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+ON CAL.CAL_DT = ck.CREATED_DT and retail_year in (2019,2020)
+inner  JOIN ACCESS_VIEWS.DW_USEGM_HIST HIST ON HIST.USER_ID=ck.Seller_ID AND HIST.USEGM_GRP_ID  = 48 and HIST.USEGM_ID = 206
+AND CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+left join (select user_id, user_age,PRDCTV_GNDR,USER_AGE_GRP_ID       from  PRS_SECURE_V.USER_DNA_DIM group by 1,2,3,4)usr
+on ck.buyer_id = usr.user_id --INNER JOIn        ACCESS_VIEWS.dw_users u ON (u.user_id = ck.seller_id)#(lf)#(tab)#(tab)#(tab)#(lf)#(tab)#(tab)#(tab)              
+-- LEFT JOIN P_awang_ops_t.seller_ops_83 ops                           
+-- ON ck.seller_id = ops.seller_id
+WHERE slr_cntry_id=3
+and byr_cntry_id =3 and ck.site_id = 3 and ck.sale_type not in (10,15) group by 1,2,3,4,5,6,7,8,9,10,11)

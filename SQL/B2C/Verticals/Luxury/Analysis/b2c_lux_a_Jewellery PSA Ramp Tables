@@ -1,0 +1,447 @@
+select * from p_robevans_t.jewellery_psa_ramp_trans;
+drop table if exists p_robevans_t.jewellery_psa_ramp_trans;
+create table p_robevans_t.jewellery_psa_ramp_trans as
+
+select 
+ck.ITEM_ID
+,case when ck.ITEM_PRICE < 500 then '1. <£500'
+	when ck.ITEM_PRICE >= 500 then '2. £500+'
+	else 'Other' End as asp_bucket
+,ck.AUCT_END_DT
+,brand
+,ck.BUYER_ID
+,ck.BYR_CNTRY_ID
+,cat.CATEG_LVL2_ID
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_ID
+,cat.CATEG_LVL3_NAME
+,ck.CHECKOUT_STATUS
+,ck.CHECKOUT_STATUS_DETAILS
+,ck.CREATED_DT
+,ck.gmv_plan_usd as gmv
+,main_stone
+,secondary_stone
+,metal
+,metal_purity
+,ck.PAID_DT
+,ck.PAYMENT_METHOD
+,ck.SALE_TYPE
+,ck.SELLER_ID
+,ck.quantity as si
+,ck.SITE_ID
+,ck.SLR_CNTRY_ID
+,ck.TRANS_SITE_ID
+,ck.TRANSACTION_ID
+
+From DW_CHECKOUT_TRANS ck
+INNER JOIN DW_CAL_DT cal
+	on ck.GMV_DT = cal.CAL_DT
+	and cal.retail_year = 2021
+INNER JOIN DW_CATEGORY_GROUPINGS CAT
+			ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+			AND cat.site_id = 3
+			AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('BRAND') then aspct_vlu_nm else NULL end ),'Unknown') as BRAND
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+				)SB
+			GROUP BY 1,2) brand ON ck.ITEM_ID = brand.ITEM_ID AND ck.AUCT_END_dt = brand.AUCT_END_DT
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('METAL') then aspct_vlu_nm else NULL end ),'Unknown') as METAL
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'METAL' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('METAL')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'METAL' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('METAL')
+				)SB
+			GROUP BY 1,2) metal ON ck.ITEM_ID = metal.ITEM_ID AND ck.AUCT_END_dt = metal.AUCT_END_DT
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('MAIN STONE') then aspct_vlu_nm else NULL end ),'Unknown') as MAIN_STONE
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'MAIN STONE' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('MAIN STONE')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'MAIN STONE' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('MAIN STONE')
+				)SB
+			GROUP BY 1,2) mainstone ON ck.ITEM_ID = mainstone.ITEM_ID AND ck.AUCT_END_dt = mainstone.AUCT_END_DT
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('SECONDARY STONE') then aspct_vlu_nm else NULL end ),'Unknown') as SECONDARY_STONE
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'SECONDARY STONE' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('SECONDARY STONE')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'SECONDARY STONE' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('SECONDARY STONE')
+				)SB
+			GROUP BY 1,2) secondarystone ON ck.ITEM_ID = secondarystone.ITEM_ID AND ck.AUCT_END_dt = secondarystone.AUCT_END_DT
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('METAL PURITY') then aspct_vlu_nm else NULL end ),'Unknown') as METAL_PURITY
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'METAL PURITY' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('METAL PURITY')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'METAL PURITY' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('METAL PURITY')
+				)SB
+			GROUP BY 1,2) metalpurity ON ck.ITEM_ID = metalpurity.ITEM_ID AND ck.AUCT_END_dt = metalpurity.AUCT_END_DT
+
+Where 1=1
+And ck.SITE_ID = 3
+and cat.CATEG_LVL2_ID in (4196,91427)
+;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+select * from p_robevans_t.jewellery_psa_ramp_ll;
+drop table if exists p_robevans_t.jewellery_psa_ramp_ll;
+create table p_robevans_t.jewellery_psa_ramp_ll as
+
+select 
+ck.ITEM_ID
+,case when ck.START_PRICE_LSTG_CURNCY < 500 then '1. <£500'
+	when ck.START_PRICE_LSTG_CURNCY >= 500 then '2. £500+'
+	else 'Other' End as asp_bucket
+,ck.AUCT_END_DT
+,brand
+,cat.CATEG_LVL2_ID
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_ID
+,cat.CATEG_LVL3_NAME
+,main_stone
+,secondary_stone
+,metal
+,metal_purity
+,ck.SLR_ID
+,ck.ITEM_CNTRY_ID
+,ck.SLR_CNTRY_ID
+
+From DW_LSTG_ITEM ck
+INNER JOIN DW_CAL_DT cal
+	on ck.AUCT_START_DT < cal.CAL_DT
+	and ck.AUCT_END_DT >= cal.CAL_DT
+	and cal.retail_year = 2021
+INNER JOIN DW_CATEGORY_GROUPINGS CAT
+			ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+			AND cat.site_id = 3
+			AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('BRAND') then aspct_vlu_nm else NULL end ),'Unknown') as BRAND
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+				)SB
+			GROUP BY 1,2) brand ON ck.ITEM_ID = brand.ITEM_ID AND ck.AUCT_END_dt = brand.AUCT_END_DT
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('METAL') then aspct_vlu_nm else NULL end ),'Unknown') as METAL
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'METAL' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('METAL')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'METAL' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('METAL')
+				)SB
+			GROUP BY 1,2) metal ON ck.ITEM_ID = metal.ITEM_ID AND ck.AUCT_END_dt = metal.AUCT_END_DT
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('MAIN STONE') then aspct_vlu_nm else NULL end ),'Unknown') as MAIN_STONE
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'MAIN STONE' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('MAIN STONE')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'MAIN STONE' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('MAIN STONE')
+				)SB
+			GROUP BY 1,2) mainstone ON ck.ITEM_ID = mainstone.ITEM_ID AND ck.AUCT_END_dt = mainstone.AUCT_END_DT
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('SECONDARY STONE') then aspct_vlu_nm else NULL end ),'Unknown') as SECONDARY_STONE
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'SECONDARY STONE' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('SECONDARY STONE')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'SECONDARY STONE' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('SECONDARY STONE')
+				)SB
+			GROUP BY 1,2) secondarystone ON ck.ITEM_ID = secondarystone.ITEM_ID AND ck.AUCT_END_dt = secondarystone.AUCT_END_DT
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('METAL PURITY') then aspct_vlu_nm else NULL end ),'Unknown') as METAL_PURITY
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'METAL PURITY' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('METAL PURITY')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'METAL PURITY' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('METAL PURITY')
+				)SB
+			GROUP BY 1,2) metalpurity ON ck.ITEM_ID = metalpurity.ITEM_ID AND ck.AUCT_END_dt = metalpurity.AUCT_END_DT
+
+Where 1=1
+And ck.ITEM_SITE_ID = 3
+and cat.CATEG_LVL2_ID in (4196,91427)
+;

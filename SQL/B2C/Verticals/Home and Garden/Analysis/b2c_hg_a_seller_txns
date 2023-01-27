@@ -1,0 +1,31 @@
+-- Task: Display total transactions for specified sellers over given period
+-- Created Date: 14/12/2022
+-- Created By: Robbie Evans
+-- Created For: John Hirst (H&G)
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+select seller_id
+,u.user_slctd_id as seller_name
+,case when ck.BYR_CNTRY_ID = 3 then 'Domestic' else 'CBT' end as trade_type
+,count(distinct ck.transaction_id) as txns
+
+From DW_CHECKOUT_TRANS ck
+INNER JOIN DW_CAL_DT cal
+	on ck.gmv_dt = cal.CAL_DT
+	and cal.cal_dt between '2022-01-01' and '2022-12-10'
+INNER JOIN DW_USERS u
+	on ck.SELLER_ID = u.user_id
+INNER JOIN DW_CATEGORY_GROUPINGS CAT
+	ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+	AND cat.site_id = 3
+	AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+
+Where 1=1
+and ck.SLR_CNTRY_ID = 3
+and ck.SITE_ID = 3
+and ck.CK_WACKO_YN = 'N'
+and ck.SALE_TYPE not in (10,12,13,15)
+and ck.SELLER_ID in (2365957757,2365980771,54386791,2365560828)
+
+Group by 1,2,3

@@ -1,0 +1,131 @@
+/*
+UKPLAN-108
+Create a list of seller comms target list to warn sellers of the changes made to the 2023 Q1 SR category expansion.
+
+Base:.
+Anyone who has listed or sold in the old SR item condition in 2022 including to C2C sellers.
+C2C sellers cannot apply for the programme, however they can currently list under seller refurbished (Condition ID=2500), so we have to warn them before ending their listings when changes are taking place.
+*/
+
+--53 new leaf categories launched in the UK SR program (Provided in Angie's Excel file)
+select * from P_UK_BC_T.SR_2023Q1_cat_launch;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Sellers who have sold old SR in categories of interest
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_UK_BC_T.old_SR_2023Q1cat_sold;
+create table P_UK_BC_T.old_SR_2023Q1cat_sold as
+(
+select
+cat.leaf_categ_id
+,cat.leaf_categ_name
+,u.user_slctd_id as seller_name
+,ck.seller_id
+,min(ck.EU_B2C_C2C_flag) as B2C_C2C
+,sum(ck.GMV20_plan) as tot_GMV
+,sum(ck.GMV20_sold_quantity) AS tot_SI
+,count(distinct ck.item_id) as converted_lstg
+
+from prs_restricted_v.slng_trans_super_fact ck 
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on ck.item_id=lstg.item_id
+
+inner join (select meta_categ_id, meta_categ_name, categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, leaf_categ_name, site_id
+			from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join P_UK_BC_T.SR_2023Q1_cat_launch sr
+on lstg.leaf_categ_id = sr.leaf_categ_id
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt
+and cal.retail_year = 2022
+    
+inner join access_views.dw_users u 
+on ck.seller_id = u.user_id
+
+where 
+lstg.item_cndtn_id = 2500
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.lstg_site_id = 3 
+and ck.iscore = 1
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+group by 1,2,3,4
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Listers who have listed old SR in categories of interest
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_UK_BC_T.old_SR_2023Q1cat_listed;
+create table P_UK_BC_T.old_SR_2023Q1cat_listed as
+(
+select
+cat.leaf_categ_id
+,cat.leaf_categ_name
+,u.user_slctd_id as seller_name
+,lstg.slr_id as seller_id
+,min(lstg.EU_B2C_C2C_flag) as B2C_C2C
+,count(distinct(lstg.item_id)) as LL
+
+from prs_restricted_v.slng_lstg_super_fact lstg
+
+inner join (select meta_categ_id, meta_categ_name, categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, leaf_categ_name, site_id
+			from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join P_UK_BC_T.SR_2023Q1_cat_launch sr
+on lstg.leaf_categ_id = sr.leaf_categ_id
+        
+inner join dw_cal_dt cal
+on lstg.auct_start_dt < cal.cal_dt and lstg.auct_end_dt >= cal.cal_dt
+and cal.retail_year = 2022
+    
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+where 
+lstg.item_cndtn_id = 2500
+and lstg.slr_cntry_id=3    
+and lstg.item_site_id = 3
+and lstg.iscore=1
+and lstg.auct_type_code not in (10,15)
+and lstg.auct_end_dt > '2018-12-29'  
+group by 1,2,3,4
+);
+
+
+/*Data check*/
+--Film Cameras (leaf_categ_id: 15230) with most sellers / listers impacted
+--Sales made in 50 out of 53 leaf categories 
+select leaf_categ_name, leaf_categ_id, count(distinct seller_id) 
+from P_UK_BC_T.old_SR_2023Q1cat_sold 
+group by 1,2 order by 3 desc;
+
+--Items listed in 52 out of 53 leaf categories
+select leaf_categ_name, leaf_categ_id, count(distinct seller_id) 
+from P_UK_BC_T.old_SR_2023Q1cat_listed 
+group by 1,2 order by 3 desc;
+
+--No sales made in Coffee Roasters (leaf id: 177753), PTAC Air Conditioners (leaf id: 260444) and Window & Wall Air Conditioners (leaf id: 185111)
+--No listing in PTAC Air Conditioners (leaf id: 260444)
+with base (
+select 
+a.*
+,b.leaf_categ_id as sold_leaf_categ_id
+,c.leaf_categ_id as listed_leaf_categ_id
+from P_UK_BC_T.SR_2023Q1_cat_launch a
+left join (select distinct leaf_categ_id from P_UK_BC_T.old_SR_2023Q1cat_sold) b
+on a.leaf_categ_id=b.leaf_categ_id
+left join (select distinct leaf_categ_id from P_UK_BC_T.old_SR_2023Q1cat_listed) c
+on a.leaf_categ_id=c.leaf_categ_id)
+select * from base
+where sold_leaf_categ_id is null or listed_leaf_categ_id is null
+
+
+--Add to Excel Data Connection
+select * from P_UK_BC_T.old_SR_2023Q1cat_sold;--3009
+select * from P_UK_BC_T.old_SR_2023Q1cat_listed;--4042

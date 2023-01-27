@@ -1,0 +1,231 @@
+drop table  if exists P_ICHAN_T.Coupon_PA;
+create table P_ICHAN_T.Coupon_PA as 
+(
+select
+coupon_name,
+discount_offer,
+promotion_type,
+CATEG_LVL2_NAME,
+CATEG_LVL3_NAME,         
+RETAIL_YEAR,
+RETAIL_WEEK,
+vertical,
+SLR_id,
+USER_SLCTD_ID,          
+case when INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end as INVENT_PROP,
+FOCUS_FLAG,
+sum(GMB_USD_PLAN) as coupon_gmb,
+sum(QTY_BGHT) as QTY_BGHT,
+sum(CONTRA_USD_PLAN) as coupon_spend
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 a 
+-- select * from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 where retail_year >=2022  and retail_week = 7 and vertical like '%ccess%' and promotion_type ='seller coupon' limit 100 
+left join ACCESS_VIEWS.dw_users b on a.slr_id=user_id  -- help table dw_users
+WHERE 
+(
+RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+)
+and vertical in('Parts & Accessories','Business & Industrial')
+-- and promotion_type ='seller coupon'
+group by 1,2,3,4,5,6,7,8,9,10,11,12
+);
+
+select * from  P_ICHAN_T.Coupon_PA
+where coupon_name ='FANCY15'
+AND VERTICAL ='Parts & Accessories'
+ and ( categ_lvl2_name ='Vehicle Services & Repairs' or USER_SLCTD_ID in (
+'ractyres',
+'asdatyres',
+'blackcircles_tyres') );
+ -- Vehicle Services & Repairs
+;
+--select * from P_Plan_PPatel_T.PP_CouponHist_1_coupon_sum1 limit 10;
+
+--select * from  P_ICHAN_T.Coupon_PA;
+--select * from   P_ICHAN_T.Coupon_PA_weeks;
+
+drop table if exists P_ICHAN_T.Coupon_PA_weeks;
+create table P_ICHAN_T.Coupon_PA_weeks as 
+(
+select
+coupon_name,
+discount_offer,
+promotion_type,
+       
+RETAIL_YEAR,
+RETAIL_WEEK,
+vertical,
+       
+case when INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end as INVENT_PROP,
+FOCUS_FLAG,
+sum(GMB_USD_PLAN) as coupon_gmb,
+sum(QTY_BGHT) as QTY_BGHT,
+sum(CONTRA_USD_PLAN) as coupon_spend
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 a
+left join ACCESS_VIEWS.dw_users b on a.slr_id=user_id  -- help table dw_users
+WHERE 
+(
+RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+--AND RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+)
+and vertical in('Parts & Accessories','Business & Industrial')
+group by 1,2,3,4,5,6,7,8
+);
+-------- weekly by sellers
+drop table if exists P_ICHAN_T.Coupon_PA_sellers;
+create table P_ICHAN_T.Coupon_PA_sellers as 
+(
+select
+coupon_name,
+discount_offer,
+promotion_type,
+       
+RETAIL_YEAR,
+RETAIL_WEEK,
+vertical,
+       SLR_id,
+USER_SLCTD_ID,   
+case when INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end as INVENT_PROP,
+FOCUS_FLAG,
+sum(GMB_USD_PLAN) as coupon_gmb,
+sum(QTY_BGHT) as QTY_BGHT,
+sum(CONTRA_USD_PLAN) as coupon_spend
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 a
+left join ACCESS_VIEWS.dw_users b on a.slr_id=user_id  -- help table dw_users
+WHERE  RETAIL_YEAR >=2020
+and vertical in('Parts & Accessories','Business & Industrial')
+group by 1,2,3,4,5,6,7,8,9,10
+);
+
+
+
+drop table  if exists P_ICHAN_T.Coupon_PA_day;
+create table P_ICHAN_T.Coupon_PA_day as 
+(
+select
+start_date,
+end_date,
+coupon_name,
+discount_offer,
+promotion_type,
+CATEG_LVL2_NAME,
+CATEG_LVL3_NAME,         
+RETAIL_YEAR,
+RETAIL_WEEK,
+vertical,
+--SLR_id,
+--USER_SLCTD_ID,          
+case when INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end as INVENT_PROP,
+FOCUS_FLAG,
+sum(GMB_USD_PLAN) as coupon_gmb,
+sum(QTY_BGHT) as QTY_BGHT,
+sum(CONTRA_USD_PLAN) as coupon_spend
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 a -- select * from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 where retail_year >=2021  and retail_week =1 and vertical like '%ccess%' and promotion_type ='seller coupon' limit 100 
+left join ACCESS_VIEWS.dw_users b on a.slr_id=user_id  -- help table dw_users
+WHERE 
+(
+RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+)
+and vertical in('Parts & Accessories','Business & Industrial')
+ and promotion_type ='seller coupon'
+group by 1,2,3,4,5,6,7,8,9,10,11,12
+);
+
+
+/*
+-- coupon funding 
+
+ DROP TABLE  IF EXISTS P_ICHAN_T.Coupon_PA_funding  ;
+ create table P_ICHAN_T.Coupon_PA_funding as (
+  select INCNTV_CD,new_vertical,
+  INVENTORY_PROP_flag,FOCUS_FLAG,
+  sum(QTY_BGHT	 )AS QTY_BGHT ,
+ sum( GMB_LC	 )AS  GMB_LC,
+ sum( CONTRA_LC	 )AS  CONTRA_LC,
+sum(  GMB_USD	 )AS  GMB_USD,
+ sum( CONTRA_USD )AS  CONTRA_USD	,
+ sum( GMB_USD_PLAN	 )AS  GMB_USD_PLAN,
+ sum( CONTRA_USD_PLAN	 )AS CONTRA_USD_PLAN,
+ sum( COST_TO_EBAY_USD_PLAN	 )AS  COST_TO_EBAY_USD_PLAN
+
+  from P_Plan_PPatel_T.IC_CouponAll ck -- select * from P_Plan_PPatel_T.IC_CouponAll where  new_vertical 
+  inner join (select item_id as item, new_vertical AS VERTICAL, inventory_prop as INVENTORY_PROP_flag from p_awang_ops_t.item_invent_lstg 
+	where new_vertical in ('Parts & Accessories','Business & Industrial') group by 1,2,3) inv on ck.item_id = inv.item  
+  where 1=1-- 
+  AND new_vertical in('Parts & Accessories','Business & Industrial')
+  AND INCNTV_CD in ('JANSALE15',
+'JANSALE15',
+'JANSAVINGS22',
+'LOVE20OFF',
+'TAKEIT')
+
+GROUP BY 1,2,3,4);
+SELECT * FROM  P_ICHAN_T.Coupon_PA_funding ;*/
+
+
+-----------2021
+drop table if exists  P_ICHAN_T.Coupon_PA_ly ; 
+create table P_ICHAN_T.Coupon_PA_ly as 
+(
+select
+coupon_name,
+discount_offer,
+promotion_type,
+--CATEG_LVL2_NAME,x
+--CATEG_LVL3_NAME,         
+RETAIL_YEAR,
+RETAIL_WEEK,
+vertical,
+--SLR_id,
+USER_SLCTD_ID,          
+case when INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end as INVENT_PROP,
+FOCUS_FLAG,
+sum(GMB_USD_PLAN) as coupon_gmb,
+sum(QTY_BGHT) as QTY_BGHT,
+sum(CONTRA_USD_PLAN) as coupon_spend
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 a 
+-- select * from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 where retail_year >=2022  and retail_week = 7 and vertical like '%ccess%' and promotion_type ='seller coupon' limit 100 
+left join ACCESS_VIEWS.dw_users b on a.slr_id=user_id  -- help table dw_users
+WHERE  RETAIL_YEAR =2021
+
+and vertical in('Parts & Accessories','Business & Industrial')
+ and promotion_type ='seller coupon'
+group by 1,2,3,4,5,6,7,8,9
+);
+--select * from  P_ICHAN_T.Coupon_PA_ly  ; 
+
+-- ytd
+drop table if exists  P_ICHAN_T.Coupon_PA_ytd ; 
+create table P_ICHAN_T.Coupon_PA_ytd as 
+(
+select
+coupon_name,
+discount_offer,
+promotion_type,
+--CATEG_LVL2_NAME,x
+--CATEG_LVL3_NAME,         
+RETAIL_YEAR,
+RETAIL_WEEK,
+vertical,
+--SLR_id,
+--USER_SLCTD_ID,          
+--case when INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end as INVENT_PROP,
+---FOCUS_FLAG,
+sum(GMB_USD_PLAN) as coupon_gmb,
+sum(QTY_BGHT) as QTY_BGHT,
+sum(CONTRA_USD_PLAN) as coupon_spend,
+count(distinct SLR_id) seller_count
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 a 
+-- select * from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 where retail_year >=2022  and retail_week = 7 and vertical like '%ccess%' and promotion_type ='seller coupon' limit 100 
+left join ACCESS_VIEWS.dw_users b on a.slr_id=user_id  -- help table dw_users
+WHERE  RETAIL_YEAR =2022
+
+and vertical in('Parts & Accessories','Business & Industrial')
+ and promotion_type ='seller coupon'
+group by 1,2,3,4,5,6
+);
+
+select* from  P_ICHAN_T.Coupon_PA_ytd ; 

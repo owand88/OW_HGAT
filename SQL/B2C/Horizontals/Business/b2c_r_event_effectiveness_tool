@@ -1,0 +1,400 @@
+/*Aim: Create a self service tool based on the the Promotional Event Performance code https://zeta.dss.vip.ebay.com/zeta/share/#/notebook?notebookId=f9291432-6d49-408f-8d07-7a1f95e65847*/
+
+/*
+select
+base.rpp_crtn_id
+,base.event_name
+,base.url_txt
+,sum(case when ck.GMV_dt between base.slct_event_start and base.slct_event_end then ck.GMV20_plan end) as Target_GMV
+,sum(case when ck.GMV_dt between base.cntl_start and base.cntl_end then ck.GMV20_plan end) as Control_GMV
+,sum(case when ck.GMV_dt between base.slct_event_start and base.slct_event_end then ck.GMV20_sold_quantity end) as Target_SI
+,sum(case when ck.GMV_dt between base.cntl_start and base.cntl_end then ck.GMV20_sold_quantity end) as Control_SI
+
+,cast(100*(Target_GMV/Control_GMV-1) as decimal (18,2)) as incremental_GMV_perc
+,cast(100*(Target_SI/Control_SI-1) as decimal (18,2)) as incremental_SI_perc
+
+from
+
+(select target_all_lstg.* from
+	(select 
+	item_id
+	,event_grp_name
+	,event_name
+	,short_event
+	,url_txt
+	,rpp_crtn_id
+	,event_start_dt
+	,event_end_dt
+	,auct_start_dt
+	,auct_end_dt
+	,slct_event_start
+	,slct_event_end
+	,slct_days_in_event
+	,event_start_dt-1-slct_days_in_event as cntl_start
+	,event_start_dt-1 as cntl_end
+	,vertical
+	,categ_lvl2_id
+	,categ_lvl2_name
+	,categ_lvl3_id
+	,categ_lvl3_name
+	,leaf_categ_id
+	,leaf_categ_name
+	from
+		(select 
+		item_id
+		,event_grp_name
+		,event_name
+		,short_event
+		,url_txt
+		,rpp_crtn_id
+		,event_start_dt
+		,event_end_dt
+		,auct_start_dt
+		,auct_end_dt
+		--Logic built in case users selected a period that is not entirely within the event date range 
+		,case when '2022-02-01' >= event_start_dt then '2022-02-01' else event_start_dt end as slct_event_start
+		,case when '2022-02-28' <= event_end_dt then '2022-02-28' else event_end_dt end as slct_event_end
+
+		,datediff(slct_event_end,slct_event_start) as slct_days_in_event
+
+		,vertical
+		,categ_lvl2_id
+		,categ_lvl2_name
+		,categ_lvl3_id
+		,categ_lvl3_name
+		,leaf_categ_id
+		,leaf_categ_name
+		from p_uk_bc_t.event_base_itm 
+		where rpp_crtn_id ='61dc09f960eda70441d258e7'
+		group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20) 
+	where 
+	(auct_start_dt <= slct_event_start and auct_end_dt >= slct_event_end)--Listing is live during the target period (in event and for the entirety of user selected time period)
+	and (auct_start_dt <= event_start_dt-1-slct_days_in_event and auct_end_dt > event_start_dt-1)--Listing is live during the control period
+	) target_all_lstg
+
+	left join (
+	select 
+	a.item_id
+	,count(distinct (case when a.rpp_crtn_id <> '61dc09f960eda70441d258e7' then a.event_name end)) as target_parallel_event
+	from p_uk_bc_t.event_base_itm a
+	inner join 
+		(select 
+		distinct item_id, slct_event_start, slct_event_end
+		from
+			(select 
+			item_id
+			,auct_start_dt
+			,auct_end_dt
+			,event_start_dt
+			,event_end_dt
+			--Logic built in case users selected a period that is not entirely within the event date range 
+			,case when '2022-02-01' >= event_start_dt then '2022-02-01' else event_start_dt end as slct_event_start
+			,case when '2022-02-28' <= event_end_dt then '2022-02-28' else event_end_dt end as slct_event_end
+			,datediff(slct_event_end,slct_event_start) as slct_days_in_event
+			from p_uk_bc_t.event_base_itm 
+			where rpp_crtn_id ='61dc09f960eda70441d258e7'
+			group by 1,2,3,4,5,6,7,8) 
+		where 
+		(auct_start_dt <= slct_event_start and auct_end_dt >= slct_event_end)--Listing is live during the target period (in event and for the entirety of user selected time period)
+		and (auct_start_dt <= event_start_dt-1-slct_days_in_event and auct_end_dt > event_start_dt-1)--Listing is live during the control period
+		)b
+	on a.item_id=b.item_id
+	where
+	a.event_end_dt >= b.slct_event_start and a.event_start_dt <= b.slct_event_end 
+	group by 1
+	)parallel_event_target
+	on target_all_lstg.item_id=parallel_event_target.item_id
+
+
+	left join (
+	select 
+	a.item_id
+	,count(distinct a.event_name) as cntl_event
+	from p_uk_bc_t.event_base_itm a
+	inner join 
+		(select 
+			distinct item_id, cntl_start, cntl_end
+			from
+				(select 
+				item_id
+				,auct_start_dt
+				,auct_end_dt
+				,event_start_dt
+				,event_end_dt
+				--Logic built in case users selected a period that is not entirely within the event date range 
+				,case when '2022-02-01' >= event_start_dt then '2022-02-01' else event_start_dt end as slct_event_start
+				,case when '2022-02-28' <= event_end_dt then '2022-02-28' else event_end_dt end as slct_event_end
+				,datediff(slct_event_end,slct_event_start) as slct_days_in_event
+				,event_start_dt-1-slct_days_in_event as cntl_start
+				,event_start_dt-1 as cntl_end
+				from p_uk_bc_t.event_base_itm 
+				where rpp_crtn_id ='61dc09f960eda70441d258e7'
+				group by 1,2,3,4,5,6,7,8) 
+			where 
+			(auct_start_dt <= slct_event_start and auct_end_dt >= slct_event_end)--Listing is live during the target period (in event and for the entirety of user selected time period)
+			and (auct_start_dt <= event_start_dt-1-slct_days_in_event and auct_end_dt > event_start_dt-1)--Listing is live during the control period
+			)b
+	on a.item_id=b.item_id
+	where
+	a.event_end_dt >= b.cntl_start and a.event_start_dt <= b.cntl_end 
+	group by 1
+	) event_cntl
+	on target_all_lstg.item_id=event_cntl.item_id
+
+	where parallel_event_target.target_parallel_event=0 and coalesce(event_cntl.cntl_event,0)=0
+	)base
+
+inner join prs_restricted_v.slng_trans_super_fact ck
+on base.item_id=ck.item_id
+
+where 
+ck.slr_cntry_id = 3 																											
+and ck.iscore = 1	
+and ck.rprtd_wacko_yn = 'N'	
+and ck.auct_end_dt > '2018-12-31'
+
+group by 1,2,3;
+
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Code for the tool
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select * from P_InventoryPlanning_T.event_base
+where lower(event_name) like lower('%${Text related to the event name=scandi}%');
+
+
+select
+base.rpp_crtn_id
+,base.event_name
+,base.url_txt
+,sum(case when ck.GMV_dt between base.slct_event_start and base.slct_event_end then ck.GMV20_plan end) as Target_GMV
+,sum(case when ck.GMV_dt between base.cntl_start and base.cntl_end then ck.GMV20_plan end) as Control_GMV
+,sum(case when ck.GMV_dt between base.slct_event_start and base.slct_event_end then ck.GMV20_sold_quantity end) as Target_SI
+,sum(case when ck.GMV_dt between base.cntl_start and base.cntl_end then ck.GMV20_sold_quantity end) as Control_SI
+
+,cast(100*(Target_GMV/Control_GMV-1) as decimal (18,2)) as incremental_GMV_perc
+,cast(100*(Target_SI/Control_SI-1) as decimal (18,2)) as incremental_SI_perc
+
+from
+
+(select target_all_lstg.* from
+	(select 
+	item_id
+	,event_grp_name
+	,event_name
+	,url_txt
+	,rpp_crtn_id
+	,event_start_dt
+	,event_end_dt
+	,auct_start_dt
+	,auct_end_dt
+	,slct_event_start
+	,slct_event_end
+	,slct_days_in_event
+	,event_start_dt-1-slct_days_in_event as cntl_start
+	,event_start_dt-1 as cntl_end
+	,vertical
+	,categ_lvl2_id
+	,categ_lvl2_name
+	,categ_lvl3_id
+	,categ_lvl3_name
+	,leaf_categ_id
+	,leaf_categ_name
+	from
+		(select 
+		item_id
+		,event_grp_name
+		,event_name
+		,url_txt
+		,rpp_crtn_id
+		,event_start_dt
+		,event_end_dt
+		,auct_start_dt
+		,auct_end_dt 
+		--Logic built in case users selected a period that is not entirely within the event date range 
+		,case when '${start date=2022-02-01}' >= event_start_dt then '${start date=2022-02-01}' else event_start_dt end as slct_event_start
+		,case when '${end date=2022-02-28}' <= event_end_dt then '${end date=2022-02-28}' else event_end_dt end as slct_event_end
+
+		,datediff(slct_event_end,slct_event_start) as slct_days_in_event
+
+		,vertical
+		,categ_lvl2_id
+		,categ_lvl2_name
+		,categ_lvl3_id
+		,categ_lvl3_name
+		,leaf_categ_id
+		,leaf_categ_name
+		from p_uk_bc_t.event_base_itm 
+		where rpp_crtn_id ='${rpp_crnt_id=61dc09f960eda70441d258e7}'
+		group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19) 
+	where 
+	(auct_start_dt <= slct_event_start and auct_end_dt >= slct_event_end)--Listing is live during the target period (in event and for the entirety of user selected time period)
+	and (auct_start_dt <= event_start_dt-1-slct_days_in_event and auct_end_dt > event_start_dt-1)--Listing is live during the control period
+	) target_all_lstg
+
+	left join (
+	select 
+	a.item_id
+	,count(distinct (case when a.rpp_crtn_id <> '${rpp_crnt_id=61dc09f960eda70441d258e7}' then a.event_name end)) as target_parallel_event
+	from p_uk_bc_t.event_base_itm a
+	inner join 
+		(select 
+		distinct item_id, slct_event_start, slct_event_end
+		from
+			(select 
+			item_id
+			,auct_start_dt
+			,auct_end_dt
+			,event_start_dt
+			,event_end_dt
+			--Logic built in case users selected a period that is not entirely within the event date range 
+			,case when '${start date=2022-02-01}' >= event_start_dt then '${start date=2022-02-01}' else event_start_dt end as slct_event_start
+			,case when '${end date=2022-02-28}' <= event_end_dt then '${end date=2022-02-28}' else event_end_dt end as slct_event_end
+			,datediff(slct_event_end,slct_event_start) as slct_days_in_event
+			from p_uk_bc_t.event_base_itm 
+			where rpp_crtn_id ='${rpp_crnt_id=61dc09f960eda70441d258e7}'
+			group by 1,2,3,4,5,6,7,8) 
+		where 
+		(auct_start_dt <= slct_event_start and auct_end_dt >= slct_event_end)--Listing is live during the target period (in event and for the entirety of user selected time period)
+		and (auct_start_dt <= event_start_dt-1-slct_days_in_event and auct_end_dt > event_start_dt-1)--Listing is live during the control period
+		)b
+	on a.item_id=b.item_id
+	where
+	a.event_end_dt >= b.slct_event_start and a.event_start_dt <= b.slct_event_end 
+	group by 1
+	)parallel_event_target
+	on target_all_lstg.item_id=parallel_event_target.item_id
+
+
+	left join (
+	select 
+	a.item_id
+	,count(distinct a.event_name) as cntl_event
+	from p_uk_bc_t.event_base_itm a
+	inner join 
+		(select 
+			distinct item_id, cntl_start, cntl_end
+			from
+				(select 
+				item_id
+				,auct_start_dt
+				,auct_end_dt
+				,event_start_dt
+				,event_end_dt
+				--Logic built in case users selected a period that is not entirely within the event date range 
+				,case when '${start date=2022-02-01}' >= event_start_dt then '${start date=2022-02-01}' else event_start_dt end as slct_event_start
+				,case when '${end date=2022-02-28}' <= event_end_dt then '${end date=2022-02-28}' else event_end_dt end as slct_event_end
+				,datediff(slct_event_end,slct_event_start) as slct_days_in_event
+				,event_start_dt-1-slct_days_in_event as cntl_start
+				,event_start_dt-1 as cntl_end
+				from p_uk_bc_t.event_base_itm 
+				where rpp_crtn_id ='${rpp_crnt_id=61dc09f960eda70441d258e7}'
+				group by 1,2,3,4,5,6,7,8) 
+			where 
+			(auct_start_dt <= slct_event_start and auct_end_dt >= slct_event_end)--Listing is live during the target period (in event and for the entirety of user selected time period)
+			and (auct_start_dt <= event_start_dt-1-slct_days_in_event and auct_end_dt > event_start_dt-1)--Listing is live during the control period
+			)b
+	on a.item_id=b.item_id
+	where
+	a.event_end_dt >= b.cntl_start and a.event_start_dt <= b.cntl_end 
+	group by 1
+	) event_cntl
+	on target_all_lstg.item_id=event_cntl.item_id
+
+	where parallel_event_target.target_parallel_event=0 and coalesce(event_cntl.cntl_event,0)=0
+	)base
+
+inner join prs_restricted_v.slng_trans_super_fact ck
+on base.item_id=ck.item_id
+
+where 
+ck.slr_cntry_id = 3 																											
+and ck.iscore = 1	
+and ck.rprtd_wacko_yn = 'N'	
+and ck.auct_end_dt > '2018-12-31'
+
+group by 1,2,3;
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Base tables that need to be scheduled to run daily for the self service tool to work
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Event description
+drop table if exists P_InventoryPlanning_T.event_base;
+create table P_InventoryPlanning_T.event_base as (
+select 
+reg.event_grp_name 
+,re.event_name
+,re.rpp_crtn_id---List of items that someone curated for a particular event
+,re.url_txt
+,date(re.src_cre_tm) as event_create_dt
+,date(re.start_ts) as event_start_dt
+,date(re.end_ts) as event_end_dt
+
+from rpp_event re
+
+inner join rpp_event_group reg 
+on re.rpp_event_grp_id = reg.rpp_event_grp_id
+
+cross JOIN 
+(select 
+retail_year
+,retail_week
+,week_beg_dt
+from access_views.dw_cal_dt cal
+where age_for_rtl_week_id = -1
+group by 1,2,3) cal
+
+where 
+re.dlt_ind=0
+and reg.dlt_ind = 0
+and re.site_id = 3
+and lower(re.event_name) not like '%test%'
+and date(re.start_ts) >= date_sub(cal.week_beg_dt,120)
+group by 1,2,3,4,5,6,7
+order by event_start_dt desc
+);
+
+-- All items going in the event
+drop table if exists P_InventoryPlanning_T.event_base_itm;
+create table P_InventoryPlanning_T.event_base_itm as (
+select 
+ri.item_id
+,base.event_grp_name
+,base.event_name
+,base.rpp_crtn_id
+,base.url_txt
+,base.event_create_dt
+,base.event_start_dt
+,base.event_end_dt
+,lstg.auct_start_dt
+,lstg.auct_end_dt
+,cat.vertical,cat.categ_lvl2_id,cat.categ_lvl2_name,cat.categ_lvl3_id,cat.categ_lvl3_name,cat.leaf_categ_id,cat.leaf_categ_name
+
+from P_InventoryPlanning_T.event_base base
+
+inner join rpp_item ri 
+on base.rpp_crtn_id = ri.rpp_crtn_id
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on ri.item_id=lstg.item_id
+
+inner join (select categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, leaf_categ_name, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+			when meta_categ_id in (26395) then 'Lifestyle'
+			when categ_lvl3_id in (260325) then 'Lifestyle'
+			when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+			when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+			when categ_lvl3_id in (3244) then 'Parts & Accessories'
+			when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+			when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			when categ_lvl2_id in (63, 29223) then 'Collectibles'
+			else bsns_vrtcl_name end as vertical from access_views.dw_category_groupings 
+			group by 1,2,3,4,5,6,7,8,9,10) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+where 
+ri.dlt_ind = 0
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);

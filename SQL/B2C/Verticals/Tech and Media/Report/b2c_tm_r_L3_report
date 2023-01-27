@@ -1,0 +1,27 @@
+/*Aim: Performance of Tech / Media categories at L2/L3 and inventory prop level
+Code added in the weekly Excel report data connection*/
+
+
+select 
+age_for_rtl_week_id
+,age_for_rtl_qtr_id
+,age_for_rtl_year_id
+,concat('Q',rtl_qtr_of_rtl_year_id) as retail_quarter
+,retail_year
+,retail_week
+,vertical
+,case when inventory_prop like ('%Focus%') then 'Focused' 
+      when inventory_prop ='OTHERS' then 'Core' 
+	  else 'N/A' end as focus_flag
+,inventory_prop
+,categ_lvl2_id
+,categ_lvl2_name
+,categ_lvl3_id
+,categ_lvl3_name
+,sum(GMV) tot_GMV
+,sum(BI) as tot_BI
+from P_CSI_TBS_T.UKI_FINAL_v2_trading 
+where vertical in ('Electronics','Media')
+and age_for_rtl_year_id in (0,-1) 
+and retail_week in (select distinct retail_week from P_CSI_TBS_T.UKI_FINAL_v2_trading where age_for_rtl_year_id=0)
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13;

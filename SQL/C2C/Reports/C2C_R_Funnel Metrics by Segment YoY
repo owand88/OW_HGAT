@@ -1,0 +1,62 @@
+-- select * from p_hroon_t.c2c_funnel limit 100;
+
+-- weekly (total vs seg)
+drop table if exists p_hroon_t.weekly_sum_metrics;
+create table p_hroon_t.weekly_sum_metrics as 
+(select
+	distinct retail_year
+	, retail_week
+	, segment 
+-- supply
+	, sum(slr_lst_cnt) as Lister
+	, sum(lstg_cnt) as FGL
+-- demand
+	, sum(SRP_IMP) as Impression
+	, sum(TTL_VI) as VI
+	, sum(TTL_VI)/sum(SRP_IMP) as CVR_VI_IMP
+	, sum(SOLD_ITEMS)/sum(TTL_VI) as CVR_SI_VI
+-- conversion
+	, sum(GMV_PLAN) / sum(SOLD_ITEMS) as ASP
+	, sum(SOLD_ITEMS) as SI
+	, sum(GMV_PLAN) as GMV
+-- 	, sum(slr_cnt_gmv) as Seller
+from p_hroon_t.c2c_funnel
+where 1=1
+	and retail_year in (2019,2021,2022)
+	and retail_week <= (select retail_week from DW_CAL_DT where retail_year = 2022 and AGE_FOR_WEEK_ID = -1 group by 1)
+	and segment <> 'other'
+group by 1,2,3
+order by 1,3 desc);
+
+--- slrs & segment 
+drop table if exists p_hroon_t.weekly_slrs;
+create table p_hroon_t.weekly_slrs as 
+(select 
+    distinct cal.retail_year	
+	, case when retail_year = 2020 then retail_week-1
+		   when retail_year = 2019 then retail_week +1
+		   else retail_week END AS retail_week
+	, case when seller_segment_detail = 'Regular' then 'Regular'
+	    	when seller_segment_detail in ('Large Merchant', 'Merchant', 'Entrepreneur') then 'Entrepreneur'
+        	when seller_segment_detail = 'Occasional' then 'Occasional'
+			when SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') then 'NORS'
+			when SELLER_SEGMENT_DETAIL in ('FTL') then 'New' 
+        	else null
+			end as segment
+	, count(distinct seller_id) as Sellers
+	
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT t                                                                    	
+inner join access_views.dw_cal_dt cal on cal.cal_dt = t.gmv_dt	
+
+where 1=1
+	and t.gmv_dt BETWEEN '2018-12-30' and current_date - 1
+	and t.auct_end_dt >= '2018-12-30'                                                      	
+	AND upper(T.CK_WACKO_YN) ='N'                                                                                                                          	
+	AND t.ISCORE = 1	
+	and slr_cntry_id in (3)	
+	and EU_B2C_C2C_FLAG = 'C2C'
+	and AUCT_TYPE_CD not IN (10,12,15)
+	and retail_year in (2022,2021, 2019)
+	and retail_week <= (select retail_week from DW_CAL_DT where retail_year = 2022 and AGE_FOR_WEEK_ID = -1 group by 1)
+group by 1,2,3
+);

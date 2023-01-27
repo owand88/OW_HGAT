@@ -1,0 +1,187 @@
+/*Aim: Seller Refurb Discount pricing - comparing same EPID for SR vs New price (Used in Seller Refurb Weekly Report)*/
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Get B2C Domestic GMV & BI by prod ref ID (SR vs New)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--SR
+drop table if exists p_macheung_t.sr_refurb_prod_ref_id_history;
+create table p_macheung_t.sr_refurb_prod_ref_id_history as (
+select
+cal.retail_year 
+,cal.retail_week	
+,ssa.prod_ref_id
+
+,case when cndtn.cndtn_rollup_id = 1 then 'New'
+	when cndtn.cndtn_rollup_id = 2 then 'Refurb'
+	when cndtn.cndtn_rollup_id = 3 then 'Used'
+	else 'Other'
+	end as Rollup_Condition
+	
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when ck.GMV_dt < '2021-02-15' and cndtn.item_cndtn_id = 2000 then 'Refurb - Manufacturer'
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when sr.launch_category is not null and ck.GMV_dt < sr.launch_date and cndtn.item_cndtn_id in (2010,2020,2030,2500) then 'Refurb - Seller'
+	  when sr.launch_category is not null and ck.GMV_dt >= sr.launch_date and cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when sr.launch_category is not null and ck.GMV_dt >= sr.launch_date and cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when sr.launch_category is not null and ck.GMV_dt >= sr.launch_date and cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller'  -- 2500 will be going away 15/10/21 according to Angie 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+	  
+,cat.categ_lvl2_name
+,cat.categ_lvl3_name
+
+,sum(ck.GMV20_plan) as GMV
+,sum(ck.GMV20_sold_quantity) AS BI
+
+from prs_restricted_v.slng_trans_super_fact  ck 
+
+inner join access_views.ssa_product_fact ssa 
+on ck.item_id = ssa.lstg_id and ck.auct_end_dt = ssa.lstg_end_dt
+
+inner join (select meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id, bsns_vrtcl_name from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt
+and cal.age_for_rtl_year_id in (-1,0) and age_for_rtl_week_id <= -1 
+        
+inner join (select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+			where usegm_grp_id = 48 																						
+			and usegm_id = 206 																								
+			and end_date >= '2015-12-30' group by 1,2,3,4,5) as hist 	
+on ck.seller_id=hist.user_id
+and ck.GMV_dt between hist.beg_date and hist.end_date
+ 
+inner join (select item_id,item_cndtn_id,cndtn_rollup_id 
+			from access_views.lstg_item_cndtn 
+            where cndtn_rollup_id = 2--refurb only
+            group by 1,2,3) as cndtn
+on ck.item_id = cndtn.item_id 
+
+left join p_uk_bc_t.SR_categories sr
+on cat.categ_lvl2_id=sr.categ_lvl2_id and cat.categ_lvl3_id=sr.categ_lvl3_id and cat.categ_lvl4_id=sr.categ_lvl4_id	
+
+left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+on ck.item_id = inv.item_id	
+		
+where ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = byr_cntry_id --DOM
+and ck.lstg_site_id = 3 
+and ck.iscore = 1
+and ck.rprtd_wacko_yn = 'N'
+and sr.launch_category is not null--only inventory that are part of the SR program
+and inv.new_vertical in ('Electronics','Home & Garden')--Only ELectronics inventory launched in SR before 2022-09-14, H&G launched on 2022-09-14
+group by 1,2,3,4,5,6,7
+having item_condition in ('Refurb - Excellent','Refurb - Very Good','Refurb - Good','Refurb - Seller')
+);
+
+
+--New (regardless if SR seller or not)
+drop table if exists p_macheung_t.sr_new_prod_ref_id_history;
+create table p_macheung_t.sr_new_prod_ref_id_history as (
+select
+cal.retail_year 
+,cal.retail_week	
+,ssa.prod_ref_id
+
+,case when cndtn.cndtn_rollup_id = 1 then 'New'
+	when cndtn.cndtn_rollup_id = 2 then 'Refurb'
+	when cndtn.cndtn_rollup_id = 3 then 'Used'
+	else 'Other'
+	end as Rollup_Condition
+	
+,cat.categ_lvl2_name
+,cat.categ_lvl3_name
+
+,sum(ck.GMV20_plan) as GMV
+,sum(ck.GMV20_sold_quantity) AS BI
+
+from prs_restricted_v.slng_trans_super_fact  ck 
+
+inner join access_views.ssa_product_fact ssa 
+on ck.item_id = ssa.lstg_id and ck.auct_end_dt = ssa.lstg_end_dt
+
+inner join (select meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id, bsns_vrtcl_name from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10,11) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt
+and cal.age_for_rtl_year_id in (-1,0) and age_for_rtl_week_id <= -1 
+        
+inner join (select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+			where usegm_grp_id = 48 																						
+			and usegm_id = 206 																								
+			and end_date >= '2015-12-30' group by 1,2,3,4,5) as hist 	
+on ck.seller_id=hist.user_id
+and ck.GMV_dt between hist.beg_date and hist.end_date
+ 
+inner join (select item_id,item_cndtn_id,cndtn_rollup_id 
+			from access_views.lstg_item_cndtn 
+            where cndtn_rollup_id = 1--New only
+            group by 1,2,3) as cndtn
+on ck.item_id = cndtn.item_id 
+		
+where ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = byr_cntry_id --DOM
+and ck.lstg_site_id = 3 
+and ck.iscore = 1
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+group by 1,2,3,4,5,6
+);
+
+-- Combine new and refurb table and prices
+drop table if exists p_macheung_t.sr_refurb_combined_pricing;
+create table p_macheung_t.sr_refurb_combined_pricing as (
+select retail_year,retail_week,prod_ref_id,rollup_condition,categ_lvl2_name,categ_lvl3_name,GMV,BI from p_macheung_t.sr_refurb_prod_ref_id_history
+union
+select * from p_macheung_t.sr_new_prod_ref_id_history);
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- ASP of SR vs New
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Get avg selling price by product
+drop table if exists p_macheung_t.sr_refurb_ASP;
+create table p_macheung_t.sr_refurb_ASP as (
+select distinct retail_year, retail_week, categ_lvl2_name, categ_lvl3_name, rollup_condition, prod_ref_id, sum(GMV)/sum(BI) as ASP
+from p_macheung_t.sr_refurb_combined_pricing
+group by 1,2,3,4,5,6);
+
+-- Include only items with both new and refurb pricing
+drop table if exists p_macheung_t.sr_refurb_both_condition;
+create table p_macheung_t.sr_refurb_both_condition as (
+select distinct retail_year, retail_week, categ_lvl2_name, categ_lvl3_name, prod_ref_id, count(distinct rollup_condition) as no_condition
+from p_macheung_t.sr_refurb_ASP
+group by 1,2,3,4,5
+having no_condition =2);
+
+-- Final output to use in report
+drop table if exists p_macheung_t.sr_refurb_discount; 
+create table p_macheung_t.sr_refurb_discount as (
+select distinct a.retail_year, a.retail_week, a.categ_lvl2_name, a.categ_lvl3_name, b.rollup_condition, a.prod_ref_id, b.ASP
+from p_macheung_t.sr_refurb_both_condition a 
+inner join p_macheung_t.sr_refurb_ASP b on a.retail_year = b.retail_year and a.prod_ref_id = b.prod_ref_id and a.retail_week = b.retail_week
+and a.retail_year = year(current_date)
+);
+
+
+
+
+
+
+
+
+

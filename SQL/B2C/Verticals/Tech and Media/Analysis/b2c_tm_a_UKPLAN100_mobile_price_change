@@ -1,0 +1,369 @@
+/*
+As part of the decision making on Mobile Category Strategy 2023, build on the analysis (UKPLAN-49) on Cheapest Electrical and musicMagpie https://zeta.dss.vip.ebay.com/zeta/share/#/notebook?notebookId=9952f070-59d1-4f61-b2fb-3d45d7fe0fb9
+Understand top sellers' pricing behaviour in and out of coupon, provide a view of price changes of the top EPID of each of the top coupon contributors in mobile phones.
+
+cheapest_electrical (35198216)
+Musicmagpie (1046392160)
+loop_mobile (106197597)
+the_ioutlet_extra (688643289)
+Idoodirect (103159216)
+techmobile4u (1382161425)
+mywit_uk (1374314205)
+mobiledealsuk (1394808174)
+onemoremobile (1179924860)
+technolec_uk (67012606)
+wjd-store (544455628)
+buyitdirectdiscounts (54386791)
+iphoneforless (1219044593)
+stockmustgo (182055505)
+vendiapp (2140685083)
+*/
+
+
+select user_id, user_slctd_id from access_views.dw_users
+where user_id in (
+35198216
+,1046392160
+,106197597
+,688643289
+,103159216
+,1382161425
+,1374314205
+,1394808174
+,1179924860
+,67012606
+,544455628
+,54386791
+,1219044593
+,182055505
+,2140685083
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- SKU level Mobile Transactions of the top sellers in 2022
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.mobile_top15slr_txn;
+create table p_uk_bc_t.mobile_top15slr_txn as (
+select
+cal.retail_week
+,cal.retail_wk_end_date
+,cal.age_for_rtl_week_id
+,ck.GMV_dt
+,ck.transaction_id
+,ck.item_id
+,ck.item_vrtn_id
+,case when ck.item_vrtn_id=-999 then 0 else 1 end as MSKU_lstg
+,coalesce(eps.prod_ref_id,epms.prod_ref_id) as EPID
+,epn.prod_title as EPID_name
+,lstg.auct_titl
+,lstg.auct_start_dt
+,lstg.auct_end_dt
+,lstg.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+
+,sum(ck.refund_amt) as tot_refund
+,sum(ck.GMV_plan_usd) as GMV_USD
+,sum(ck.GMV_lc_amt) as GMV_GBP
+,sum(ck.quantity) AS tot_SI
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+
+inner join (select meta_categ_id, meta_categ_name, categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, leaf_categ_id, site_id
+			from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt and cal.retail_year=2022
+    
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+inner join ( 
+	select usegm_grp_id,usegm_id,end_date,user_id,beg_date from access_views.dw_usegm_hist 
+	where usegm_grp_id = 48 																						
+	and usegm_id = 206 --B2C seller only																									
+	and end_date >= '2015-12-30' group by 1,2,3,4,5)as hist 																						
+on hist.user_id = ck.seller_id	and ck.GMV_dt between hist.beg_date and hist.end_date	
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+left join access_views.ctlg_item_fact eps
+on ck.item_id=eps.item_id
+
+left join access_views.ctlg_vrtn_fact epms
+on ck.item_id=epms.item_id and ck.item_vrtn_id=epms.item_vrtn_id
+
+left join access_views.ctlg_prod_fact epn
+on coalesce(eps.prod_ref_id,epms.prod_ref_id)=epn.prod_ref_id
+
+where 
+cat.categ_lvl2_id=9355--mobile only
+and lstg.slr_id in (35198216,1046392160,106197597,688643289,103159216,1382161425,1374314205,1394808174,1179924860,67012606,544455628,54386791,1219044593,182055505,2140685083)
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+--Data check
+--0 row
+select item_id||item_vrtn_id||transaction_id,count(*) 
+from p_uk_bc_t.mobile_top15slr_txn group by 1 having count(*) > 1;
+
+--2022 total mobile sales by seller
+drop table if exists p_uk_bc_t.mobile_top15slr_rank;
+create table p_uk_bc_t.mobile_top15slr_rank as (
+select seller_name
+,sum(GMV_USD) as tot_GMV_USD
+,row_number() over (order by tot_GMV_USD desc) as 2022_mobile_sales_rank
+from p_uk_bc_t.mobile_top15slr_txn
+group by 1
+);
+
+select * from p_uk_bc_t.mobile_top15slr_rank;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Top Mobile EPID + condition for each of the top sellers
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.mobile_top15slr_topepid;
+create table p_uk_bc_t.mobile_top15slr_topepid as (
+select 
+seller_id
+,seller_name
+,item_cndtn_id
+,item_condition
+,EPID
+,EPID_name
+,sum(GMV_USD) as tot_GMV_USD
+from p_uk_bc_t.mobile_top15slr_txn
+where EPID is not null
+group by 1,2,3,4,5,6
+qualify (row_number() over (partition by seller_id order by tot_GMV_USD desc))<=1
+);
+
+select * from p_uk_bc_t.mobile_top15slr_topepid;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Join coupon redemption data to the top Mobile EPID + condition for each of the top sellers (remove transactions with refund)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*
+--Transactions with low ASP for iphoneforless
+--All from the same buyer (2184124052) and all refunded
+select * from access_views.dw_checkout_trans
+where seller_id=1219044593 and 
+(
+(transaction_id=2367558206018 and item_id=284625218743) or 
+(transaction_id=2368447134018 and item_id=284630015273) or 
+(transaction_id=2369180503018 and item_id=284633238458) or 
+(transaction_id=2372566821018 and item_id=284648544664) or 
+(transaction_id=2372571701018 and item_id=284648569562) or 
+(transaction_id=2381052560018 and item_id=284693953772) or
+(transaction_id=2383542592018 and item_id=284710157123) or 
+(transaction_id=2386861700018 and item_id=284733193707) or 
+(transaction_id=2439481324018 and item_id=284988761827)
+);
+*/
+
+
+drop table if exists p_uk_bc_t.mobile_top15slr_topepid_red;
+create table p_uk_bc_t.mobile_top15slr_topepid_red as (
+with slr_cou as (
+	select 
+	red.transaction_id
+	,red.ck_item_id as item_id
+	,cou.coupon_name as coupon_name
+	,cou.discount_offer
+	,red.redmd_amt as redmd_amt_GBP
+	,red.co_invest_pct as seller_cost_share
+	
+	,red.payout_GMV_lc_amt-red.redmd_amt as GMB_minus_redmd_amt_GBP
+	,red.payout_GMV_lc_amt as GMB_before_redmd_GBP
+	,red.payout_contra_lc_amt as total_cost_GBP
+	,red.payout_contra_lc_amt-red.cost_share_seller_lc_amt as cost_to_eBay_GBP
+	,red.cost_share_seller_lc_amt as cost_to_seller_GBP
+	,GMB_before_redmd_GBP-cost_to_seller_GBP as net_return_to_seller_GBP
+	
+	,GMB_minus_redmd_amt_GBP*1.2850 as GMB_minus_redmd_amt_USD
+	,red.payout_GMV_usd_amt as GMB_before_redmd_USD
+	,red.payout_contra_usd_amt as total_cost_USD
+	,red.payout_contra_usd_amt-red.cost_share_seller_usd_amt as cost_to_eBay_USD
+	,red.cost_share_seller_usd_amt as cost_to_seller_USD
+	,GMB_before_redmd_USD-cost_to_seller_USD as net_return_to_seller_USD
+	
+	,red.rtrn_flag
+	
+from access_views.cpn_co_invest_fact red
+
+inner join
+
+(select 
+coupon_name
+,discount_offer
+,sum(B2C_GMB_USD_PLAN) as GMB
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 a
+where 
+promotion_type in ('seller coupon')--include only redemptions for seller coupon
+and retail_year=2022
+group by 1,2
+having GMB>1000 
+) cou
+
+on red.incntv_cd=cou.coupon_name and red.site_id=3 and red.item_site_id=3
+)
+select 
+txn.retail_week
+,txn.retail_wk_end_date
+,txn.age_for_rtl_week_id
+,txn.GMV_dt
+,txn.transaction_id
+,txn.item_id
+,txn.MSKU_lstg
+,txn.item_vrtn_id
+,txn.EPID
+,txn.EPID_name
+,txn.auct_titl
+,txn.auct_start_dt
+,txn.auct_end_dt
+,txn.seller_id
+,txn.seller_name
+,txn.item_cndtn_id
+,txn.item_condition
+--N.B. GMV in transaction dataset does not include any discount that seller may provide after buyer’s checkout.
+,txn.GMV_GBP
+,txn.GMV_USD
+,txn.tot_SI
+,round(txn.GMV_GBP/txn.tot_SI) as ASP_GBP
+,round(txn.GMV_USD/txn.tot_SI) as ASP_USD
+
+,slr_cou.rtrn_flag
+,slr_cou.coupon_name
+,case when slr_cou.coupon_name is not null then 1 else 0 end as coupon_flag
+,slr_cou.discount_offer
+,slr_cou.redmd_amt_GBP
+,slr_cou.seller_cost_share
+,slr_cou.GMB_minus_redmd_amt_GBP
+,slr_cou.GMB_before_redmd_GBP
+,slr_cou.total_cost_GBP
+,slr_cou.cost_to_eBay_GBP
+,slr_cou.cost_to_seller_GBP
+,slr_cou.net_return_to_seller_GBP
+
+,slr_cou.GMB_minus_redmd_amt_USD
+,slr_cou.GMB_before_redmd_USD
+,slr_cou.total_cost_USD
+,slr_cou.cost_to_eBay_USD
+,slr_cou.cost_to_seller_USD
+,slr_cou.net_return_to_seller_USD
+
+,case when slr_cou.coupon_name is null then txn.GMV_GBP else slr_cou.GMB_minus_redmd_amt_GBP end as Final_Total_GMB_GBP
+,case when slr_cou.coupon_name is null then txn.GMV_USD else slr_cou.GMB_minus_redmd_amt_USD end as Final_Total_GMB_USD
+
+,case when slr_cou.coupon_name is null then ASP_GBP else round(slr_cou.GMB_minus_redmd_amt_GBP/txn.tot_SI) end as Final_ABP_GBP
+,case when slr_cou.coupon_name is null then ASP_USD else round(slr_cou.GMB_minus_redmd_amt_USD/txn.tot_SI) end as Final_ABP_USD
+
+,case when slr_cou.coupon_name is null then ASP_GBP else round(slr_cou.GMB_before_redmd_GBP/txn.tot_SI) end as Final_ASP_Buyer_See_GBP
+,case when slr_cou.coupon_name is null then ASP_USD else round(slr_cou.GMB_before_redmd_USD/txn.tot_SI) end as Final_ASP_Buyer_See_USD
+
+,case when slr_cou.coupon_name is null then txn.GMV_GBP else slr_cou.net_return_to_seller_GBP end as tot_net_return_to_seller_GBP
+,case when slr_cou.coupon_name is null then round(txn.GMV_GBP/txn.tot_SI) else round(slr_cou.net_return_to_seller_GBP/txn.tot_SI) end as unit_net_return_to_seller_GBP
+
+,case when slr_cou.coupon_name is null then txn.GMV_USD else slr_cou.net_return_to_seller_USD end as tot_net_return_to_seller_USD
+,case when slr_cou.coupon_name is null then round(txn.GMV_USD/txn.tot_SI) else round(slr_cou.net_return_to_seller_USD/txn.tot_SI) end as unit_net_return_to_seller_USD
+
+from p_uk_bc_t.mobile_top15slr_txn txn
+inner join p_uk_bc_t.mobile_top15slr_topepid top
+on txn.epid=top.epid and txn.item_cndtn_id=top.item_cndtn_id and txn.seller_id=top.seller_id
+left join slr_cou 
+on txn.transaction_id=slr_cou.transaction_id and txn.item_id=slr_cou.item_id
+where 
+(slr_cou.rtrn_flag is null or slr_cou.rtrn_flag<>1)--Returned item exists in access_views.cpn_co_invest_fact, with incntv_cd populated but all cost, redeemed amount etc are null
+and (slr_cou.coupon_name is null or (slr_cou.coupon_name is not null and slr_cou.redmd_amt_GBP <> 0))--Transactions with refund_amt>0, exists in access_views.cpn_co_invest_fact, with incntv_cd populated but all cost, redeemed amount etc =0
+and txn.tot_refund=0--iphoneforless displays abnormal transactions with £1 ASP (all were refunded)
+);
+
+--Data check
+--0 row
+select * from p_uk_bc_t.mobile_top15slr_topepid_red
+where coupon_name is not null and redmd_amt_GBP=0;
+
+--Export to Excel
+select 
+a.2022_mobile_sales_rank
+,b.seller_id
+,b.seller_name
+,a.tot_GMV_USD
+,b.EPID
+,b.EPID_name
+,b.item_cndtn_id
+,b.item_condition
+,b.tot_GMV_USD as EPID_cndtn_tot_GMV_USD
+from p_uk_bc_t.mobile_top15slr_rank a--2022 total mobile sales by seller
+left join p_uk_bc_t.mobile_top15slr_topepid b--Top EPID + Condition of each of the 15 sellers
+on a.seller_name=b.seller_name;
+
+--Add to Excel connection
+select * from p_uk_bc_t.mobile_top15slr_topepid_red;--2022 transactions of the top 15 EPID+Condition
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Top EPID + Condition (Daily average view for graphing)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Add to Excel connection
+
+-- Top EPID + Condition
+select
+seller_name
+,EPID
+,EPID_name
+,item_condition
+,GMV_dt
+,coupon_name
+,case when coupon_name is not null then 1 else 0 end as coupon_flag
+,discount_offer
+,avg(Final_ASP_Buyer_See_GBP) as daily_ASP_Buyer_See_GBP
+,avg(Final_ABP_GBP) as daily_ABP_GBP
+,avg(unit_net_return_to_seller_GBP) as daily_unit_net_return_to_seller_GBP
+from p_uk_bc_t.mobile_top15slr_topepid_red
+where EPID=22034217345 and seller_id=1046392160--musicmagpie
+--where EPID=12049274306 and seller_id=35198216--cheapest_electrical
+--where EPID=15053005038 and seller_id=1382161425--techmobile4u
+--where EPID=28049285691 and seller_id=106197597--loop_mobile
+--where EPID=23038944959 and seller_id=1394808174--mobiledealsuk
+--where EPID=21036891518 and seller_id=103159216--idoodirect
+--where EPID=22034217345 and seller_id=544455628--wjd-store
+--where EPID=18043621274 and seller_id=688643289--the_ioutlet_extra
+--where EPID=17049280668 and seller_id=2140685083--vendiapp
+--where EPID=28049285691 and seller_id=1219044593--iphoneforless
+--where EPID=18043621274 and seller_id=1374314205--mywit_uk
+--where EPID=23043696750 and seller_id=54386791--buyitdirectdiscounts
+--where EPID=18043621274 and seller_id=1179924860--onemoremobile
+--where EPID=3041600455 and seller_id=182055505--stockmustgo
+--where EPID=7057009641 and seller_id=67012606--technolec_uk
+group by 1,2,3,4,5,6,7,8
+qualify (row_number() over (partition by GMV_dt order by coupon_flag desc))=1;

@@ -1,0 +1,280 @@
+-- PFB STP code:
+
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.total_gmv_for_stp;
+CREATE TABLE P_SLR_TRACKER_T.total_gmv_for_stp AS (
+selECT 
+RETAIL_YEAR
+,RETAIL_WEEK_1
+,VERTICAL_WBR
+,item_id,
+transaction_id
+,SELLER_ID
+,case when inv_prop_flag  = 'NA' then 'NA' 
+when INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end
+as INVENTORY_PROP
+,BYR_CNT
+,BI
+,GMV
+,inv_prop_flag ,
+focused_flag
+from (
+select a.*,
+CASE WHEN INVENTORY_PROP LIKE ('%Focus%') THEN 'Focused'
+WHEN INVENTORY_PROP LIKE ('%Scal%') THEN 'Scaling'
+WHEN INVENTORY_PROP LIKE ('%Other%') THEN 'ROVertical'
+WHEN INVENTORY_PROP LIKE ('%Protrader%') THEN 'Protrader'
+ELSE 'NA' end as inv_prop_flag,
+case when focused_flag is not null then 'focus' else 'other' end as focused_flag
+from 
+
+(
+SELECT
+
+        CAL.RETAIL_YEAR
+        ,CAL.RETAIL_WEEK as RETAIL_WEEK_1
+,inv.new_vertical as VERTICAL_WBR, 
+			CK.item_id,
+			CK.transaction_id,
+			ck.seller_id,
+  /* --INVENTORY PROPS*/
+inv.INVENTORY_PROP AS INVENTORY_PROP /*--2021 Q4 DEFINITION*/
+    ,0 as BYR_CNT       
+    ,SUM(CK.QUANTITY) AS BI
+    ,SUM(CK.GMV_PLAN_USD) AS GMV
+   
+    from  DW_CHECKOUT_TRANS AS CK
+        
+    INNER JOIN ( select CURNCY_PLAN_RATE,CURNCY_ID from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID     
+        
+    INNER JOIN ( select CATEG_LVL2_ID,categ_lvl3_id,categ_lvl4_id,LEAF_CATEG_ID,meta_categ_id,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS group by 1,2,3,4,5,6,7 )  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+	LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+    ON ck.ITEM_ID = INV.ITEM_ID	
+        
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+        AND CAL.RETAIL_YEAR >= 2020    AND CAL.age_for_rtl_week_id=-1
+        
+    INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+        AND USEGM_ID = 206 /*--B2C only sellers*/
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5   )AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        
+    LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+
+    WHERE 1=1
+       
+            and  CK.SLR_CNTRY_ID = 3 
+        AND CK.BYR_CNTRY_ID = 3 
+        AND CK.SLR_CNTRY_ID = CK.BYR_CNTRY_ID 
+        AND CK.RPRTD_WACKO_YN = 'N'
+        AND CK.AUCT_END_DT >= '2018-12-29'
+        AND Ck.GMV_DT >= '2018-12-29'    
+    GROUP BY 1,2,3,4,5,6,7
+    
+
+ )a left join P_awang_ops_t.seller_ops_83 c 
+			on A.seller_id=c.seller_id and a.VERTICAL_WBR=c.seller_vertical
+ WHERE  VERTICAL_WBR NOT IN ('Vehicles', 'Unknown', 'Real Estate')  /*--Add Media from EU_FUNNEL below*/
+ )Z
+   	); 
+ 
+ /*SELECT SUM(GMV) FROM P_awang_ops_t.total_gmv_for_stp;
+SELECT SUM(GMV) FROM p_saurabh1_t.STP;
+DESCRIBE P_awang_ops_t.seller_ops_83
+*/
+/********************************************************* 
+************************** STP ************************** 
+*********************************************************/ 
+-- select * from p_saurabh1_t.STP where item_id='232136754751';
+
+DROP TABLE IF EXISTS p_saurabh1_t.STP;
+CREATE TABLE p_saurabh1_t.STP as (
+SELect x.*
+-- stp_flag
+FROM P_SLR_TRACKER_T.total_gmv_for_stp x -- GMV table at item trans level
+/* non MSKU */ 
+LEFT JOIN (SELECT 
+ITEM_ID 
+, MAX(CAST(VALUE_DESC AS DECIMAL (18,2))) AS STP 
+FROM access_views.DW_ATTR_LSTG_DTL DTL
+WHERE LSTG_ATTR_ID = 4128 
+AND AUCT_END_DT >= date_sub(CURRENT_DATE,14)
+GROUP BY 1 
+HAVING STP = 1 
+) nonmsku 
+ON nonmsku.ITEM_ID = x.ITEM_ID 
+/* MSKU */ 
+LEFT JOIN (SELECT ITEM_ID 
+, MAX(STP_PRICE_LC_AMT) AS STP 
+FROM access_views.LSTG_ITEM_VRTN VRTN
+WHERE STP_PRICE_LC_AMT > 0 
+AND AUCT_END_DT >= date_sub(CURRENT_DATE,14) 
+GROUP BY 1 
+HAVING STP IS NOT NULL 
+) msku 
+ON msku.ITEM_ID = X.ITEM_ID 
+WHERE COALESCE(nonmsku.STP, msku.STP) IS NOT NULL );
+
+
+
+-- select * from P_SLR_TRACKER_T.SME_at_item where item_id = '232136754751'
+
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.SME_at_item;
+CREATE TABLE P_SLR_TRACKER_T.SME_at_item as
+(select d.* from
+(
+select 
+C.retail_year,
+c.retail_Week,
+new_vertical,
+c.inv_prop_flag,
+focus_seller_flag,
+rpp.item_id as rpp_flag,
+c.categ_lvl2_name,
+c.categ_lvl2_id,
+c.categ_lvl3_name,
+c.categ_lvl3_id,
+c.item_id,
+cmpgn_name,
+c.seller_name,
+c.seller_id, 
+c.inventory_prop,
+Covered_GMV,
+Triggered_GMV
+from
+(
+select
+a.*,
+   CASE WHEN a.INVENTORY_PROP LIKE ('%Focus%') THEN 'Focused'
+WHEN a.INVENTORY_PROP LIKE ('%Scal%') THEN 'Scaling'
+WHEN a.INVENTORY_PROP LIKE ('%Other%') THEN 'ROVertical'
+WHEN INVENTORY_PROP LIKE ('%Protrader%') THEN 'Protrader'
+ELSE 'NA'
+END AS INV_PROP_FLAG
+
+from (
+select 
+AGE_FOR_RTL_WEEK_ID,
+sme.retail_year,
+sme.retail_Week,
+sme.seller_id,
+cmpgn_name,
+sme.seller_name,
+sme.item_id,
+sme.categ_lvl2_name,
+sme.categ_lvl2_id,
+sme.categ_lvl3_name,
+sme.categ_lvl3_id,
+sme.new_vertical,
+Covered_GMV,
+Triggered_GMV,
+case when focused_flag is not null then 'focus' else 'other' end as focus_seller_flag,
+inv.inventory_prop AS INVENTORY_PROP 
+from  P_SLR_TRACKER_T.SME_GMV sme 
+
+   LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON sme.ITEM_ID = CNDTN.ITEM_ID
+		
+	LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg group by 1,2,3,4) INV
+ON sme.ITEM_ID = INV.ITEM_ID
+    INNER JOIN ( select meta_categ_id,CATEG_LVL2_ID,categ_lvl3_id,categ_lvl4_id,LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS group by 1,2,3,4,5,6,7 )  AS CAT
+        ON SME.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CAT.SITE_ID = 3
+left join P_awang_ops_t.seller_ops_83 c 
+on sme.seller_id=c.seller_id and sme.new_vertical=c.seller_vertical 
+)a
+where a.retail_year>=2020 and a.AGE_FOR_RTL_WEEK_ID=-1
+)c
+left outer  join P_SLR_TRACKER_T.rh_sello_2_gmvout2_coup rpp 
+on c.item_id=rpp.item_id and c.retail_week=rpp.retail_week and new_vertical=vertical
+and c.seller_id=rpp.seller_id and rpp.INVENTORY_PROP=c.INVENTORY_PROP and rpp.focused_flag=c.focus_seller_flag 
+ )d
+  where rpp_flag is null 
+   );
+   
+ 
+
+DROP TABLE IF EXISTS p_saurabh1_t.STP_DEDUP_WITH_RPP;
+CREATE TABLE p_saurabh1_t.STP_DEDUP_WITH_RPP as (
+SELECT c.*
+FROM p_saurabh1_t.STP c
+left outer join P_SLR_TRACKER_T.rh_sello_2_gmvout2_coup rpp /*rpp events*/
+on c.item_id=rpp.item_id and c.RETAIL_WEEK_1=rpp.retail_week and rpp.VERTICAL=c.VERTICAL_WBR
+and c.seller_id=rpp.seller_id and rpp.INVENTORY_PROP=c.INVENTORY_PROP and rpp.focused_flag=c.focused_flag 
+where rpp.item_id is null );
+
+DROP TABLE IF EXISTS p_saurabh1_t.STP_DEDUP_WITH_SME;
+CREATE TABLE p_saurabh1_t.STP_DEDUP_WITH_SME as (
+SELECT C.*
+FROM p_saurabh1_t.STP_DEDUP_WITH_RPP c
+left outer  join P_SLR_TRACKER_T.SME_at_item sme /*SME events*/
+on c.item_id=sme.item_id and c.RETAIL_WEEK_1=sme.retail_week and new_vertical=VERTICAL_WBR
+and c.seller_id=sme.seller_id and sme.INVENTORY_PROP=c.INVENTORY_PROP and sme.focus_seller_flag=c.focused_flag 
+where sme.item_id is null);
+
+
+
+DROP TABLE IF EXISTS p_saurabh1_t.STP_DEDUP_WITH_DD;
+CREATE TABLE p_saurabh1_t.STP_DEDUP_WITH_DD as (
+SELECT C.*
+FROM p_saurabh1_t.STP_DEDUP_WITH_SME c
+left outer  join 
+ P_SLR_TRACKER_T.aw_vert_1_dd_list DD /*Daily Deals*/
+on c.item_id=DD.item_id and c.RETAIL_WEEK_1=DD.retail_week and vertical=VERTICAL_WBR
+and c.seller_id=DD.seller_id and DD.INVENTORY_PROP=c.INVENTORY_PROP and DD.focused_flag=c.focused_flag 
+where DD.item_id is null);
+
+drop table if exists P_SLR_TRACKER_T.STP_FINAL;
+CREATE TABLE P_SLR_TRACKER_T.STP_FINAL 
+AS (
+select 
+x.retail_year,
+x.RETAIL_WEEK_1 AS RETAIL_WEEK_2,
+x.VERTICAL_WBR as STP_VERTICAL,
+case when x.INVENTORY_PROP is null then 'NA' else INVENTORY_PROP end as INVENTORY_PROP,
+x.inv_prop_flag,
+/* --case when focus_seller_flag is not null then 'focus' else 'other' end as seller_flag,*/
+SUM(GMV) STP_GMV 
+FROM p_saurabh1_t.STP_DEDUP_WITH_DD X
+GROUP BY 1,2,3,4,5
+);
+ 
+DROP TABLE IF EXISTS P_SLR_TRACKER_T.STP_FINAL_TEMP ;
+CREATE TABLE P_SLR_TRACKER_T.STP_FINAL_TEMP AS (
+SELECT 
+A.* from 
+P_SLR_TRACKER_T.STP_FINAL_HIST a
+LEFT JOIN ACCESS_VIEWS.DW_CAL_DT B
+ON A.retail_year=B.RETAIL_YEAR
+AND A.RETAIL_WEEK_2=B.RETAIL_WEEK AND B.AGE_FOR_RTL_WEEK_ID=-1
+WHERE 
+B.RETAIL_WEEK IS NULL);
+
+INSERT OVERWRITE TABLE P_SLR_TRACKER_T.STP_FINAL_HIST
+SELECT * FROM P_SLR_TRACKER_T.STP_FINAL_TEMP;
+
+INSERT INTO P_SLR_TRACKER_T.STP_FINAL_HIST
+SELECT * FROM P_SLR_TRACKER_T.STP_FINAL;
+
+/*
+select 
+case when INVENTORY_PROP like '%Protrader%' then 'Protrader' else 'Others' end as INVENTORY_PROP,
+'STP' AS PROMOTION_TYPE,sum(STP_GMV) as PROMOTION_GMV
+from  P_SLR_TRACKER_T.STP_FINAL_HIST where 1=1 -- STP_VERTICAL = 'Home & Garden'
+and retail_year=2021 and RETAIL_WEEK_2=15
+group by 1,2;
+
+
+desc P_SLR_TRACKER_T.STP_FINAL_HIST
+select retail_year,retail_week_2,sum(stp_gmv)
+from P_SLR_TRACKER_T.STP_FINAL_HIST
+WHERE RETAIL_YERAR>=2020
+group by 1,2;
+
+*/

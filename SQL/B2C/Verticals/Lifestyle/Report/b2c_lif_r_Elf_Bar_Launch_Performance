@@ -1,0 +1,250 @@
+-----------------------------------------------------------------------------------------------------------------
+--------------------------------------------- Elf Bar Qualifying Listings ---------------------------------------
+-----------------------------------------------------------------------------------------------------------------
+
+drop table if exists p_robevans_t.elf_bar_lstgs;
+Create table p_robevans_t.elf_bar_lstgs as
+
+select lstg.ITEM_ID
+,lstg.AUCT_TITLE
+,lstg.SLR_ID
+,brand
+,mpn
+,lstg.AUCT_START_DT
+,lstg.AUCT_END_DT
+
+From PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+INNER JOIN DW_CAL_DT cal
+	on lstg.AUCT_START_DT < cal.CAL_DT
+	and lstg.AUCT_END_DT >= cal.CAL_DT
+	and lstg.AUCT_START_DT >= '2022-09-03'
+	and cal.CAL_DT >= '2022-09-03'
+	and cal.AGE_FOR_RTL_WEEK_ID < 0
+INNER JOIN DW_CATEGORY_GROUPINGS CAT
+	ON CAT.LEAF_CATEG_ID = lstg.LEAF_CATEG_ID
+	AND CAT.SITE_ID = lstg.ITEM_SITE_ID
+	and cat.site_id = 3
+	and cat.categ_lvl2_id in (183497)
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('BRAND') then aspct_vlu_nm else NULL end ),'Unknown') as BRAND
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2022-09-03'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+					and lower(aspct_vlu_nm) like 'elf%'
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2022-09-03'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+					and lower(aspct_vlu_nm) like 'elf%'
+				)SB
+			GROUP BY 1,2) bbase ON lstg.ITEM_ID = bbase.ITEM_ID AND lstg.AUCT_END_dt = bbase.AUCT_END_DT
+left join (Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('MPN') then aspct_vlu_nm else NULL end ),'Unknown') as MPN
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'MPN' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2022-09-03'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('MPN')
+					and (lower(aspct_vlu_nm) like '%600%'
+					or lower(aspct_vlu_nm) like '%500%')
+				UNION ALL
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'MPN' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2022-09-03'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('MPN')
+					and (lower(aspct_vlu_nm) like '%600%'
+					or lower(aspct_vlu_nm) like '%500%')
+				)SB
+			GROUP BY 1,2) bbase1 ON lstg.ITEM_ID = bbase1.ITEM_ID AND lstg.AUCT_END_dt = bbase1.AUCT_END_DT
+Where 1=1
+and lstg.LSTG_SITE_ID = 3
+and lstg.SLR_CNTRY_ID = 3
+and ((lower(brand) like '%elf%' and (lower(mpn) like '%500%' or lower(mpn) like '%600%'))
+or (lower(AUCT_TITLE) like '%elf%' and (lower(AUCT_TITLE) like '%cr500%' or lower(AUCT_TITLE) like '%600%')))
+
+Group by 1,2,3,4,5,6,7
+;
+
+-----------------------------------------------------------------------------------------------------------------
+------------------------------------------------ Elf Bar Performance --------------------------------------------
+-----------------------------------------------------------------------------------------------------------------
+
+drop table if exists p_robevans_t.elf_bar_perf;
+Create table p_robevans_t.elf_bar_perf as
+
+SELECT
+lstg.retail_year
+,lstg.retail_week
+,lstg.SLR_ID
+,ll
+,gmv
+,sold_items
+
+From
+	(select 
+	cal.RETAIL_YEAR
+	,cal.retail_week
+	,l.slr_id
+	,count(distinct l.item_id) as ll
+
+	From p_robevans_t.elf_bar_lstgs l
+	INNER JOIN DW_CAL_DT cal
+		on l.AUCT_START_DT < cal.CAL_DT
+		and l.auct_end_dt >= cal.cal_dt
+		and cal.CAL_DT >= '2022-09-03'
+		and cal.AGE_FOR_RTL_WEEK_ID < 0
+
+	Group by 1,2,3) lstg
+left JOIN
+	(select 
+	RETAIL_YEAR
+	,RETAIL_WEEK
+	,SELLER_ID
+	,sum(ck.gmv_plan_usd) as gmv
+	,sum(ck.quantity) as sold_items
+	
+	From DW_CHECKOUT_TRANS ck
+	INNER JOIN p_robevans_t.elf_bar_lstgs l
+		on ck.item_id = l.item_id
+		and ck.AUCT_END_DT = l.auct_end_dt
+	INNER JOIN DW_CAL_DT cal
+		on ck.gmv_dt = cal.CAL_DT
+		and cal.CAL_DT >= '2022-09-03'
+		and cal.AGE_FOR_RTL_WEEK_ID < 0
+	
+	Where 1=1
+	and ck.SITE_ID = 3
+	and ck.BYR_CNTRY_ID = 3
+	and ck.SLR_CNTRY_ID = 3
+	and ck.CK_WACKO_YN = 'N'
+	
+	Group by 1,2,3) ck
+		on lstg.retail_year = ck.retail_year
+		and lstg.retail_week = ck.retail_week
+		and lstg.slr_id = ck.SELLER_ID
+
+;
+
+
+
+-----------------------------------------------------------------------------------------------------------------
+------------------------------------------------ Effect on Category ---------------------------------------------
+-----------------------------------------------------------------------------------------------------------------
+
+
+drop table if exists p_robevans_t.cat_vs_elf_perf;
+Create table p_robevans_t.cat_vs_elf_perf as
+
+SELECT
+l1.retail_year
+,l1.retail_week
+,l1.target
+,ll
+,gmv
+,sold_items
+
+From
+	(SELECT
+		RETAIL_YEAR
+		,RETAIL_WEEK
+		,case when l.item_id is not null then 'Elf' else 'Rest' end as target
+		,count(DISTINCT lstg.item_id) as ll
+	FROM
+		PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+	INNER JOIN
+		DW_CAL_DT cal
+			on lstg.AUCT_START_DT < cal.CAL_DT
+			and lstg.AUCT_END_DT >= cal.CAL_DT
+			and cal.CAL_DT >= '2022-05-01'
+			and cal.AGE_FOR_RTL_WEEK_ID < 0
+	INNER JOIN DW_CATEGORY_GROUPINGS CAT
+			ON CAT.LEAF_CATEG_ID = lstg.LEAF_CATEG_ID
+			AND CAT.SITE_ID = lstg.ITEM_SITE_ID
+			and cat.site_id = 3
+			and cat.categ_lvl2_id in (183497)
+	LEFT JOIN
+		p_robevans_t.elf_bar_lstgs l 
+			on lstg.item_id = l.item_id
+			and lstg.AUCT_END_DT = l.auct_end_dt
+	WHERE
+		1=1
+		and lstg.ITEM_SITE_ID = 3
+		and lstg.SLR_CNTRY_ID = 3
+	GROUP BY
+		1,2,3
+	) l1
+LEFT JOIN
+	(select 
+	RETAIL_YEAR
+	,RETAIL_WEEK
+	,case when l.item_id is not null then 'Elf' else 'Rest' end as target
+	,sum(ck.gmv_plan_usd) as gmv
+	,sum(ck.quantity) as sold_items
+	
+	From DW_CHECKOUT_TRANS ck
+	INNER JOIN
+		DW_CAL_DT cal
+			on ck.gmv_dt = cal.CAL_DT
+			and cal.CAL_DT >= '2022-05-01'
+			and cal.AGE_FOR_RTL_WEEK_ID < 0
+	INNER JOIN
+		DW_CATEGORY_GROUPINGS CAT
+			ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID
+			AND CAT.SITE_ID = ck.SITE_ID
+			and cat.site_id = 3
+			and cat.categ_lvl2_id in (183497)
+	LEFT JOIN p_robevans_t.elf_bar_lstgs l
+		on ck.item_id = l.item_id
+		and ck.AUCT_END_DT = l.auct_end_dt
+	Where 1=1
+		and ck.SITE_ID = 3
+		and ck.BYR_CNTRY_ID = 3
+		and ck.SLR_CNTRY_ID = 3
+		and ck.CK_WACKO_YN = 'N'
+	Group by 1,2,3) ck1
+		on l1.retail_year = ck1.retail_year
+		and l1.retail_week = ck1.retail_week
+		and l1.target = ck1.target
+
+;
+
+

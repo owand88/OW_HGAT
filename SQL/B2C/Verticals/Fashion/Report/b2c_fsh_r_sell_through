@@ -1,0 +1,239 @@
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- INPUTS TABLE
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- DROP TABLE IF EXISTS P_OLWAND_T.SELL_THRU_BASE_X;
+-- CREATE TABLE P_OLWAND_T.SELL_THRU_BASE_X as select * from P_OLWAND_T.SELL_THRU_BASE WHERE Seller_ID != 181394076;
+--  ;
+ 
+-- select count(*) from P_OLWAND_T.SELL_THRU_BASE_X;
+-- select count(*) from P_OLWAND_T.SELL_THRU_BASE;
+
+-- DROP TABLE IF EXISTS P_OLWAND_T.SELL_THRU_BASE;
+-- CREATE TABLE P_OLWAND_T.SELL_THRU_BASE as select * from P_OLWAND_T.SELL_THRU_BASE_X;
+-- select count(*) from P_OLWAND_T.SELL_THRU_BASE;
+-- DROP TABLE IF EXISTS P_OLWAND_T.SELL_THRU_BASE_X;
+-- DROP TABLE IF EXISTS P_OLWAND_T.bcd;
+-- CREATE TABLE P_OLWAND_T.bcd as select * from P_OLWAND_T.SELL_THRU_BASE a  WHERE a.SELLER_ID = 2;
+
+-- CREATE TABLE P_OLWAND_T.SELL_THRU_BASE as select * from P_OLWAND_T.bcd;
+-- DROP TABLE IF EXISTS P_OLWAND_T.SELL_THRU_BASE ;
+-- CREATE TABLE P_OLWAND_T.SELL_THRU_BASE (Seller_ID decimal(18,0), Start_Week decimal(4,0), start_year decimal(4,0), Item_ID decimal(18,0), QTY BIGINT, item_group INT, item_id2 decimal(18,0), status STRING);
+--  INSERT INTO P_OLWAND_T.SELL_THRU_BASE (Seller_ID, Start_Week, start_year, Item_ID, QTY, item_group, item_id2, status) values
+-- ;
+
+-- select count(*) from P_OLWAND_T.SELL_THRU_BASE;
+
+
+
+
+DROP TABLE IF EXISTS  P_OLWAND_T.SELL_THRU_BASE2;
+CREATE TABLE P_OLWAND_T.SELL_THRU_BASE2 AS
+(select a.*, age_for_start_week
+from
+	(
+	(select a.*
+		from P_OLWAND_T.SELL_THRU_BASE a
+		UNION ALL
+		select Seller_ID, Start_Week,start_year, item_id2 as Item_ID, null as QTY,item_group ,item_id2 as  item_id2, status
+		from P_OLWAND_T.SELL_THRU_BASE b) a
+		
+		left join (select AGE_FOR_RTL_WEEK_ID as age_for_start_week, retail_week, retail_year from dw_cal_Dt where retail_year in (2021,2022) and AGE_FOR_RTL_WEEK_ID <= 0 group by 1,2,3) p on p.retail_week = a.start_week and p.retail_year = a.start_year
+	)
+	);
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- ITEM LEVEL BASE TABLE
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS  P_OLWAND_T.SELL_THRU_BASE1;
+CREATE TABLE P_OLWAND_T.SELL_THRU_BASE1 AS
+select a.*,
+i.auct_titl, 
+user_slctd_id, 
+((age_for_current_week-age_for_start_week)) as week
+from P_OLWAND_T.SELL_THRU_BASE2 a 
+-- left join P_OLWAND_T.fash_lstg_sales b on a.item_id = b.item_id 
+left join DW_LSTG_ITEM i on i.item_id = a.item_id
+inner join dw_users u on u.user_id = a.seller_id
+left join (select AGE_FOR_RTL_WEEK_ID as age_for_current_week from dw_cal_Dt where cal_date = CURRENT_DATE) p
+;
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- ITEM LEVEL SELL THROUGH
+--------------------------------------------------------------------------------------------------------------------------------------------
+ 
+ -- select * from P_OLWAND_T.fash_lstg_sales
+
+drop table if exists P_OLWAND_T.fash_lstg_sales;
+
+CREATE TABLE P_OLWAND_T.fash_lstg_sales AS (
+
+select
+	cal.retail_year,
+	cal.retail_week,
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+else bsns_vrtcl_name end as new_vertical, 
+CASE WHEN (cal.AGE_FOR_RTL_WEEK_ID >= base.age_for_start_week) THEN 'POST LAUNCH' ELSE 'PRE_LAUNCH' END AS LAUNCH_FLAG,
+ck.item_id,
+ck.ITEM_PRICE,
+base.status,
+SUM(CK.gmv_plan_usd) AS GMV, 
+SUM(QUANTITY) AS BI,
+count(distinct BUYER_ID) as byr_cnt,
+count(distinct(ck.item_id)) as converted_lll
+
+FROM P_OLWAND_T.SELL_THRU_BASE2 Base 
+LEFT JOIN DW_CHECKOUT_TRANS AS CK on base.item_id = ck.item_id
+
+ LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, ITEM_CNDTN_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+		
+-- inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+-- 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
+	ON CAL.CAL_DT = CK.gmv_dt 
+	and AGE_FOR_RTL_WEEK_ID <= -1
+	
+left outer join dw_users u
+	on ck.seller_id = u.user_id
+	
+LEFT JOIN DW_LSTG_ITEM i on i.item_id = ck.item_id and i.AUCT_END_dt = ck.AUCT_END_DT
+
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+
+
+WHERE 1=1
+	AND CK.CK_WACKO_YN  =  'N'
+	AND CK.SALE_TYPE NOT IN (10,15)
+	and CREATED_DT >= '2021-08-05'
+
+
+	GROUP BY 1,2,3,4,5,6,7
+
+) ;
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- SELLER LEVEL SELL THROUGH TABLE
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- select * from P_OLWAND_T.SELL_THRU_FINAL;
+DROP TABLE IF EXISTS  P_OLWAND_T.SELL_THRU_FINAL;
+CREATE TABLE P_OLWAND_T.SELL_THRU_FINAL AS
+select 
+a.*,
+retail_year,
+retail_week,
+new_vertical, 
+LAUNCH_FLAG,
+ITEM_PRICE,
+GMV, 
+BI,
+byr_cnt,
+converted_lll
+
+from P_OLWAND_T.SELL_THRU_BASE1 a 
+left join P_OLWAND_T.fash_lstg_sales b on a.item_id = b.item_id 
+;
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- SELLER LEVEL SELL THROUGH TABLE
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS  P_OLWAND_T.SELL_THRU_SLR;
+CREATE TABLE P_OLWAND_T.SELL_THRU_SLR AS
+SELECT 
+a.*,
+item_count,
+QTY_AVAIL,
+qty_sold/qty_avail as STR
+FROM
+	(SELECT
+	USER_SLCTD_ID,
+	SELLER_ID,
+	Start_week, 
+	week,
+	item_group,
+	status,
+	sum(case when launch_flag = 'POST LAUNCH' then gmv else 0 end) as gmv,
+	sum(case when launch_flag = 'POST LAUNCH' then bi else 0 End) as qty_sold
+	FROM  P_OLWAND_T.SELL_THRU_FINAL
+	group by 1,2,3,4,5,6) a 
+LEFT JOIN   
+(SELECT SELLER_ID,Start_Week,count(distinct item_id) as item_count,sum(QTY) as QTY_AVAIL FROM  P_OLWAND_T.SELL_THRU_BASE2 group by 1,2) b on b.seller_id = a.seller_id and b.start_week = a.start_week
+
+;
+
+----------------------------------------------------------------------------------------------------------------
+--- IMPRESSIONS Listing Level
+----------------------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_OLWAND_T.str_vi;
+---------------------------------------------------------------------------------------------------------------------------
+-- select * from P_OLWAND_T.refurb_funnel_vi
+CREATE TABLE P_OLWAND_T.str_vi AS
+
+(select * from (SELECT
+	cal.retail_year,
+	cal.retail_week,
+	base.item_group,
+	base.item_id,
+	auct_titl,
+	base.USER_SLCTD_ID,
+	base.status,
+	start_week,
+	qty,
+	CASE WHEN cal.AGE_FOR_RTL_WEEK_ID >= base.age_for_start_week THEN 'POST LAUNCH' ELSE 'PRE_LAUNCH' END AS LAUNCH_FLAG,
+	sum(SRP_IMPRSN_CNT) as SRP_IMP,
+	SUM(SRP_VI_CNT) as SRP_VI,
+	SUM(other_SRC_VI_CNT) as otherVi,
+	SUM(watch_CNT) as Watches,
+	SUM(STORE_IMPRSN_CNT) as Store_IMP,
+	SUM(OFF_EBAY_VI_CNT) as OFF_EBAY_SRP,
+	SUM(STORE_VI_CNT) as Store_VI,
+	SUM(HOME_VI_CNT) as OFF_EBAY_VI,
+	SUM(MYEBAY_VI_CNT) as MYEBAY_VI,
+	SUM(DRCT_VI_CNT) DRCT_VI,
+	SUM(TTL_VI_CNT) as TTL_VI
+FROM
+
+ PRS_restricted_V.SLNG_TRFC_SUPER_FACT ck
+
+INNER JOIN (select item_id, AUCT_END_DT
+-- 		,CASE
+-- 		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 5 THEN 'A. <£5'
+-- 		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 25 THEN 'B. £5-25'
+-- 		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 100 THEN 'C. £25-100'
+-- 		WHEN Cast(CK.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 500 THEN 'D. £100-500'
+-- 		ELSE 'E. £500+' END AS PRICE_BUCKET 
+		FROM  DW_LSTG_ITEM ck
+		where item_site_id = 3
+		And ck.ITEM_ID in (select distinct item_id from P_OLWAND_T.SELL_THRU_BASE1)
+		and AUCT_END_DT >= date '2019-12-01') a on a.item_id = ck.ITEM_ID 
+    INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID and cat.site_id = 3 
+    left outer join dw_users u
+on ck.seller_id = u.user_id
+
+LEFT  JOIN DW_USEGM_HIST HIST ON HIST.USER_ID=ck.Seller_ID AND HIST.USEGM_ID = 206
+inner join dw_cal_dt cal on ck.cal_dt = cal.cal_dt and AGE_FOR_RTL_WEEK_ID <=-1
+INNER JOIN P_OLWAND_T.SELL_THRU_BASE1 Base on base.item_id = ck.item_id
+
+    WHERE 1=1
+and ck.site_id = 3 
+ AND HIST.USEGM_ID = 206
+and ck.CAL_DT >= '2021-06-01'
+
+GROUP BY 1,2,3,4,5,6,7,8,9,10
+ )	)
+;

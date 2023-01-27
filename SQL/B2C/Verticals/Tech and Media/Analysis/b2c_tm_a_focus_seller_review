@@ -1,0 +1,774 @@
+/*Aim: 
+CMs are required to submit focus seller lists by 16Sep. 
+Provide top line overview of current focus sellers 
+Understand whether CM had any impact on their productivity and helps determine whether they should be kept as focused sellers. 
+*/
+
+select seller_vertical,count(*) from P_awang_ops_t.seller_ops_83 group by 1 order by 1;
+
+-- 117 Electronics CM focus sellers
+select count(*),count(distinct seller_id) from P_awang_ops_t.seller_ops_83 
+where lower(seller_vertical)='electronics';
+
+--28 Media CM focus sellers
+select count(*),count(distinct seller_id) from P_awang_ops_t.seller_ops_83 
+where lower(seller_vertical)='media';
+
+--2022 RW36
+select * from access_views.dw_cal_dt
+where age_for_rtl_week_id = -1;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--TECH
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Domestic GMV (Items listed on the UK site by UK B2C sellers and sold to UK buyers) [Tech]
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.tech_focus_slr_GMV_Sep22;
+create table p_uk_bc_t.tech_focus_slr_GMV_Sep22 as (
+select
+ck.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,case when CM_focus.seller_id is not null then 1 else 0 end as CMFocus
+,case when ECM_focus.seller_id is not null then 1 else 0 end as ECMFocus
+,case when PT_focus.seller_id is not null then 1 else 0 end as PTFocus
+
+,sum(case when retail_year=2021 then ck.gmv20_plan end) as LY_tot_GMV
+,sum(case when retail_year=2021 and cat.vertical='Electronics' then ck.gmv20_plan end) as LY_Electronics_GMV
+
+,sum(case when retail_year=2021 and (retail_week between 1 and 36) and cat.vertical='Electronics' then ck.gmv20_plan end) as LY_Electronics_GMV_YTD
+,sum(case when retail_year=2022 and (retail_week between 1 and 36) and cat.vertical='Electronics' then ck.gmv20_plan end) as TY_Electronics_GMV_YTD
+
+,sum(case when retail_year=2021 and (retail_week between 1 and 36) and cat.vertical='Electronics' and inv.inventory_prop is not null then ck.gmv20_plan end) as LY_Electronics_Inv_Prop_GMV_YTD
+,sum(case when retail_year=2022 and (retail_week between 1 and 36) and cat.vertical='Electronics' and inv.inventory_prop is not null then ck.gmv20_plan end) as TY_Electronics_Inv_Prop_GMV_YTD
+
+,sum(case when retail_year=2021 and cal.rtl_qtr_of_rtl_year_id=4 and cat.vertical='Electronics' and inv.inventory_prop is not null then ck.gmv20_plan end) as Electronics_Inv_Prop_GMV_2021_Q4
+,sum(case when retail_year=2022 and cal.rtl_qtr_of_rtl_year_id=1 and cat.vertical='Electronics' and inv.inventory_prop is not null then ck.gmv20_plan end) as Electronics_Inv_Prop_GMV_2022_Q1
+,sum(case when retail_year=2022 and cal.rtl_qtr_of_rtl_year_id=2 and cat.vertical='Electronics' and inv.inventory_prop is not null then ck.gmv20_plan end) as Electronics_Inv_Prop_GMV_2022_Q2
+,sum(case when retail_year=2022 and cal.rtl_qtr_of_rtl_year_id=3 and cat.vertical='Electronics' and inv.inventory_prop is not null then ck.gmv20_plan end) as Electronics_Inv_Prop_GMV_2022_Q3TD
+
+from prs_restricted_v.slng_trans_super_fact ck	
+
+inner join (select meta_categ_name,meta_categ_id,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,leaf_categ_name,site_id
+			,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+            when meta_categ_id in (26395) then 'Lifestyle'
+            when categ_lvl3_id in (260325) then 'Lifestyle'
+            when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+            when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+            when categ_lvl3_id in (3244) then 'Parts & Accessories'
+            when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+            when categ_lvl2_id in (46576) then 'Parts & Accessories'
+            when categ_lvl2_id in (63, 29223) then 'Collectibles'
+            else bsns_vrtcl_name end as vertical
+			from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,41,23,-999) 
+    		group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat																
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id = 3 	
+
+inner join access_views.dw_cal_dt cal 
+on ck.GMV_dt=cal.cal_dt and cal.age_for_rtl_year_id in (-1,0) and cal.age_for_rtl_week_id <= -1--Till 2022 RW36
+
+inner join dw_users u
+on ck.slr_id=u.user_id
+
+--Electronics inv prop
+left join (select item_id, inventory_prop from p_awang_ops_t.item_invent_lstg 
+		   where new_vertical='Electronics' and focus_flag='Focused' group by 1,2) inv
+on ck.item_id = inv.item_id  
+
+left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where seller_id is not null) CM_focus
+on ck.slr_id=CM_focus.seller_id
+
+left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where lower(seller_vertical)='electronics' and seller_id is not null) ECM_focus
+on ck.slr_id=ECM_focus.seller_id
+
+left join (select distinct user_id as seller_id from P_awang_opt_T.protrader_2021_Q2 
+		   where user_id is not null) PT_focus
+on ck.slr_id=PT_focus.seller_id
+
+where 
+ck.EU_B2C_C2C_flag='B2C'
+and ck.slr_cntry_id = 3 																										
+and ck.byr_cntry_id = 3 	
+and ck.slr_cntry_id=ck.byr_cntry_id 
+and ck.lstg_site_id = 3 
+and ck.iscore = 1	
+and ck.rprtd_wacko_yn = 'N'	
+and ck.auct_end_dt > '2018-12-29'
+group by 1,2,3,4,5
+);
+
+
+-- Check GMV dataset
+select * from p_uk_bc_t.tech_focus_slr_GMV_Sep22;
+
+-- 68,365 sellers have made domestic GMV in Electronics YTD
+select count(*), count(distinct seller_id) from p_uk_bc_t.tech_focus_slr_GMV_Sep22
+where TY_Electronics_GMV_YTD>0 ;
+
+-- 117 out of 117 Electronics CM focus sellers have made domestic GMV in Electronics YTD
+select count(distinct seller_id) from p_uk_bc_t.tech_focus_slr_GMV_Sep22
+where TY_Electronics_GMV_YTD>0 and ECMFocus=1;
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Electronics Listing (Listed on UK site by B2C UK seller who made domestic GMV in Electronics YTD)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.tech_focus_slr_lstg_Sep22;
+create table p_uk_bc_t.tech_focus_slr_lstg_Sep22 as (
+select
+lstg.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,case when CM_focus.seller_id is not null then 1 else 0 end as CMFocus
+,case when ECM_focus.seller_id is not null then 1 else 0 end as ECMFocus
+,case when PT_focus.seller_id is not null then 1 else 0 end as PTFocus
+
+,count(distinct (case when retail_year=2021 and cat.vertical='Electronics' then lstg.item_id end)) as LY_Electronics_LL
+,count(distinct (case when retail_year=2021 and (retail_week between 1 and 36) and cat.vertical='Electronics' then lstg.item_id end)) as LY_Electronics_LL_YTD
+,count(distinct (case when retail_year=2022 and (retail_week between 1 and 36) and cat.vertical='Electronics' then lstg.item_id end)) as TY_Electronics_LL_YTD
+
+,count(distinct (case when retail_year=2021 and (retail_week between 1 and 36) and cat.vertical='Electronics' and inv.inventory_prop is not null then lstg.item_id end)) as LY_Electronics_Inv_Prop_LL_YTD
+,count(distinct (case when retail_year=2022 and (retail_week between 1 and 36) and cat.vertical='Electronics' and inv.inventory_prop is not null then lstg.item_id end)) as TY_Electronics_Inv_Prop_LL_YTD
+
+,count(distinct (case when retail_year=2021 and cal.rtl_qtr_of_rtl_year_id=4 and cat.vertical='Electronics' and inv.inventory_prop is not null then lstg.item_id end)) as Electronics_Inv_Prop_LL_2021_Q4
+,count(distinct (case when retail_year=2022 and cal.rtl_qtr_of_rtl_year_id=1 and cat.vertical='Electronics' and inv.inventory_prop is not null then lstg.item_id end)) as Electronics_Inv_Prop_LL_2022_Q1
+,count(distinct (case when retail_year=2022 and cal.rtl_qtr_of_rtl_year_id=2 and cat.vertical='Electronics' and inv.inventory_prop is not null then lstg.item_id end)) as Electronics_Inv_Prop_LL_2022_Q2
+,count(distinct (case when retail_year=2022 and cal.rtl_qtr_of_rtl_year_id=3 and cat.vertical='Electronics' and inv.inventory_prop is not null then lstg.item_id end)) as Electronics_Inv_Prop_LL_2022_Q3TD
+
+from prs_restricted_v.slng_lstg_super_fact lstg
+
+--Only those with Electronics GMV YTD
+inner join (select 
+		   distinct seller_id
+		   from p_uk_bc_t.tech_focus_slr_GMV_Sep22
+		   where TY_Electronics_GMV_YTD>0) b
+on lstg.slr_id=b.seller_id
+
+inner join (select meta_categ_name,meta_categ_id,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,leaf_categ_name,site_id
+			,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+            when meta_categ_id in (26395) then 'Lifestyle'
+            when categ_lvl3_id in (260325) then 'Lifestyle'
+            when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+            when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+            when categ_lvl3_id in (3244) then 'Parts & Accessories'
+            when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+            when categ_lvl2_id in (46576) then 'Parts & Accessories'
+            when categ_lvl2_id in (63, 29223) then 'Collectibles'
+            else bsns_vrtcl_name end as vertical
+			from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,41,23,-999) 
+    		group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat	
+on lstg.leaf_categ_id=cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt cal 
+on lstg.auct_start_dt < cal.cal_dt and lstg.auct_end_dt >= cal.cal_dt  
+and cal.age_for_rtl_year_id in (-1,0) and cal.age_for_rtl_week_id <= -1--Till 2022 RW36
+
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+--Electronics inv prop
+left join (select item_id, inventory_prop from p_awang_ops_t.item_invent_lstg 
+		   where new_vertical='Electronics' and focus_flag='Focused' group by 1,2) inv
+on lstg.item_id = inv.item_id  
+
+left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where seller_id is not null) CM_focus
+on lstg.slr_id=CM_focus.seller_id
+
+left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where lower(seller_vertical)='electronics' and seller_id is not null) ECM_focus
+on lstg.slr_id=ECM_focus.seller_id
+
+left join (select distinct user_id as seller_id from P_awang_opt_T.protrader_2021_Q2 
+		   where user_id is not null) PT_focus
+on lstg.slr_id=PT_focus.seller_id
+
+where lstg.EU_B2C_C2C_flag='B2C'
+and lstg.slr_cntry_id=3    
+and lstg.lstg_site_id = 3
+and lstg.iscore = 1	
+and lstg.auct_end_dt > '2018-12-29'
+and cat.vertical='Electronics'--Electronics LL only
+group by 1,2,3,4,5
+);
+
+
+--66,827
+select count(*), count(distinct seller_id) from p_uk_bc_t.tech_focus_slr_lstg_Sep22;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Export to Excel output
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Current Electronics Focus Seller
+select * from P_awang_ops_t.seller_ops_83 
+where lower(seller_vertical)='electronics'
+order by seller_name;;
+
+--Electronics focus sellers performance
+select 
+a.seller_id
+,a.seller_name
+,c.am_name
+,c.initiative_name
+
+,a.LY_tot_GMV
+,a.LY_Electronics_GMV
+,a.LY_Electronics_GMV_YTD
+,a.TY_Electronics_GMV_YTD
+,a.LY_Electronics_Inv_Prop_GMV_YTD
+,a.TY_Electronics_Inv_Prop_GMV_YTD
+,a.Electronics_Inv_Prop_GMV_2021_Q4
+,a.Electronics_Inv_Prop_GMV_2022_Q1
+,a.Electronics_Inv_Prop_GMV_2022_Q2
+,a.Electronics_Inv_Prop_GMV_2022_Q3TD
+
+,b.LY_Electronics_LL
+,b.LY_Electronics_LL_YTD
+,b.TY_Electronics_LL_YTD
+,b.LY_Electronics_Inv_Prop_LL_YTD
+,b.TY_Electronics_Inv_Prop_LL_YTD
+,b.Electronics_Inv_Prop_LL_2021_Q4
+,b.Electronics_Inv_Prop_LL_2022_Q1
+,b.Electronics_Inv_Prop_LL_2022_Q2
+,b.Electronics_Inv_Prop_LL_2022_Q3TD
+
+from
+(select 
+seller_id
+,seller_name
+,CMFocus
+,PTFocus
+,LY_tot_GMV
+,LY_Electronics_GMV
+,LY_Electronics_GMV_YTD
+,TY_Electronics_GMV_YTD
+,LY_Electronics_Inv_Prop_GMV_YTD
+,TY_Electronics_Inv_Prop_GMV_YTD
+,Electronics_Inv_Prop_GMV_2021_Q4
+,Electronics_Inv_Prop_GMV_2022_Q1
+,Electronics_Inv_Prop_GMV_2022_Q2
+,Electronics_Inv_Prop_GMV_2022_Q3TD
+from p_uk_bc_t.tech_focus_slr_GMV_Sep22
+where ECMFocus=1 
+) a
+
+left join
+
+(select  
+seller_id
+,LY_Electronics_LL
+,LY_Electronics_LL_YTD
+,TY_Electronics_LL_YTD
+,LY_Electronics_Inv_Prop_LL_YTD
+,TY_Electronics_Inv_Prop_LL_YTD
+,Electronics_Inv_Prop_LL_2021_Q4
+,Electronics_Inv_Prop_LL_2022_Q1
+,Electronics_Inv_Prop_LL_2022_Q2
+,Electronics_Inv_Prop_LL_2022_Q3TD
+from p_uk_bc_t.tech_focus_slr_lstg_Sep22
+where ECMFocus=1 
+) b
+on a.seller_id=b.seller_id
+
+left join (select seller_id,initiative_name,am_name,vertical_platform from P_awang_ops_t.seller_ops_83 where lower(seller_vertical)='electronics' and seller_id is not null group by 1,2,3,4) c
+on a.seller_id=c.seller_id;
+
+
+--42 Potential Electronics focus sellers (over $200k Electronics Inventory prop GMV in 2022 Q3TD and not currently managed by Electronics CMs)
+select * from p_uk_bc_t.tech_focus_slr_GMV_Sep22
+where ECMFocus=0 and Electronics_Inv_Prop_GMV_2022_Q3TD>200000
+order by Electronics_Inv_Prop_GMV_2022_Q3TD desc;
+
+
+select 
+a.seller_id
+,a.seller_name
+,a.CMFocus
+,a.PTFocus
+
+,a.LY_tot_GMV
+,a.LY_Electronics_GMV
+,case when a.LY_Electronics_GMV/a.LY_tot_GMV>0.7 then 1 else 0 end as over_70perc_techGMV
+,a.LY_Electronics_GMV_YTD
+,a.TY_Electronics_GMV_YTD
+,a.LY_Electronics_Inv_Prop_GMV_YTD
+,a.TY_Electronics_Inv_Prop_GMV_YTD
+,a.Electronics_Inv_Prop_GMV_2021_Q4
+,a.Electronics_Inv_Prop_GMV_2022_Q1
+,a.Electronics_Inv_Prop_GMV_2022_Q2
+,a.Electronics_Inv_Prop_GMV_2022_Q3TD
+
+,b.LY_Electronics_LL
+,b.LY_Electronics_LL_YTD
+,b.TY_Electronics_LL_YTD
+,b.LY_Electronics_Inv_Prop_LL_YTD
+,b.TY_Electronics_Inv_Prop_LL_YTD
+,b.Electronics_Inv_Prop_LL_2021_Q4
+,b.Electronics_Inv_Prop_LL_2022_Q1
+,b.Electronics_Inv_Prop_LL_2022_Q2
+,b.Electronics_Inv_Prop_LL_2022_Q3TD
+
+
+from
+
+(select seller_id from p_uk_bc_t.tech_focus_slr_GMV_Sep22
+where ECMFocus=0 and Electronics_Inv_Prop_GMV_2022_Q3TD>200000) base
+
+inner join
+(select 
+seller_id
+,seller_name
+,CMFocus
+,PTFocus
+,LY_tot_GMV
+,LY_Electronics_GMV
+,LY_Electronics_GMV_YTD
+,TY_Electronics_GMV_YTD
+,LY_Electronics_Inv_Prop_GMV_YTD
+,TY_Electronics_Inv_Prop_GMV_YTD
+,Electronics_Inv_Prop_GMV_2021_Q4
+,Electronics_Inv_Prop_GMV_2022_Q1
+,Electronics_Inv_Prop_GMV_2022_Q2
+,Electronics_Inv_Prop_GMV_2022_Q3TD
+
+from p_uk_bc_t.tech_focus_slr_GMV_Sep22) a
+on base.seller_id=a.seller_id
+
+left join
+
+(select  
+seller_id
+,LY_Electronics_LL
+,LY_Electronics_LL_YTD
+,TY_Electronics_LL_YTD
+,LY_Electronics_Inv_Prop_LL_YTD
+,TY_Electronics_Inv_Prop_LL_YTD
+,Electronics_Inv_Prop_LL_2021_Q4
+,Electronics_Inv_Prop_LL_2022_Q1
+,Electronics_Inv_Prop_LL_2022_Q2
+,Electronics_Inv_Prop_LL_2022_Q3TD
+from p_uk_bc_t.tech_focus_slr_lstg_Sep22) b
+on a.seller_id=b.seller_id
+order by a.Electronics_Inv_Prop_GMV_2022_Q3TD desc;
+
+
+
+
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--MEDIA
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Domestic GMV (Items listed on the UK site by UK B2C sellers and sold to UK buyers) [Media]
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.media_focus_slr_GMV_Sep22;
+create table p_uk_bc_t.media_focus_slr_GMV_Sep22 as (
+select 
+ck.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,case when CM_focus.seller_id is not null then 1 else 0 end as CMFocus
+,case when MCM_focus.seller_id is not null then 1 else 0 end as MCMFocus
+,case when PT_focus.seller_id is not null then 1 else 0 end as PTFocus
+
+,sum(case when retail_year=2021 then ck.gmv20_plan end) as LY_tot_GMV
+,sum(case when retail_year=2021 and cat.vertical='Media' then ck.gmv20_plan end) as LY_Media_GMV
+
+,sum(case when retail_year=2021 and (retail_week between 1 and 36) and cat.vertical='Media' then ck.gmv20_plan end) as LY_Media_GMV_YTD
+,sum(case when retail_year=2022 and (retail_week between 1 and 36) and cat.vertical='Media' then ck.gmv20_plan end) as TY_Media_GMV_YTD
+
+,sum(case when retail_year=2021 and (retail_week between 1 and 36) and cat.vertical='Media' and inv.inventory_prop is not null then ck.gmv20_plan end) as LY_Media_Inv_Prop_GMV_YTD
+,sum(case when retail_year=2022 and (retail_week between 1 and 36) and cat.vertical='Media' and inv.inventory_prop is not null then ck.gmv20_plan end) as TY_Media_Inv_Prop_GMV_YTD
+
+,sum(case when retail_year=2021 and cal.rtl_qtr_of_rtl_year_id=4 and cat.vertical='Media' and inv.inventory_prop is not null then ck.gmv20_plan end) as Media_Inv_Prop_GMV_2021_Q4
+,sum(case when retail_year=2022 and cal.rtl_qtr_of_rtl_year_id=1 and cat.vertical='Media' and inv.inventory_prop is not null then ck.gmv20_plan end) as Media_Inv_Prop_GMV_2022_Q1
+,sum(case when retail_year=2022 and cal.rtl_qtr_of_rtl_year_id=2 and cat.vertical='Media' and inv.inventory_prop is not null then ck.gmv20_plan end) as Media_Inv_Prop_GMV_2022_Q2
+,sum(case when retail_year=2022 and cal.rtl_qtr_of_rtl_year_id=3 and cat.vertical='Media' and inv.inventory_prop is not null then ck.gmv20_plan end) as Media_Inv_Prop_GMV_2022_Q3TD
+
+from prs_restricted_v.slng_trans_super_fact ck	
+
+inner join (select meta_categ_name,meta_categ_id,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,leaf_categ_name,site_id
+			,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+            when meta_categ_id in (26395) then 'Lifestyle'
+            when categ_lvl3_id in (260325) then 'Lifestyle'
+            when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+            when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+            when categ_lvl3_id in (3244) then 'Parts & Accessories'
+            when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+            when categ_lvl2_id in (46576) then 'Parts & Accessories'
+            when categ_lvl2_id in (63, 29223) then 'Collectibles'
+            else bsns_vrtcl_name end as vertical
+			from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,41,23,-999) 
+    		group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat																
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id = 3 	
+
+inner join access_views.dw_cal_dt cal 
+on ck.GMV_dt=cal.cal_dt and cal.age_for_rtl_year_id in (-1,0) and cal.age_for_rtl_week_id <= -1--Till 2022 RW36
+
+inner join dw_users u
+on ck.slr_id=u.user_id
+
+--Media inv prop
+left join (select item_id, inventory_prop from p_awang_ops_t.item_invent_lstg 
+		   where new_vertical='Media' and focus_flag='Focused' group by 1,2) inv
+on ck.item_id = inv.item_id  
+
+left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where seller_id is not null) CM_focus
+on ck.slr_id=CM_focus.seller_id
+
+left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where lower(seller_vertical)='media' and seller_id is not null) MCM_focus
+on ck.slr_id=MCM_focus.seller_id
+
+left join (select distinct user_id as seller_id from P_awang_opt_T.protrader_2021_Q2 
+		   where user_id is not null) PT_focus
+on ck.slr_id=PT_focus.seller_id
+
+where 
+ck.EU_B2C_C2C_flag='B2C'
+and ck.slr_cntry_id = 3 																										
+and ck.byr_cntry_id = 3 	
+and ck.slr_cntry_id=ck.byr_cntry_id 
+and ck.lstg_site_id = 3 
+and ck.iscore = 1	
+and ck.rprtd_wacko_yn = 'N'	
+and ck.auct_end_dt > '2018-12-29'
+group by 1,2,3,4,5
+);
+
+
+-- Check GMV dataset
+select * from p_uk_bc_t.media_focus_slr_GMV_Sep22;
+
+-- 21,965 sellers have made domestic GMV in Media YTD
+select count(*), count(distinct seller_id) from p_uk_bc_t.media_focus_slr_GMV_Sep22
+where TY_Media_GMV_YTD>0 ;
+
+-- 24 out of 28 Electronics CM focus sellers have made domestic GMV in Media YTD
+select count(distinct seller_id) from p_uk_bc_t.media_focus_slr_GMV_Sep22
+where TY_Media_GMV_YTD>0 and MCMFocus=1;
+
+--4 Media CM focus sellers made no domestic GMV in Media YTD
+select a.seller_id from 
+(select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where lower(seller_vertical)='media' and seller_id is not null) a
+full join
+(select seller_id
+from p_uk_bc_t.media_focus_slr_GMV_Sep22
+where TY_Media_GMV_YTD>0 and MCMFocus=1)b
+on a.seller_id=b.seller_id
+where a.seller_id is not null and b.seller_id is null;
+
+--Irene's input file
+select * from P_awang_ops_t.seller_ops_83 where seller_id in (
+1036827810--already covered as Electronics focus seller
+,2288774846--prsonline
+,1075247739--rarewaves-europe
+,1465379981--rarewaves-united
+)
+
+select user_id,user_slctd_id,user_cntry_id,user_dsgntn_id
+from access_views.dw_users 
+where user_id in (
+2288774846--prsonline
+,1075247739--rarewaves-europe
+,1465379981--rarewaves-united (not covered in domestic GMV as user's country is non-UK)
+)
+
+--rarewaves-europe (primary site is France even registered as UK seller, list on France / Italy / Spain site)
+select lstg_site_id,cntry_desc,count(*) from prs_restricted_v.slng_trans_super_fact a
+left join access_views.dw_countries b
+on a.lstg_site_id=b.cntry_id
+where GMV_dt>='2022-01-01' and seller_id=1075247739 
+group by 1,2
+order by 3 desc
+
+--Seller country is 1 (US) with listings on UK / AU / FR / IT / DE / ES (Spain)
+select slr_cntry_id,lstg_site_id,cntry_desc,count(*) from prs_restricted_v.slng_trans_super_fact a
+left join access_views.dw_countries b
+on a.lstg_site_id=b.cntry_id
+where GMV_dt>='2022-01-01' and seller_id=1465379981
+group by 1,2,3
+order by 4 desc
+
+--Total 37 transactions YTD (Total $9122 GMV, all from Electronics vertical, last transaction in Mar22)
+select * from prs_restricted_v.slng_trans_super_fact a
+where GMV_dt>='2022-01-01' and seller_id=2288774846;
+
+select distinct bsns_vrtcl_name,leaf_categ_id,leaf_categ_name from access_views.dw_category_groupings
+where site_id=3 and leaf_categ_id in (9355,171485,123422,177);
+--9355: Mobile Phones & Communication:Mobile & Smart Phones
+--171485: Computers/Tablets & Networking:Tablets & eBook Readers
+--123422: Mobile Phones & Communication:Mobile Phone Accessories:Cables & Adapters
+--177: Computers/Tablets & Networking:Laptops & Netbooks:PC Laptops & Netbooks
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Media Listing (Listed on UK site by B2C UK seller who made domestic GMV in Media YTD)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.media_focus_slr_lstg_Sep22;
+create table p_uk_bc_t.media_focus_slr_lstg_Sep22 as (
+select
+lstg.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,case when CM_focus.seller_id is not null then 1 else 0 end as CMFocus
+,case when MCM_focus.seller_id is not null then 1 else 0 end as MCMFocus
+,case when PT_focus.seller_id is not null then 1 else 0 end as PTFocus
+
+,count(distinct (case when retail_year=2021 and cat.vertical='Media' then lstg.item_id end)) as LY_Media_LL
+,count(distinct (case when retail_year=2021 and (retail_week between 1 and 36) and cat.vertical='Media' then lstg.item_id end)) as LY_Media_LL_YTD
+,count(distinct (case when retail_year=2022 and (retail_week between 1 and 36) and cat.vertical='Media' then lstg.item_id end)) as TY_Media_LL_YTD
+
+,count(distinct (case when retail_year=2021 and (retail_week between 1 and 36) and cat.vertical='Media' and inv.inventory_prop is not null then lstg.item_id end)) as LY_Media_Inv_Prop_LL_YTD
+,count(distinct (case when retail_year=2022 and (retail_week between 1 and 36) and cat.vertical='Media' and inv.inventory_prop is not null then lstg.item_id end)) as TY_Media_Inv_Prop_LL_YTD
+
+,count(distinct (case when retail_year=2021 and cal.rtl_qtr_of_rtl_year_id=4 and cat.vertical='Media' and inv.inventory_prop is not null then lstg.item_id end)) as Media_Inv_Prop_LL_2021_Q4
+,count(distinct (case when retail_year=2022 and cal.rtl_qtr_of_rtl_year_id=1 and cat.vertical='Media' and inv.inventory_prop is not null then lstg.item_id end)) as Media_Inv_Prop_LL_2022_Q1
+,count(distinct (case when retail_year=2022 and cal.rtl_qtr_of_rtl_year_id=2 and cat.vertical='Media' and inv.inventory_prop is not null then lstg.item_id end)) as Media_Inv_Prop_LL_2022_Q2
+,count(distinct (case when retail_year=2022 and cal.rtl_qtr_of_rtl_year_id=3 and cat.vertical='Media' and inv.inventory_prop is not null then lstg.item_id end)) as Media_Inv_Prop_LL_2022_Q3TD
+
+from prs_restricted_v.slng_lstg_super_fact lstg
+
+--Only those with Media GMV YTD
+inner join (select 
+		   distinct seller_id
+		   from p_uk_bc_t.media_focus_slr_GMV_Sep22
+		   where TY_Media_GMV_YTD>0) b
+on lstg.slr_id=b.seller_id
+
+inner join (select meta_categ_name,meta_categ_id,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id,leaf_categ_name,site_id
+			,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+            when meta_categ_id in (26395) then 'Lifestyle'
+            when categ_lvl3_id in (260325) then 'Lifestyle'
+            when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+            when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+            when categ_lvl3_id in (3244) then 'Parts & Accessories'
+            when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+            when categ_lvl2_id in (46576) then 'Parts & Accessories'
+            when categ_lvl2_id in (63, 29223) then 'Collectibles'
+            else bsns_vrtcl_name end as vertical
+			from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,41,23,-999) 
+    		group by 1,2,3,4,5,6,7,8,9,10,11,12) as cat	
+on lstg.leaf_categ_id=cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt cal 
+on lstg.auct_start_dt < cal.cal_dt and lstg.auct_end_dt >= cal.cal_dt  
+and cal.age_for_rtl_year_id in (-1,0) and cal.age_for_rtl_week_id <= -1--Till 2022 RW36
+
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+--Media inv prop
+left join (select item_id, inventory_prop from p_awang_ops_t.item_invent_lstg 
+		   where new_vertical='Media' and focus_flag='Focused' group by 1,2) inv
+on lstg.item_id = inv.item_id  
+
+left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where seller_id is not null) CM_focus
+on lstg.slr_id=CM_focus.seller_id
+
+left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where lower(seller_vertical)='media' and seller_id is not null) MCM_focus
+on lstg.slr_id=MCM_focus.seller_id
+
+left join (select distinct user_id as seller_id from P_awang_opt_T.protrader_2021_Q2 
+		   where user_id is not null) PT_focus
+on lstg.slr_id=PT_focus.seller_id
+
+where lstg.EU_B2C_C2C_flag='B2C'
+and lstg.slr_cntry_id=3    
+and lstg.lstg_site_id = 3
+and lstg.iscore = 1	
+and lstg.auct_end_dt > '2018-12-29'
+and cat.vertical='Media'--Media LL only
+group by 1,2,3,4,5
+);
+
+
+--21,619
+select count(*), count(distinct seller_id) from p_uk_bc_t.media_focus_slr_lstg_Sep22;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Export to Excel output
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Current Media Focus Seller
+select * from P_awang_ops_t.seller_ops_83 
+where lower(seller_vertical)='media'
+order by seller_name;
+
+--Media focus sellers performance
+select 
+a.seller_id
+,a.seller_name
+,c.am_name
+,c.initiative_name
+
+,a.LY_tot_GMV
+,a.LY_Media_GMV
+,a.LY_Media_GMV_YTD
+,a.TY_Media_GMV_YTD
+,a.LY_Media_Inv_Prop_GMV_YTD
+,a.TY_Media_Inv_Prop_GMV_YTD
+,a.Media_Inv_Prop_GMV_2021_Q4
+,a.Media_Inv_Prop_GMV_2022_Q1
+,a.Media_Inv_Prop_GMV_2022_Q2
+,a.Media_Inv_Prop_GMV_2022_Q3TD
+
+,b.LY_Media_LL
+,b.LY_Media_LL_YTD
+,b.TY_Media_LL_YTD
+,b.LY_Media_Inv_Prop_LL_YTD
+,b.TY_Media_Inv_Prop_LL_YTD
+,b.Media_Inv_Prop_LL_2021_Q4
+,b.Media_Inv_Prop_LL_2022_Q1
+,b.Media_Inv_Prop_LL_2022_Q2
+,b.Media_Inv_Prop_LL_2022_Q3TD
+
+from
+(select 
+seller_id
+,seller_name
+,CMFocus
+,PTFocus
+,LY_tot_GMV
+,LY_Media_GMV
+,LY_Media_GMV_YTD
+,TY_Media_GMV_YTD
+,LY_Media_Inv_Prop_GMV_YTD
+,TY_Media_Inv_Prop_GMV_YTD
+,Media_Inv_Prop_GMV_2021_Q4
+,Media_Inv_Prop_GMV_2022_Q1
+,Media_Inv_Prop_GMV_2022_Q2
+,Media_Inv_Prop_GMV_2022_Q3TD
+from p_uk_bc_t.media_focus_slr_GMV_Sep22
+where MCMFocus=1 
+) a
+
+left join
+
+(select  
+seller_id
+,LY_Media_LL
+,LY_Media_LL_YTD
+,TY_Media_LL_YTD
+,LY_Media_Inv_Prop_LL_YTD
+,TY_Media_Inv_Prop_LL_YTD
+,Media_Inv_Prop_LL_2021_Q4
+,Media_Inv_Prop_LL_2022_Q1
+,Media_Inv_Prop_LL_2022_Q2
+,Media_Inv_Prop_LL_2022_Q3TD
+from p_uk_bc_t.media_focus_slr_lstg_Sep22
+where MCMFocus=1 
+) b
+on a.seller_id=b.seller_id
+
+left join (select seller_id,initiative_name,am_name,vertical_platform from P_awang_ops_t.seller_ops_83 where lower(seller_vertical)='media' and seller_id is not null group by 1,2,3,4) c
+on a.seller_id=c.seller_id;
+
+
+--38 Potential Media focus sellers (over $50k Media Inventory prop GMV in 2022 Q3TD and not currently managed by Media CMs)
+select * from p_uk_bc_t.media_focus_slr_GMV_Sep22
+where MCMFocus=0 and Media_Inv_Prop_GMV_2022_Q3TD>50000
+order by Media_Inv_Prop_GMV_2022_Q3TD desc;
+
+
+select 
+a.seller_id
+,a.seller_name
+,a.CMFocus
+,a.PTFocus
+
+,a.LY_tot_GMV
+,a.LY_Media_GMV
+,case when a.LY_Media_GMV/a.LY_tot_GMV>0.7 then 1 else 0 end as over_70perc_mediaGMV
+,a.LY_Media_GMV_YTD
+,a.TY_Media_GMV_YTD
+,a.LY_Media_Inv_Prop_GMV_YTD
+,a.TY_Media_Inv_Prop_GMV_YTD
+,a.Media_Inv_Prop_GMV_2021_Q4
+,a.Media_Inv_Prop_GMV_2022_Q1
+,a.Media_Inv_Prop_GMV_2022_Q2
+,a.Media_Inv_Prop_GMV_2022_Q3TD
+
+,b.LY_Media_LL
+,b.LY_Media_LL_YTD
+,b.TY_Media_LL_YTD
+,b.LY_Media_Inv_Prop_LL_YTD
+,b.TY_Media_Inv_Prop_LL_YTD
+,b.Media_Inv_Prop_LL_2021_Q4
+,b.Media_Inv_Prop_LL_2022_Q1
+,b.Media_Inv_Prop_LL_2022_Q2
+,b.Media_Inv_Prop_LL_2022_Q3TD
+
+
+from
+
+(select seller_id from p_uk_bc_t.media_focus_slr_GMV_Sep22
+where MCMFocus=0 and Media_Inv_Prop_GMV_2022_Q3TD>50000) base
+
+inner join
+(select 
+seller_id
+,seller_name
+,CMFocus
+,PTFocus
+,LY_tot_GMV
+,LY_Media_GMV
+,LY_Media_GMV_YTD
+,TY_Media_GMV_YTD
+,LY_Media_Inv_Prop_GMV_YTD
+,TY_Media_Inv_Prop_GMV_YTD
+,Media_Inv_Prop_GMV_2021_Q4
+,Media_Inv_Prop_GMV_2022_Q1
+,Media_Inv_Prop_GMV_2022_Q2
+,Media_Inv_Prop_GMV_2022_Q3TD
+
+from p_uk_bc_t.media_focus_slr_GMV_Sep22) a
+on base.seller_id=a.seller_id
+
+left join
+
+(select  
+seller_id
+,LY_Media_LL
+,LY_Media_LL_YTD
+,TY_Media_LL_YTD
+,LY_Media_Inv_Prop_LL_YTD
+,TY_Media_Inv_Prop_LL_YTD
+,Media_Inv_Prop_LL_2021_Q4
+,Media_Inv_Prop_LL_2022_Q1
+,Media_Inv_Prop_LL_2022_Q2
+,Media_Inv_Prop_LL_2022_Q3TD
+from p_uk_bc_t.media_focus_slr_lstg_Sep22) b
+on a.seller_id=b.seller_id
+order by a.Media_Inv_Prop_GMV_2022_Q3TD desc;
+
+
+
+--QC Check (Quite a few potental focus sellers have high LL volume)
+
+--995,957 LL in T1W for seller (1062994020) better_world_books_uk (1,490,290 distinct LL in RW27-36)
+select
+count(distinct cal_dt),
+sum(LL)/count(distinct cal_dt) as LL
+from 
+	(select
+	cal_dt,
+	count(distinct a.item_id) as LL
+	from 
+	P_CSI_TBS_T.INV_HEALTH_DAILY_SLR_TYPE A
+	left join (select item_id, new_vertical, inventory_prop, focus_flag from p_awang_ops_t.item_invent_lstg group by 1,2,3,4) inv
+	on a.item_id = inv.item_id  
+	where 
+	seller_segment = 'B2C'
+	and trade_type = 'DOMESTIC'
+	and retail_year=2022 and retail_week=36 and new_vertical='Media' and focus_flag='Focused' and slr_id=1062994020
+	group by 1);
