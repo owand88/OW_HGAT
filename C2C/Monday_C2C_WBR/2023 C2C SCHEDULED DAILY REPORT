@@ -1,0 +1,392 @@
+DROP TABLE IF EXISTS P_gaaustin_T.daily_gmv_report_C2C;
+CREATE TABLE P_gaaustin_T.daily_gmv_report_C2C as 
+(
+SELECT 
+	aaa.GMV_DT
+	,aaa.Vertical
+	,sum(aaa.Total_GMV) as TY_GMV
+	,sum(aaa.BI) as TY_BI
+	,sum(aaa.ASP) as TY_ASP
+	,sum(aaa.Slr_Count) as TY_Slr_Count
+	,sum(b.Total_GMV) as LY_GMV 
+	,sum(b.BI) as LY_BI
+	,sum(b.ASP) as LY_ASP
+	,sum(b.Slr_Count) as LY_Slr_Count
+
+FROM 		(
+			SELECT 
+				t.GMV_DT
+				,CAT.BSNS_VRTCL_NAME as Vertical
+				,CASE WHEN hist.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END AS Segment
+				,sum(T.GMV_PLAN_USD) as Total_GMV
+				,count(DISTINCT T.SELLER_ID) as Slr_Count
+				,sum(T.QUANTITY) as BI
+				,Total_GMV / BI as ASP
+
+			FROM 		ACCESS_VIEWS.DW_CHECKOUT_TRANS T
+
+			INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT li
+			ON 			LI.ITEM_ID = T.ITEM_ID
+
+			INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT cal 
+			ON 			cal.CAL_DT = T.GMV_DT
+
+			INNER JOIN 	(	SELECT *											
+							FROM ACCESS_VIEWS.DW_CATEGORY_GROUPINGS 									
+							WHERE SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)									
+						) as cat										
+			ON 			li.LEAF_CATEG_ID = cat.LEAF_CATEG_ID 										
+			AND 		cat.SITE_ID = 3 
+
+			LEFT JOIN 	ACCESS_VIEWS.DW_USEGM_HIST  hist 
+			ON 			hist.USER_ID = T.SELLER_ID 
+			AND 		hist.USEGM_GRP_ID  = 48 
+			AND 		CASE WHEN T.GMV_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE T.GMV_DT END BETWEEN hist.BEG_DATE AND hist.END_DATE  
+
+			WHERE 		1=1
+			AND 		T.GMV_DT BETWEEN '2018-12-30' and current_date - 1
+			AND 		T.AUCT_END_DT >= (CURRENT_DATE - 10)                                                     	
+			AND 		T.CK_WACKO_YN ='N'                                                                                                                          	
+			AND 		T.SALE_TYPE NOT IN (10,15)	
+			AND 		T.SLR_CNTRY_ID = 3	
+			AND			T.SITE_ID = 3
+			AND 		CASE WHEN hist.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END = 'C2C'
+			AND 		CAL.AGE_FOR_DT_ID BETWEEN -7 AND -1 --> T7D
+
+			GROUP BY 	1,2,3
+			) aaa
+		
+		
+LEFT JOIN (
+			SELECT 
+				t.GMV_DT
+				,t.GMV_DT + 365 as cy_date
+				,CAT.BSNS_VRTCL_NAME as Vertical
+				,CASE WHEN hist.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END AS Segment
+				,sum(T.GMV_PLAN_USD) as Total_GMV
+				,count(DISTINCT T.SELLER_ID) as Slr_Count
+				,sum(T.QUANTITY) as BI
+				,Total_GMV / BI as ASP
+
+			FROM 		ACCESS_VIEWS.DW_CHECKOUT_TRANS T
+
+			INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT li
+			ON 			LI.ITEM_ID = T.ITEM_ID
+
+			INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT cal 
+			ON 			cal.cal_dt = t.gmv_dt
+
+			INNER JOIN 	(	SELECT *											
+							FROM ACCESS_VIEWS.DW_CATEGORY_GROUPINGS									
+							WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+						) as cat										
+			ON 			li.LEAF_CATEG_ID = cat.leaf_categ_id 										
+			AND 		cat.site_id = 3 
+			
+			LEFT JOIN 	ACCESS_VIEWS.DW_USEGM_HIST hist 
+			ON 			hist.USER_ID = T.SELLER_ID 
+			AND 		hist.USEGM_GRP_ID  = 48 
+			AND 		CASE WHEN T.GMV_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE T.GMV_DT END BETWEEN hist.BEG_DATE AND hist.END_DATE  
+
+			WHERE 		1=1
+			AND 		T.GMV_DT BETWEEN '2018-12-30' and current_date - 1
+			AND 		T.AUCT_END_DT >= (CURRENT_DATE - 375)                                                     	
+			AND 		t.CK_WACKO_YN ='N'                                                                                                                          	
+			AND 		T.SALE_TYPE NOT IN (10,12,15)	
+			AND 		T.SLR_CNTRY_ID = 3	
+			AND			T.SITE_ID = 3
+			AND 		CASE WHEN hist.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END = 'C2C'
+			AND 		CAL.AGE_FOR_DT_ID BETWEEN -372 AND -366 --> T7D Prev Year
+
+			GROUP BY 	1,2,3,4
+			) b			
+ON 			aaa.GMV_DT = b.cy_date
+AND 		aaa.Vertical = b.Vertical 
+
+GROUP BY  	1,2
+);
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Listings daily refresh
+DROP TABLE IF EXISTS P_gaaustin_T.daily_listings_report_c2c;
+CREATE TABLE P_gaaustin_T.daily_listings_report_c2c as 
+(
+SELECT 
+	aaa.AUCT_START_DT
+	,aaa.Vertical
+	,sum(aaa.Listings_Count) as TY_FGLs
+	,sum(b.Listings_Count) as LY_FGLs 
+	
+FROM 		(
+			SELECT 
+				li.AUCT_START_DT
+				,CAT.BSNS_VRTCL_NAME as Vertical
+				,CASE WHEN hist.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END AS Segment
+				,COUNT(DISTINCT li.SLR_ID) as Lister_Count
+				,COUNT(DISTINCT LI.ITEM_ID) as Listings_Count
+
+			FROM 		ACCESS_VIEWS.DW_LSTG_ITEM li
+
+			INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT cal 
+			ON 			cal.cal_dt = li.AUCT_START_DT
+
+			INNER JOIN 	(	SELECT *											
+							FROM ACCESS_VIEWS.DW_CATEGORY_GROUPINGS 									
+							WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+						) as cat										
+			ON 			li.LEAF_CATEG_ID = cat.leaf_categ_id 										
+			AND 		cat.site_id = 3 
+			
+			LEFT JOIN 	ACCESS_VIEWS.DW_USEGM_HIST hist 
+			ON 			hist.USER_ID = li.SLR_ID 
+			AND 		hist.USEGM_GRP_ID  = 48 
+			AND 		CASE WHEN li.AUCT_START_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE li.AUCT_START_DT END BETWEEN hist.BEG_DATE AND hist.END_DATE  
+
+			WHERE 		1=1                                              	                                                                                                                       	
+			AND 		li.SLR_CNTRY_ID = 3	
+			AND			li.SLR_SITE_ID = 3
+			AND 		CASE WHEN hist.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END = 'C2C'
+			AND 		CAL.AGE_FOR_DT_ID BETWEEN -7 AND -1 --> T7D
+			AND  		LI.RELIST_UP_FLAG = 0
+
+			GROUP BY 	1,2,3
+			) aaa
+
+LEFT JOIN 	(
+			SELECT 
+				li.AUCT_START_DT
+				,li.AUCT_START_DT + 365 AS cy_date
+				,CAT.BSNS_VRTCL_NAME as Vertical
+				,CASE WHEN hist.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END AS Segment
+				,COUNT(DISTINCT li.SLR_ID) as Lister_Count
+				,COUNT(DISTINCT LI.ITEM_ID) as Listings_Count
+
+			FROM 		ACCESS_VIEWS.DW_LSTG_ITEM  li
+
+			INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT cal 
+			ON 			cal.cal_dt = li.AUCT_START_DT
+
+			INNER JOIN 	(	SELECT *											
+							FROM ACCESS_VIEWS.DW_CATEGORY_GROUPINGS									
+							WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+						) as cat										
+			ON 			li.LEAF_CATEG_ID = cat.leaf_categ_id 										
+			AND 		cat.site_id = 3 
+			
+			LEFT JOIN 	ACCESS_VIEWS.DW_USEGM_HIST hist 
+			ON 			hist.USER_ID = li.SLR_ID 
+			AND 		hist.USEGM_GRP_ID  = 48 
+			AND 		CASE WHEN li.AUCT_START_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE li.AUCT_START_DT END BETWEEN hist.BEG_DATE AND hist.END_DATE  
+
+			WHERE 		1=1                                              	                                                                                                                       	
+			AND 		li.SLR_CNTRY_ID = 3	
+			AND			li.SLR_SITE_ID = 3
+			AND 		CASE WHEN hist.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END = 'C2C'
+			AND 		CAL.AGE_FOR_DT_ID BETWEEN -372 AND -366 --> T7D
+			AND  		LI.RELIST_UP_FLAG = 0
+			
+			GROUP BY 	1,2,3,4
+			) b
+ON 			aaa.auct_start_dt = b.cy_date
+AND 		aaa.Vertical = b.Vertical 
+
+GROUP BY  	1,2);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- DROP TABLE IF EXISTS P_gaaustin_T.daily_gmv_report_C2C;
+-- CREATE TABLE P_gaaustin_T.daily_gmv_report_C2C as 
+-- (
+-- SELECT 
+-- 	aaa.GMV_DT
+-- 	,aaa.Vertical
+-- 	,aaa.Export_Flag
+-- 	,sum(aaa.Total_GMV) as TY_GMV
+-- 	,sum(aaa.BI) as TY_BI
+-- 	,sum(aaa.ASP) as TY_ASP
+-- 	,sum(aaa.Slr_Count) as TY_Slr_Count
+-- 	,sum(b.Total_GMV) as LY_GMV 
+-- 	,sum(b.BI) as LY_BI
+-- 	,sum(b.ASP) as LY_ASP
+-- 	,sum(b.Slr_Count) as LY_Slr_Count
+
+-- FROM 		(
+-- 			SELECT 
+-- 				t.GMV_DT
+-- 				,CAT.BSNS_VRTCL_NAME as Vertical
+-- 				,CASE WHEN t.byr_cntry_id = 3 THEN 'DOM' ELSE 'CBT' END as Export_Flag
+-- 				,T.EU_B2C_C2C_FLAG
+-- 				,sum(T.GMV20_PLAN) as Total_GMV
+-- 				,count(DISTINCT T.seller_id) as Slr_Count
+-- 				,sum(T.QUANTITY) as BI
+-- 				,Total_GMV / BI as ASP
+
+-- 			FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT T
+
+-- 			INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT li
+-- 			ON 			LI.ITEM_ID = T.ITEM_ID
+
+-- 			INNER JOIN 	ACCESS_VIEWS.dw_cal_dt cal 
+-- 			ON 			cal.cal_dt = t.gmv_dt
+
+-- 			INNER JOIN 	(	SELECT *											
+-- 							FROM access_views.dw_category_groupings 									
+-- 							WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+-- 						) as cat										
+-- 			ON 			li.LEAF_CATEG_ID = cat.leaf_categ_id 										
+-- 			AND 		cat.site_id = 3 
+
+-- 			WHERE 		1=1
+-- 			AND 		t.gmv_dt BETWEEN '2018-12-30' and current_date - 1
+-- 			AND 		t.auct_end_dt >= (CURRENT_DATE - 10)                                                     	
+-- 			AND 		t.CK_WACKO_YN ='N'                                                                                                                          	
+-- 			AND 		t.ISCORE = 1	
+-- 			AND 		t.slr_cntry_id = 3	
+-- 			AND			t.SITE_ID = 3
+-- 			AND 		t.EU_B2C_C2C_FLAG = 'C2C'
+-- 			AND 		CAL.AGE_FOR_DT_ID BETWEEN -7 AND -1 --> T7D
+
+-- 			GROUP BY 	1,2,3,4
+-- 			) aaa
+		
+		
+-- LEFT JOIN (
+-- 			SELECT 
+-- 				t.GMV_DT
+-- 				,t.GMV_DT + 365 as cy_date
+-- 				,CAT.BSNS_VRTCL_NAME as Vertical
+-- 				,CASE WHEN t.byr_cntry_id = 3 THEN 'DOM' ELSE 'CBT' END as Export_Flag
+-- 				,t.EU_B2C_C2C_FLAG
+-- 				,sum(t.GMV20_PLAN) as Total_GMV
+-- 				,count(distinct t.seller_id) as Slr_Count
+-- 				,sum(t.QUANTITY) as BI
+-- 				,Total_GMV / BI as ASP
+
+-- 			FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT T
+
+-- 			INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT li
+-- 			ON 			LI.ITEM_ID = T.ITEM_ID
+
+-- 			INNER JOIN 	ACCESS_VIEWS.dw_cal_dt cal 
+-- 			ON 			cal.cal_dt = t.gmv_dt
+
+-- 			INNER JOIN 	(	SELECT *											
+-- 							FROM access_views.dw_category_groupings 									
+-- 							WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+-- 						) as cat										
+-- 			ON 			li.LEAF_CATEG_ID = cat.leaf_categ_id 										
+-- 			AND 		cat.site_id = 3 
+
+-- 			WHERE 		1=1
+-- 			AND 		t.gmv_dt BETWEEN '2018-12-30' and current_date - 1
+-- 			AND 		t.auct_end_dt >= (CURRENT_DATE - 375)                                                     	
+-- 			AND 		t.CK_WACKO_YN ='N'                                                                                                                          	
+-- 			AND 		t.ISCORE = 1	
+-- 			AND 		t.slr_cntry_id = 3	
+-- 			AND			t.SITE_ID = 3
+-- 			AND 		t.EU_B2C_C2C_FLAG = 'C2C'
+-- 			AND 		CAL.AGE_FOR_DT_ID BETWEEN -372 AND -366 --> T7D Prev Year
+
+-- 			GROUP BY 	1,2,3,4,5
+-- 			) b			
+-- ON 			aaa.GMV_DT = b.cy_date
+-- AND 		aaa.Vertical = b.Vertical 
+-- AND 		aaa.Export_Flag = b.Export_Flag
+
+-- GROUP BY  	1,2,3
+-- );
+-- ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- -- Listings daily refresh
+-- DROP TABLE IF EXISTS P_gaaustin_T.daily_listings_report_c2c;
+-- CREATE TABLE P_gaaustin_T.daily_listings_report_c2c as 
+-- (
+-- SELECT 
+-- 	aaa.AUCT_START_DT
+-- 	,aaa.Vertical
+-- 	,sum(aaa.Listings_Count) as TY_FGLs
+-- 	,sum(b.Listings_Count) as LY_FGLs 
+	
+-- FROM 		(
+-- 			SELECT 
+-- 				li.AUCT_START_DT
+-- 				,CAT.BSNS_VRTCL_NAME as Vertical
+-- 				,li.EU_B2C_C2C_FLAG
+-- 				,COUNT(DISTINCT li.SLR_ID) as Lister_Count
+-- 				,COUNT(DISTINCT LI.ITEM_ID) as Listings_Count
+
+-- 			FROM 		PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT li
+
+-- 			INNER JOIN 	ACCESS_VIEWS.dw_cal_dt cal 
+-- 			ON 			cal.cal_dt = li.AUCT_START_DT
+
+-- 			INNER JOIN 	(	SELECT *											
+-- 							FROM access_views.dw_category_groupings 									
+-- 							WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+-- 						) as cat										
+-- 			ON 			li.LEAF_CATEG_ID = cat.leaf_categ_id 										
+-- 			AND 		cat.site_id = 3 
+
+-- 			WHERE 		1=1                                              	                                                                                                                       	
+-- 			AND 		li.ISCORE = 1	
+-- 			AND 		li.SLR_CNTRY_ID = 3	
+-- 			AND			li.SLR_SITE_ID= 3
+-- 			AND 		li.EU_B2C_C2C_FLAG = 'C2C'
+-- 			AND 		CAL.AGE_FOR_DT_ID BETWEEN -7 AND -1 --> T7D
+-- 			AND  		LI.RELIST_UP_FLAG = 0
+
+-- 			GROUP BY 	1,2,3
+-- 			) aaa
+
+-- LEFT JOIN 	(
+-- 			SELECT 
+-- 				li.AUCT_START_DT
+-- 				,li.AUCT_START_DT + 365 AS cy_date
+-- 				,CAT.BSNS_VRTCL_NAME as Vertical
+-- 				,li.EU_B2C_C2C_FLAG
+-- 				,COUNT(DISTINCT li.SLR_ID) as Lister_Count
+-- 				,COUNT(DISTINCT LI.ITEM_ID) as Listings_Count
+
+-- 			FROM 		PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT li
+
+-- 			INNER JOIN 	ACCESS_VIEWS.dw_cal_dt cal 
+-- 			ON 			cal.cal_dt = li.AUCT_START_DT
+
+-- 			INNER JOIN 	(	SELECT *											
+-- 							FROM access_views.dw_category_groupings 									
+-- 							WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+-- 						) as cat										
+-- 			ON 			li.LEAF_CATEG_ID = cat.leaf_categ_id 										
+-- 			AND 		cat.site_id = 3 
+
+-- 			WHERE 		1=1                                              	                                                                                                                       	
+-- 			AND 		li.ISCORE = 1	
+-- 			AND 		li.SLR_CNTRY_ID = 3	
+-- 			AND			li.SLR_SITE_ID= 3
+-- 			AND 		li.EU_B2C_C2C_FLAG = 'C2C'
+-- 			AND 		CAL.AGE_FOR_DT_ID BETWEEN -372 AND -366 --> T7D
+-- 			AND  		LI.RELIST_UP_FLAG = 0
+			
+-- 			GROUP BY 	1,2,3,4
+-- 			) b
+-- ON 			aaa.auct_start_dt = b.cy_date
+-- AND 		aaa.Vertical = b.Vertical 
+
+-- GROUP BY  	1,2);

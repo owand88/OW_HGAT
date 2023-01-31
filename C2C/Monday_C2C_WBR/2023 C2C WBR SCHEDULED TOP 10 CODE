@@ -1,0 +1,140 @@
+----------------------------------------------------------
+-- FGL Code
+----------------------------------------------------------
+DROP TABLE IF EXISTS P_gaaustin_T.FGL_TOP_10;																		
+CREATE TABLE P_gaaustin_T.FGL_TOP_10 AS (																		
+WITH FGL_CALC AS (																		
+SELECT																		
+	VERTICAL																	
+	,META_CATEG_NAME																	
+	,CATEG_LVL2_NAME																	
+	,RETAIL_WEEK																	
+	,lag(RETAIL_WEEK,1) OVER (PARTITION BY VERTICAL, META_CATEG_NAME, CATEG_LVL2_NAME ORDER BY RETAIL_WEEK) AS Prev_Week																	
+	,FGL_COUNT																	
+	,lag(FGL_COUNT,1) OVER (PARTITION BY VERTICAL, META_CATEG_NAME, CATEG_LVL2_NAME ORDER BY RETAIL_WEEK) as Prev_Week_FGL																	
+	,FGL_COUNT - lag(FGL_COUNT,1) OVER (PARTITION BY VERTICAL, META_CATEG_NAME, CATEG_LVL2_NAME ORDER BY RETAIL_WEEK) AS FGL_Diff																	
+	,CONCAT(VERTICAL,META_CATEG_NAME,CATEG_LVL2_NAME) AS KEY																	
+																		
+FROM (																		
+		SELECT 																
+			cal.retail_year	
+			,CASE 															
+				WHEN retail_year in (2019,2020) THEN retail_week-1 														
+				ELSE retail_week 														
+			END AS retail_week
+			,cat.bsns_vrtcl_name as Vertical                                                                                   	                                                                           																												
+			,cat.meta_categ_name															
+			,cat.categ_lvl2_name																													
+			,COUNT(distinct ITEM_ID) AS FGL_COUNT                                           															
+																		
+		FROM 		PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT t 														
+																		
+		INNER JOIN 	access_views.dw_cal_dt cal 															
+		ON 			cal.cal_dt = t.AUCT_START_DT													
+																		
+		INNER JOIN 	(	SELECT *														
+						FROM access_views.dw_category_groupings 												
+						WHERE sap_category_id NOT IN (5,7,41,23,-999)												
+					) as cat													
+		ON 			t.LEAF_CATEG_ID = cat.leaf_categ_id 													
+		AND 		cat.site_id = 3 														
+																		
+		WHERE 		t.AUCT_START_DT BETWEEN '2018-12-30' and current_date - 1														
+		AND 		t.auct_end_dt >= '2018-12-30'                                                      		                                                                                                                       												
+		AND 		t.ISCORE = 1														
+		AND 		T.SLR_CNTRY_ID = 3																											
+		AND 		t.EU_B2C_C2C_FLAG = 'C2C'														
+		AND			t.SLR_SITE_ID = 3													
+		AND			Cal.AGE_FOR_RTL_WEEK_ID in (-1,-2)													
+		AND   		t.RELIST_UP_FLAG = 0														
+																		
+		GROUP BY 	1,2,3,4,5--,6															
+	)																	
+																		
+ORDER BY 1,2,3																		
+)																		
+																		
+SELECT 																		
+	*																	
+	,ROW_NUMBER() OVER (ORDER BY abs(FGL_DIFF) DESC) AS ABS_FGL_DELTA 																	
+																		
+FROM 	FGL_CALC																	
+WHERE 	PREV_WEEK IS NOT NULL																	
+AND 	PREV_WEEK < RETAIL_WEEK																
+QUALIFY(ROW_NUMBER() OVER (ORDER BY abs(FGL_DIFF) DESC)) <= 10																		
+)																		
+;																		
+		
+----------------------------------------------------------
+-- GMV Code
+----------------------------------------------------------
+
+DROP TABLE IF EXISTS P_gaaustin_T.GMV_TOP_10;															
+CREATE TABLE P_gaaustin_T.GMV_TOP_10 AS (															
+WITH GMV_CALC AS (															
+SELECT															
+	VERTICAL														
+	,META_CATEG_NAME														
+	,CATEG_LVL2_NAME														
+	,RETAIL_WEEK														
+	,lag(RETAIL_WEEK,1) OVER (PARTITION BY VERTICAL, META_CATEG_NAME, CATEG_LVL2_NAME ORDER BY RETAIL_WEEK) AS Prev_Week														
+	,GMV_PLAN														
+	,lag(GMV_PLAN,1) OVER (PARTITION BY VERTICAL, META_CATEG_NAME, CATEG_LVL2_NAME ORDER BY RETAIL_WEEK) as Prev_Week_GMV														
+	,GMV_PLAN - lag(GMV_PLAN,1) OVER (PARTITION BY VERTICAL, META_CATEG_NAME, CATEG_LVL2_NAME ORDER BY RETAIL_WEEK) AS GMV_Diff														
+	,CONCAT(VERTICAL,META_CATEG_NAME,CATEG_LVL2_NAME) AS KEY														
+															
+FROM (															
+		SELECT 				
+			cal.retail_year		
+			,CASE 												
+				WHEN retail_year in (2019,2020) THEN retail_week-1 											
+				ELSE retail_week 											
+			END AS retail_week													                                                                                   	                                                                           										
+			,cat.bsns_vrtcl_name AS vertical												
+			,cat.meta_categ_name												
+			,cat.categ_lvl2_name																								
+			,sum(t.gmv20_plan) AS GMV_PLAN                                           												
+															
+		FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT t 	
+		
+		INNER JOIN  PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT li
+		ON 			li.ITEM_ID = t.ITEM_ID
+															
+		INNER JOIN 	access_views.dw_cal_dt cal 												
+		ON 			cal.cal_dt = t.gmv_dt										
+															
+		INNER JOIN 	(	SELECT *											
+						FROM access_views.dw_category_groupings 									
+						WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+					) as cat										
+		ON 			li.LEAF_CATEG_ID = cat.leaf_categ_id 										
+		AND 		cat.site_id = 3 											
+															
+		WHERE 		t.gmv_dt BETWEEN '2018-12-30' and current_date - 1											
+		AND 		t.auct_end_dt >= '2018-12-30'                                                      											
+		AND 		T.CK_WACKO_YN ='N'                                                                                                                          											
+		AND 		t.ISCORE = 1											
+		AND 		t.slr_cntry_id = 3																					
+		AND 		t.EU_B2C_C2C_FLAG = 'C2C'											
+		AND			t.SITE_ID = 3										
+		AND			Cal.AGE_FOR_RTL_WEEK_ID in (-1,-2)										
+															
+		GROUP BY 	1,2,3,4,5--,6												
+	)														
+															
+ORDER BY 1,2,3															
+)															
+															
+SELECT 															
+	*														
+	,ROW_NUMBER() OVER (ORDER BY abs(GMV_DIFF) DESC) AS ABS_GMV_DELTA 														
+															
+FROM 	GMV_CALC														
+WHERE 	PREV_WEEK IS NOT NULL														
+AND 	PREV_WEEK < RETAIL_WEEK												
+QUALIFY(ROW_NUMBER() OVER (ORDER BY abs(GMV_DIFF) DESC)) <= 10															
+)															
+;															
+
+	
+	

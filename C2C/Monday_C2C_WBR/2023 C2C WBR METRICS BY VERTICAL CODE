@@ -1,0 +1,428 @@
+DROP TABLE IF EXISTS P_gaaustin_T.c2c_ll_wbr;
+CREATE TABLE P_gaaustin_T.c2c_ll_wbr AS (
+SELECT              
+	cal.RETAIL_YEAR
+	,CASE 
+		WHEN retail_year in (2019,2020) THEN retail_week-1 
+		ELSE retail_week 
+	END AS retail_week
+	,AGE_FOR_RTL_WEEK_ID 
+	,COALESCE(CASE 
+		WHEN seller_segment_detail = 'Regular' THEN 'Regular'
+		WHEN seller_segment_detail in ('Large Merchant', 'Merchant', 'Entrepreneur') THEN 'Entrepreneur'
+		WHEN seller_segment_detail = 'Occasional' THEN 'Occasional'
+		WHEN SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') THEN 'NORS'
+		WHEN SELLER_SEGMENT_DETAIL in ('FTL') THEN 'New'
+		ELSE 'other'
+	END,'Total') as Segment	
+    ,COALESCE(cat.bsns_vrtcl_name, 'Total') as Vertical
+    ,COUNT(*) AS LSTG_CNT
+	,count(distinct slr_id) as slr_lst_cnt
+	,LSTG_CNT/slr_lst_cnt as LSTG_per_LSTR
+                
+FROM 		PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT li	
+
+INNER JOIN 	ACCESS_VIEWS.dw_cal_dt cal 
+ON 			cal.cal_dt = li.auct_start_dt
+															
+INNER JOIN 	(	SELECT *											
+				FROM access_views.dw_category_groupings 									
+				WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+			) as cat										
+ON 			li.LEAF_CATEG_ID = cat.leaf_categ_id 										
+AND 		cat.site_id = 3 	
+                
+WHERE  		ISCORE = 1          
+AND 		AUCT_START_DT BETWEEN '2018-12-30' and (current_date - 1)       
+AND 		AUCT_END_DT >= '2018-12-30'
+AND 		slr_cntry_id = 3
+AND 		li.SLR_SITE_ID = 3
+AND 		relist_up_flag = 0 -- 1st gen only  
+AND 		upper(EU_B2C_C2C_FLAG) = 'C2C'
+AND 		RETAIL_YEAR >= (year(CURRENT_DATE-1)-3) 
+   
+GROUP BY    cal.RETAIL_YEAR
+			,CASE WHEN retail_year in (2019,2020) THEN retail_week-1 ELSE retail_week END
+			,AGE_FOR_RTL_WEEK_ID 
+			,CUBE(	cat.bsns_vrtcl_name
+					,CASE WHEN seller_segment_detail = 'Regular' THEN 'Regular' WHEN seller_segment_detail in ('Large Merchant', 'Merchant', 'Entrepreneur') THEN 'Entrepreneur'
+					WHEN seller_segment_detail = 'Occasional' THEN 'Occasional' WHEN SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') THEN 'NORS'
+					WHEN SELLER_SEGMENT_DETAIL in ('FTL') THEN 'New' ELSE 'other'END)
+   
+-- GROUP BY 	1,2,3,4,5
+);
+
+
+DROP TABLE IF EXISTS P_gaaustin_T.c2c_gmv_wbr;
+CREATE TABLE P_gaaustin_T.c2c_gmv_wbr AS (
+SELECT 
+	CASE 
+		WHEN retail_year in (2019,2020) THEN retail_week-1 
+		ELSE retail_week 
+	END AS retail_week
+	,cal.retail_year	
+	,AGE_FOR_RTL_WEEK_ID                                                                               	                                                                           	
+	,COALESCE(CASE 
+		WHEN t.seller_segment_detail = 'Regular' THEN 'Regular'
+		WHEN t.seller_segment_detail in ('Large Merchant', 'Merchant', 'Entrepreneur') THEN 'Entrepreneur'
+		WHEN t.seller_segment_detail = 'Occasional' THEN 'Occasional'
+		WHEN t.SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') THEN 'NORS'
+		WHEN t.SELLER_SEGMENT_DETAIL in ('FTL') THEN 'New'
+		ELSE 'other'
+	END,'Total') as Segment	
+    ,COALESCE(cat.bsns_vrtcl_name, 'Total') as Vertical
+	,sum(t.gmv20_plan) AS GMV_PLAN                                           	
+	,SUM(T.QUANTITY) AS SOLD_ITEMS	
+	,count(distinct t.seller_id) as slr_cnt_gmv
+	
+FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT t 
+
+INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT li
+ON 			LI.ITEM_ID = T.ITEM_ID
+
+INNER JOIN 	ACCESS_VIEWS.dw_cal_dt cal 
+ON 			cal.cal_dt = t.gmv_dt	
+
+INNER JOIN 	(	SELECT *											
+				FROM access_views.dw_category_groupings 									
+				WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+			) as cat										
+ON 			li.LEAF_CATEG_ID = cat.leaf_categ_id 										
+AND 		cat.site_id = 3 	
+
+WHERE 		t.gmv_dt BETWEEN '2018-12-30' and current_date - 1
+AND 		t.auct_end_dt >= '2018-12-30'                                                      	
+AND 		upper(T.CK_WACKO_YN) ='N'                                                                                                                          	
+AND 		t.ISCORE = 1	
+AND 		t.slr_cntry_id = 3	
+AND 		t.AUCT_TYPE_CD not IN (10,12,15)
+AND 		upper(t.EU_B2C_C2C_FLAG) = 'C2C'
+AND			t.SITE_ID= 3
+AND 		RETAIL_YEAR >= (year(CURRENT_DATE-1)-3) 
+                                                                            	
+-- GROUP BY 	1,2,3,4,5
+GROUP BY    cal.RETAIL_YEAR
+			,CASE WHEN retail_year in (2019,2020) THEN retail_week-1 ELSE retail_week END
+			,AGE_FOR_RTL_WEEK_ID 
+			,CUBE(	cat.bsns_vrtcl_name
+					,CASE WHEN T.seller_segment_detail = 'Regular' THEN 'Regular' WHEN T.seller_segment_detail in ('Large Merchant', 'Merchant', 'Entrepreneur') THEN 'Entrepreneur'
+					WHEN T.seller_segment_detail = 'Occasional' THEN 'Occasional' WHEN T.SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') THEN 'NORS'
+					WHEN T.SELLER_SEGMENT_DETAIL in ('FTL') THEN 'New' ELSE 'other'END)
+);
+
+
+DROP TABLE IF EXISTS P_gaaustin_T.c2c_vi_wbr;
+CREATE TABLE P_gaaustin_T.c2c_vi_wbr AS (
+
+SELECT                         
+	cal.retail_year
+	,CASE 
+		WHEN retail_year in (2019,2020) THEN retail_week-1 
+		ELSE retail_week 
+	END AS retail_week	
+	,AGE_FOR_RTL_WEEK_ID                                                                                  
+	,COALESCE(CASE 
+		WHEN seller_segment_detail = 'Regular' THEN 'Regular'
+		WHEN seller_segment_detail in ('Large Merchant', 'Merchant', 'Entrepreneur') THEN 'Entrepreneur'
+		WHEN seller_segment_detail = 'Occasional' THEN 'Occasional'
+		WHEN SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') THEN 'NORS'
+		WHEN SELLER_SEGMENT_DETAIL in ('FTL') THEN 'New'
+		ELSE 'other'
+	END,'Total') as Segment	
+    ,COALESCE(cat.bsns_vrtcl_name, 'Total') as Vertical
+	,SUM(SRP_IMPRSN_CNT) as SRP_IMP
+	,SUM(TTL_VI_CNT) as TTL_VI
+
+FROM 		PRS_restricted_V.SLNG_TRFC_SUPER_FACT li
+
+LEFT JOIN  	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT a 
+ON 			a.item_id = li.ITEM_ID 
+
+INNER JOIN 	access_views.dw_cal_dt cal 
+ON 			cal.cal_dt = li.cal_dt
+
+INNER JOIN 	(	SELECT *											
+				FROM access_views.dw_category_groupings 									
+				WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+			) as cat										
+ON 			a.LEAF_CATEG_ID = cat.leaf_categ_id 										
+AND 		cat.site_id = 3 	
+                
+WHERE  		ISCORE = 1          
+AND  		li.cal_dt BETWEEN '2018-12-30' and (current_date - 1)       
+AND  		li.cal_dt >= '2018-12-30'
+AND 		slr_cntry_id = 3
+AND 		li.SITE_ID =3
+AND 		relist_up_flag = 0 -- 1st gen only  
+AND 		EU_B2C_C2C_FLAG = 'C2C'
+AND 		RETAIL_YEAR >= 2019 --(year(CURRENT_DATE-1)-3) 
+                
+GROUP BY    cal.RETAIL_YEAR
+			,CASE WHEN retail_year in (2019,2020) THEN retail_week-1 ELSE retail_week END
+			,AGE_FOR_RTL_WEEK_ID 
+			,CUBE(	cat.bsns_vrtcl_name
+					,CASE WHEN seller_segment_detail = 'Regular' THEN 'Regular' WHEN seller_segment_detail in ('Large Merchant', 'Merchant', 'Entrepreneur') THEN 'Entrepreneur'
+					WHEN seller_segment_detail = 'Occasional' THEN 'Occasional' WHEN SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') THEN 'NORS'
+					WHEN SELLER_SEGMENT_DETAIL in ('FTL') THEN 'New' ELSE 'other'END)
+);
+
+---------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------- 
+
+DROP TABLE IF EXISTS P_gaaustin_T.c2c_funnel_wbr;
+CREATE table P_gaaustin_T.c2c_funnel_wbr as(
+
+SELECT 
+	a.retail_year
+	,a.retail_week
+	,a.AGE_FOR_RTL_WEEK_ID                                                                                       
+	,a.segment	
+	,a.vertical	
+	,LSTG_CNT
+	,slr_lst_cnt
+	,GMV_PLAN                                      	
+	,SOLD_ITEMS	
+	,slr_cnt_gmv
+	,SRP_IMP
+	,TTL_VI
+	,LSTG_per_LSTR
+
+FROM (		
+		SELECT 
+			retail_year
+			,retail_week	
+			,AGE_FOR_RTL_WEEK_ID                                                                                       
+			,segment
+			,vertical
+			,LSTG_CNT
+			,slr_lst_cnt
+			,LSTG_per_LSTR
+		FROM P_gaaustin_T.c2c_ll_wbr 
+	) a
+
+LEFT OUTER JOIN 
+		(
+		SELECT 
+			retail_week
+			,retail_year
+			,AGE_FOR_RTL_WEEK_ID                                                                                   	                                                                           	
+			,vertical
+			,segment
+			,GMV_PLAN                                    	
+			,SOLD_ITEMS
+			,slr_cnt_gmv
+		FROM P_gaaustin_T.c2c_gmv_wbr
+		)b 
+ON		a.AGE_FOR_RTL_WEEK_ID = B.AGE_FOR_RTL_WEEK_ID 
+AND		a.retail_year = b.retail_year  
+AND		a.segment =  B.segment  
+AND 	a.vertical =  B.vertical
+
+LEFT OUTER JOIN 
+		(
+		SELECT 
+			retail_year
+			,retail_week
+			,AGE_FOR_RTL_WEEK_ID                                                                                      
+			,segment
+			,vertical	
+			,SRP_IMP
+			,TTL_VI
+		FROM P_gaaustin_T.c2c_vi_wbr		
+		) c 
+ON		a.AGE_FOR_RTL_WEEK_ID = c.AGE_FOR_RTL_WEEK_ID 
+AND		a.retail_year = c.retail_year  
+AND		a.segment = c.segment  
+AND		a.vertical = c.vertical
+
+
+GROUP BY 
+		a.retail_year
+		,a.retail_week
+		,a.AGE_FOR_RTL_WEEK_ID                                                                                 
+		,a.segment
+		,a.vertical
+		,LSTG_CNT
+		,slr_lst_cnt
+		,LSTG_per_LSTR
+		,GMV_PLAN                                    	
+		,SOLD_ITEMS
+		,slr_cnt_gmv
+		,SRP_IMP
+		,TTL_VI
+ ); 
+
+---------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------- 
+DROP TABLE IF EXISTS P_gaaustin_T.c2c_funnel_summary_wbr;
+CREATE table P_gaaustin_T.c2c_funnel_summary_wbr as (
+
+SELECT
+			BASE.segment	
+			,BASE.vertical
+			,LW_LST_CNT
+			,LW_SLR_LST_CNT
+			,LW_LSTG_per_LSTR
+			,LW_GMV
+			,LW_SI
+			,LW_SLR_CNT_GMV
+			,LW_SRP_IMP
+			,LW_VI
+			,L2W_LST_CNT
+			,L2W_SLR_LST_CNT
+			,L2W_LSTG_per_LSTR
+			,L2W_GMV
+			,L2W_SI
+			,L2W_SLR_CNT_GMV
+			,L2W_SRP_IMP
+			,L2W_VI
+			,LY_LST_CNT
+			,LY_SLR_LST_CNT
+			,LY_LSTG_per_LSTR
+			,LY_GMV
+			,LY_SI
+			,LY_SLR_CNT_GMV
+			,LY_SRP_IMP
+			,LY_VI
+			,L2Y_LST_CNT
+			,L2Y_SLR_LST_CNT
+			,L2Y_LSTG_per_LSTR
+			,L2Y_GMV
+			,L2Y_SI
+			,L2Y_SLR_CNT_GMV
+			,L2Y_SRP_IMP
+			,L2Y_VI
+			,L3Y_LST_CNT
+			,L3Y_SLR_LST_CNT
+			,L3Y_LSTG_per_LSTR
+			,L3Y_GMV
+			,L3Y_SI
+			,L3Y_SLR_CNT_GMV
+			,L3Y_SRP_IMP
+			,L3Y_VI
+			
+FROM 		(SELECT 
+				A.SEGMENT
+				,A.VERTICAL
+				,SUM(LSTG_CNT) AS LW_LST_CNT
+				,SUM(slr_lst_cnt) AS LW_SLR_LST_CNT
+				,LW_LST_CNT/LW_SLR_LST_CNT AS LW_LSTG_per_LSTR
+				,SUM(GMV_PLAN) AS LW_GMV
+				,SUM(SOLD_ITEMS) AS LW_SI
+				,SUM(slr_cnt_gmv) AS LW_SLR_CNT_GMV
+				,SUM(SRP_IMP) AS LW_SRP_IMP
+				,SUM(TTL_VI) AS LW_VI 
+		
+			FROM 		P_gaaustin_T.c2c_funnel_wbr A 
+			WHERE 		AGE_FOR_RTL_WEEK_ID = -1 
+			GROUP BY 	1,2
+			) BASE
+
+LEFT JOIN 	(SELECT 
+				A.SEGMENT
+				,A.VERTICAL
+				,SUM(LSTG_CNT) AS L2W_LST_CNT
+				,SUM(slr_lst_cnt) AS L2W_SLR_LST_CNT
+				,L2W_LST_CNT/ L2W_SLR_LST_CNT AS L2W_LSTG_per_LSTR
+				,SUM(GMV_PLAN) AS L2W_GMV
+				,SUM(SOLD_ITEMS) AS L2W_SI
+				,SUM(slr_cnt_gmv) AS L2W_SLR_CNT_GMV
+				,SUM(SRP_IMP) AS L2W_SRP_IMP
+				,SUM(TTL_VI) AS L2W_VI 
+			
+			FROM 		P_gaaustin_T.c2c_funnel_wbr A 
+			WHERE 		AGE_FOR_RTL_WEEK_ID = -2 
+			GROUP 		BY 1,2
+			) L2W 
+ON 			L2W.VERTICAL = BASE.VERTICAL 
+AND 		L2W.SEGMENT  = BASE.SEGMENT 
+
+LEFT JOIN 	(SELECT 
+				A.SEGMENT
+				,A.VERTICAL
+				,SUM(LSTG_CNT) AS LY_LST_CNT
+				,SUM(slr_lst_cnt) AS LY_SLR_LST_CNT
+				,LY_LST_CNT/LY_SLR_LST_CNT AS LY_LSTG_per_LSTR
+				,SUM(GMV_PLAN) AS LY_GMV
+				,SUM(SOLD_ITEMS) AS LY_SI
+				,SUM(slr_cnt_gmv) AS LY_SLR_CNT_GMV
+				,SUM(SRP_IMP) AS LY_SRP_IMP
+				,SUM(TTL_VI) AS LY_VI 
+			
+			FROM 		P_gaaustin_T.c2c_funnel_wbr A 
+			WHERE 		AGE_FOR_RTL_WEEK_ID = -53 
+			GROUP BY 	1,2
+			) LY 
+ON 			LY.VERTICAL = BASE.VERTICAL 
+AND			LY.SEGMENT  = BASE.SEGMENT 
+
+LEFT JOIN 	(SELECT 
+				A.SEGMENT
+				,A.VERTICAL, SUM(LSTG_CNT) AS L2Y_LST_CNT
+				,SUM(slr_lst_cnt) AS L2Y_SLR_LST_CNT
+				,L2Y_LST_CNT/L2Y_SLR_LST_CNT AS L2Y_LSTG_per_LSTR
+				,SUM(GMV_PLAN) AS L2Y_GMV
+				,SUM(SOLD_ITEMS) AS L2Y_SI
+				,SUM(slr_cnt_gmv) AS L2Y_SLR_CNT_GMV
+				,SUM(SRP_IMP) AS L2Y_SRP_IMP
+				,SUM(TTL_VI) AS L2Y_VI 
+			
+			FROM 		P_gaaustin_T.c2c_funnel_wbr A 
+			WHERE 		AGE_FOR_RTL_WEEK_ID = -105 
+			GROUP BY 	1,2
+			) L2Y 
+ON 			L2Y.VERTICAL = BASE.VERTICAL 
+AND 		L2Y.SEGMENT  = BASE.SEGMENT 
+
+LEFT JOIN 	(SELECT 
+				A.SEGMENT
+				,A.VERTICAL
+				,SUM(LSTG_CNT) AS L3Y_LST_CNT
+				,SUM(slr_lst_cnt) AS L3Y_SLR_LST_CNT
+				,L3Y_LST_CNT/L3Y_SLR_LST_CNT AS L3Y_LSTG_per_LSTR
+				,SUM(GMV_PLAN) AS L3Y_GMV
+				,SUM(SOLD_ITEMS) AS L3Y_SI
+				,SUM(slr_cnt_gmv) AS L3Y_SLR_CNT_GMV
+				,SUM(SRP_IMP) AS L3Y_SRP_IMP
+				,SUM(TTL_VI) AS L3Y_VI 
+			
+			FROM 		P_gaaustin_T.c2c_funnel_wbr A 
+			WHERE 		AGE_FOR_RTL_WEEK_ID = -157 
+			GROUP BY 	1,2
+			) L3Y 
+ON 			L3Y.VERTICAL = BASE.VERTICAL 
+AND		 	L3Y.SEGMENT  = BASE.SEGMENT 			
+ );
+
+---------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------- 
+DROP TABLE IF EXISTS P_gaaustin_T.c2c_funnel_summary1_wbr;
+CREATE table P_gaaustin_T.c2c_funnel_summary1_wbr as (
+
+SELECT * FROM 
+	(SELECT
+		CASE
+			WHEN AGE_FOR_RTL_WEEK_ID = -1  THEN 'LW ACTUALS'
+			WHEN AGE_FOR_RTL_WEEK_ID = -2  THEN 'L2W ACTUALS'
+			WHEN AGE_FOR_RTL_WEEK_ID = -53  THEN 'LY ACTUALS'
+			WHEN AGE_FOR_RTL_WEEK_ID = -105  THEN 'L2Y ACTUALS'
+			WHEN AGE_FOR_RTL_WEEK_ID = -157  THEN 'L3Y ACTUALS'
+			ELSE 'OTHER' 
+		END AS WEEK_FLAG
+		,a.AGE_FOR_RTL_WEEK_ID                                                                                      
+		,a.segment
+		,a.vertical
+		,LSTG_CNT
+		,slr_lst_cnt
+		,LSTG_per_LSTR
+		,GMV_PLAN                                    	
+		,SOLD_ITEMS
+		,slr_cnt_gmv
+		,SRP_IMP
+		,TTL_VI
+				
+	FROM P_gaaustin_T.c2c_funnel_wbr A 
+	) 
+
+WHERE WEEK_FLAG NOT IN ('OTHER') 
+);

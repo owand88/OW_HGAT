@@ -1,0 +1,22 @@
+DROP TABLE IF EXISTS P_gaaustin_T.C2C_WBR_EUGEM;
+CREATE TABLE P_gaaustin_T.C2C_WBR_EUGEM AS (
+
+SELECT DISTINCT 
+	CBT
+	,GMV_Plan
+	,RETAIL_YEAR_ROLL52
+	,RETAIL_WEEK_ROLL52
+	,TOT_REV_PLAN
+	,retail_week
+	,retail_year
+	,SI
+	
+FROM 	ACCESS_VIEWS.eugem --> Query as to whether or not to use eugem tables if for the rest of the reports we use other tables that dont exactly marry to this figure
+
+WHERE 	1=1
+AND 	RETAIL_YEAR BETWEEN (year(CURRENT_DATE-1)-1) and  year(CURRENT_DATE-1) -- most recent 2 years
+AND 	business = 'C2C'
+AND 	rev_rollup = 'UK'
+AND 	version = "ACTUALS"
+AND 	category = "Core"
+);
