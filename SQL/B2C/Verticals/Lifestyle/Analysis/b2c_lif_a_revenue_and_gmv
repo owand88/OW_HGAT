@@ -7,7 +7,7 @@ with seller as
 (
 Select user_id as seller_id, user_slctd_id as seller_name
 From DW_USERS 
-Where user_id in (1082372328)
+Where user_id in (167935447 )
 )
 
 
