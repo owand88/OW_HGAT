@@ -1,4 +1,19 @@
 {
     "atlascode.bitbucket.enabled": false,
-    "github-enterprise.uri": "https://github.ebay.com"
+    "github-enterprise.uri": "https://github.ebay.com",
+    "sqltools.connections": [
+        {
+            "mysqlOptions": {
+                "authProtocol": "default"
+            },
+            "previewLimit": 50,
+            "server": "hermes.prod.vip.ebay.com.localtest.me",
+            "port": 10001,
+            "driver": "MySQL",
+            "name": "test",
+            "database": "access_views",
+            "username": "robevans",
+            "askForPassword": true
+        }
+    ]
 }
