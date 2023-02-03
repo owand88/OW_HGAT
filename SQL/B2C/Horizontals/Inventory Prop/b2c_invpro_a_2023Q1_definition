@@ -10,10 +10,10 @@ cal.retail_year
 ,case when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
       when cat.meta_categ_id in (26395) then 'Lifestyle'
       when cat.categ_lvl3_id in (260325) then 'Lifestyle'
-
+      when cat.categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
       when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
       when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
-      when cat.categ_lvl3_id in (124982, 259225, 180969, 260509) then 'Business & Industrial'
+      when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
       when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
       when cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
       else cat.bsns_vrtcl_name end as new_vertical
