@@ -1,0 +1,208 @@
+
+-------------------------------------------------------------------------------------------------------------------------------
+-- UKPLAN-140
+-- Legal Requesting used parts data to assist CMA (Competition Markets Authority) 
+---------------------------------------------------------------------------------------------------------------------------------------
+
+--2.	We are seeking to understand the competitive landscape in the supply of green parts in the UK. Please provide data on the following separately for 2021 and 2022:
+--a)	the number of sellers of green parts:
+--i.	which are certified ATFs using eBay’s business to business green parts platform; and
+--ii.	which use eBay’s more general platform (1) overall and (2) split by (certified) ATFs and other sellers.
+--i. from the certified sellers list, who had transactions on the B2B platform
+--ii.ebay.co.uk sellers split by Certified and B2C
+
+--b)	the overall volume and value of green parts:
+--i.	sold through eBay’s business to business green parts platform; and
+--ii.	sold through eBay’s more general platform
+
+--c)	separately for each of your top ten sellers of green parts:
+--i.	the volume and value of green parts sold through eBay’s business to business green parts platform; and
+--ii.	the volume and value of green parts sold through eBay’s more general platform.
+
+--d)	for green parts sold through eBay’s business to business green parts platform, the proportion of such sales (by volume and by value) accounted for by:
+--i.	bodyshops; and
+--ii.	garages.
+
+
+
+---- Seller list
+drop table   P_ICHAN_T.gp_gmv_cma_list ;
+create table  P_ICHAN_T.gp_gmv_cma_list as 
+select a.on_portal,
+a.start_date,
+a.end_date,
+U.USER_SLCTD_ID,
+user_id as seller_id 
+from P_ICHAN_T.recyclers_start_end a
+left join DW_USERs U  on a.seller_name =u.USER_SLCTD_ID
+;
+
+--select * from P_ICHAN_T.gp_gmv_cma_list  ;
+--Select * from P_ICHAN_T.gp_orders ;
+
+
+------ GMV VOL AND VAL
+ drop table if exists P_ICHAN_T.gp_cma_gmv  ;
+ create table P_ICHAN_T.gp_cma_gmv as(
+SELECT	Retail_year
+--,		retail_week	
+,		ck.seller_id
+,		u.USER_SLCTD_ID
+, 
+  CASE 
+    WHEN s.seller_id IS NOT NULL THEN 'Certified Seller'
+    ELSE  'B2C Seller'
+  END AS seller_type
+  
+ , case when ck.transaction_id=port.transaction_id then 'B2B platform' else 'ebay.co.uk' end as Platform
+,SUM(gmv_plan_usd) AS GMV_usd
+,sum(QUANTITY) as BI
+,SUM(  CASE 
+    WHEN s.seller_id IS NOT NULL THEN 1
+    ELSE 0  END) AS seller_COUNT
+FROM   DW_CHECKOUT_TRANS ck -- SELECT * FROM   DW_CHECKOUT_TRANS  where seller_id= 45524941
+--left join P_ICHAN_T.gp_gmv_cma_list s on s.seller_id = ck.SELLER_ID -- select *  from   P_awang_ops_T.seller_ops_83
+LEFT JOIN  P_ICHAN_T.gp_gmv_cma_list  s
+  ON ck.seller_id = s.seller_id
+  AND ck.gmv_dt >= s.start_date
+  AND ck.gmv_dt <= IFNULL(s.end_date,'2023-12-31')
+LEFT JOIN ( SELECT DISTINCT  TRANSACTIONID AS transaction_id from P_ICHAN_T.gp_orders  ) port on ck.TRANSACTION_ID=port.transaction_id
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.gmv_DT   and retail_year >=2021 and age_for_rtl_week_id <= -1  --change here for time period if needed
+INNER JOIN ( select meta_categ_id, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_name, categ_lvl4_id, LEAF_CATEG_ID,SITE_ID,
+			 BSNS_VRTCL_NAME  ,SAP_CATEGORY_ID,
+					
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+else bsns_vrtcl_name end as new_vertical
+		from DW_CATEGORY_GROUPINGS where SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)  group by 1,2,3,4,5,6,7,8 ,9,10,11,12)  AS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) 
+		AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			inner JOIN lstg_item_cndtn cond ON ck.item_id = cond.item_id  AND ck.auct_end_dt = cond.AUCT_END_DT
+			left outer JOIN DW_USERs U ON U.USER_ID= ck.seller_id 
+			INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+						WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				--and ck.site_id = 3
+				and slr_cntry_id = 3
+				and BYR_CNTRY_ID=3
+				--and seller_id =1193121968
+				and CREATED_DT >='2018-01-01'
+				and  categ_lvl2_id in (6030)
+				and retail_year in (2021,2022) 
+			--	and U.USER_SLCTD_ID  in(	SELECT * from P_ICHAN_T.certified_ll_output )
+				and new_vertical in('Parts & Accessories','Electronics','Lifestyle','Home & Garden','Business & Industrial','Collectibles','Fashion','FMCG','Media')
+				and u.USER_DSGNTN_ID =2 
+				and  CNDTN_ROLLUP_ID = 3
+				and HIST.USEGM_ID = 206		
+
+				GROUP BY 1,2,3,4,5);
+				--30927    
+				
+select Retail_year,
+seller_type,
+Platform,
+count(distinct seller_id) as seler_count,
+sum(GMV_usd) as GMV_usd,
+sum(BI) BI 
+from P_ICHAN_T.gp_cma_gmv 
+group by 1,2,3
+order by 1,2  limit 1000;		
+
+
+-- top 10 Sellers
+Drop table   P_ICHAN_T.gp_cma_gmv_rank ;
+create table  P_ICHAN_T.gp_cma_gmv_rank as 
+SELECT seller_id, 
+USER_SLCTD_ID,
+GMV_usd,
+BI,
+retail_year,
+platform,
+seller_type,
+ROW_NUMBER() OVER (PARTITION BY Retail_year, platform /*, seller_type*/
+ORDER BY GMV_usd DESC) AS rank_value
+FROM  P_ICHAN_T.gp_cma_gmv -- select 
+;
+select * from  P_ICHAN_T.gp_cma_gmv_rank where rank_value <=10 limit 1000 ; 
+
+------------------------------------------------------------
+--- categroy level to get top 10 L4 
+-------------------------------------------------------------
+--what the ten most popular types of parts (eg bonnet, bumper) on eBay and whether this differs between eBay’s business to business green parts platform and eBay’s more general platform. 
+
+drop table if exists P_ICHAN_T.gp_cma_gmv_cat  ;
+ create table P_ICHAN_T.gp_cma_gmv_cat as(
+SELECT	Retail_year
+--,		retail_week	
+--,		ck.seller_id
+--,		USER_SLCTD_ID
+,  cat.CATEG_LVL2_NAME
+,  cat.CATEG_LVL2_ID
+,  cat.CATEG_LVL3_NAME
+,  cat.CATEG_LVL3_ID
+,  cat.CATEG_LVL4_NAME
+,  cat.CATEG_LVL4_ID
+--, case when s.seller_id = ck.SELLER_ID then 'Certified sellers' else 'B2C sellers' end as seller_type
+, case when ck.transaction_id=port.transaction_id then 'B2B platform' else 'ebay.co.uk' end as Platform
+,SUM(gmv_plan_usd) AS GMV_usd
+,sum(QUANTITY) as BI
+FROM   DW_CHECKOUT_TRANS ck -- SELECT * FROM   DW_CHECKOUT_TRANS  where seller_id= 45524941
+left join ( select distinct seller_id from P_ICHAN_T.gp_gmv_cma_list )s on s.seller_id = ck.SELLER_ID -- select *  from   P_awang_ops_T.seller_ops_83
+LEFT JOIN ( SELECT DISTINCT  TRANSACTIONID AS transaction_id from P_ICHAN_T.gp_orders  ) port on ck.TRANSACTION_ID=port.transaction_id
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.gmv_DT   and retail_year >=2021 and age_for_rtl_week_id <= -1  --change here for time period if needed
+INNER JOIN ( select meta_categ_id, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_name, categ_lvl4_id, LEAF_CATEG_ID,SITE_ID,
+			 BSNS_VRTCL_NAME  ,SAP_CATEGORY_ID,
+					
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+else bsns_vrtcl_name end as new_vertical
+		from DW_CATEGORY_GROUPINGS where SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)  group by 1,2,3,4,5,6,7,8 ,9,10,11,12)  AS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) 
+		AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			inner JOIN lstg_item_cndtn cond ON ck.item_id = cond.item_id  AND ck.auct_end_dt = cond.AUCT_END_DT
+			left outer JOIN DW_USERs U ON U.USER_ID= ck.seller_id 
+			INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+						WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				--and ck.site_id = 3
+				and slr_cntry_id = 3
+				and BYR_CNTRY_ID=3
+				--and seller_id =1193121968
+				and CREATED_DT >='2018-01-01'
+				and  categ_lvl2_id in (6030)
+			--	and U.USER_SLCTD_ID  in(	SELECT * from P_ICHAN_T.certified_ll_output )
+				and new_vertical in('Parts & Accessories','Electronics','Lifestyle','Home & Garden','Business & Industrial','Collectibles','Fashion','FMCG','Media')
+				and u.USER_DSGNTN_ID =2 
+				and  CNDTN_ROLLUP_ID = 3
+				and HIST.USEGM_ID = 206		
+
+				GROUP BY 1,2,3,4,5,6,7,8);
+				--1005   
+Select * from P_ICHAN_T.gp_cma_gmv_cat  ; 
+select Retail_year,
+platform,
+CATEG_LVL4_NAME,
+sum(GMV_usd) GMV_usd , 
+sum(BI) BI
+from P_ICHAN_T.gp_cma_gmv_cat 
+where retail_year in (2021,2022) 
+group by 1,2,3
+order by 1,2,3;
