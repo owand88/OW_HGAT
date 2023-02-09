@@ -1,0 +1,122 @@
+/*
+UKPLAN-145
+Number of HG transactions in 2022 for All Hands
+*/
+
+--84,247,657 transactions; 1,761,178,135 GMV
+--Average value of transaction is $21
+
+select
+case when ck.slr_cntry_id=3 then 'UK seller' else 'Non-UK seller'
+count(distinct ck.transaction_id||ck.item_id) as txn_cnt
+,sum(ck.GMV_PLAN_USD) as GMV
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+        
+inner join (select meta_categ_id,categ_lvl2_id,categ_lvl3_id,categ_lvl4_id,leaf_categ_id,site_id
+			,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+             when meta_categ_id in (26395) then 'Lifestyle'
+             when categ_lvl3_id in (260325) then 'Lifestyle'
+             when categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
+             when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+             when categ_lvl3_id in (3244) then 'Parts & Accessories'
+             when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+             when categ_lvl2_id in (46576) then 'Parts & Accessories'
+             when categ_lvl2_id in (63, 29223) then 'Collectibles'
+             else bsns_vrtcl_name end as new_vertical
+	        from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,41,23,-999) 
+			group by 1,2,3,4,5,6,7)  as cat
+on lstg.leaf_categ_id=cat.leaf_categ_id
+and lstg.item_site_id=cat.site_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal
+on ck.GMV_dt=cal.cal_dt
+and cal.retail_year=2022
+
+inner join (select usegm_grp_id,usegm_id,end_date,user_id,beg_date 
+		    from access_views.dw_usegm_hist 
+	        where usegm_grp_id = 48 																						
+	        and usegm_id = 206 																								
+	        and end_date >= '2015-12-30' 
+			group by 1,2,3,4,5) as hist 																						
+on hist.user_id=lstg.slr_id and lstg.auct_start_dt between hist.beg_date and hist.end_date	
+        
+where 
+cat.new_vertical='Home & Garden'
+and ck.slr_cntry_id=3 
+and ck.byr_cntry_id=3 
+and ck.slr_cntry_id=ck.byr_cntry_id 
+and ck.rprtd_wacko_yn='N'
+and ck.auct_end_dt>'2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+;
+
+--Data Check
+--$1,792,617,729 GMV, above value is 1.8% less than the UKI_FINAL value
+select sum(GMV) from P_CSI_TBS_T.UKI_FINAL 
+where retail_year = 2022 and vertical = 'Home & Garden';
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--FU from Chris to get total from both B2C/C2C and domestic/CBT on UK site
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.HG_txn_22;
+create table p_uk_bc_t.HG_txn_22 as (
+select
+case when ck.slr_cntry_id=3 then 'UK Seller' else 'Non-UK Seller' end as seller_country
+,case when ck.byr_cntry_id=3 then 'UK Buyer' else 'Non-UK Buyer' end as buyer_country
+,case when ck.slr_cntry_id=3 and ck.byr_cntry_id=3 then 1 else 0 end as domestic_flag
+,case when hist.usegm_id = 206 then 'B2C' else 'C2C' end as seller_type
+,count(distinct ck.transaction_id||ck.item_id) as txn_cnt
+,sum(ck.GMV_PLAN_USD) as GMV
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+        
+inner join (select meta_categ_id,categ_lvl2_id,categ_lvl3_id,categ_lvl4_id,leaf_categ_id,site_id
+			,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+             when meta_categ_id in (26395) then 'Lifestyle'
+             when categ_lvl3_id in (260325) then 'Lifestyle'
+             when categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
+             when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+             when categ_lvl3_id in (3244) then 'Parts & Accessories'
+             when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+             when categ_lvl2_id in (46576) then 'Parts & Accessories'
+             when categ_lvl2_id in (63, 29223) then 'Collectibles'
+             else bsns_vrtcl_name end as new_vertical
+	        from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,41,23,-999) 
+			group by 1,2,3,4,5,6,7)  as cat
+on lstg.leaf_categ_id=cat.leaf_categ_id
+and lstg.item_site_id=cat.site_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal
+on ck.GMV_dt=cal.cal_dt
+and cal.retail_year=2022
+
+inner join (select usegm_grp_id,usegm_id,end_date,user_id,beg_date
+		    ,case when usegm_id=206 then 1 else 0 end as B2C_flag
+		    from access_views.dw_usegm_hist 
+	        where usegm_grp_id = 48 																																												
+	        and end_date >= '2015-12-30' 
+			group by 1,2,3,4,5,6
+			qualify (row_number() over (partition by user_id order by B2C_flag desc))=1) as hist 																						
+on hist.user_id=lstg.slr_id and lstg.auct_start_dt between hist.beg_date and hist.end_date	
+        
+where 
+cat.new_vertical='Home & Garden'
+--and ck.slr_cntry_id=3 
+--and ck.byr_cntry_id=3 
+--and ck.slr_cntry_id=ck.byr_cntry_id 
+and ck.rprtd_wacko_yn='N'
+and ck.auct_end_dt>'2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+group by 1,2,3,4)
+;
