@@ -1,0 +1,32 @@
+
+------------------------------------------------------------------------------------------------
+-- P&A Coupon Data Request
+------------------------------------------------------------------------------------------------
+
+--Are you able to share 2022 and 2023 coupon data that covers the following –
+--1.	Coupons
+--2.	Number of days
+--3.	Year
+--4.	Month
+--5.	Week
+--6.	Sellers
+--7.	Discounts
+--8.	GMV
+--9.	Coupon spend
+--10.	Quantity sold
+
+drop table  if exists P_INVENTORYPLANNING_T.b2c_pa_a_coupon_data;
+create table P_INVENTORYPLANNING_T.b2c_pa_a_coupon_data as (
+select  
+datediff(end_date, '1970-01-01') - datediff(start_date, '1970-01-01') AS Number_of_days,
+month(start_date) as  Month ,
+b.USER_SLCTD_ID,
+a.* 
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1  a 
+left join ACCESS_VIEWS.dw_users b on a.slr_id=b.user_id  -- help table dw_users
+where retail_year >=2022  
+and vertical in('Parts & Accessories')
+ and promotion_type ='seller coupon'); 
+ 
+ select * from  P_INVENTORYPLANNING_T.b2c_pa_a_coupon_data limit 100; 
+ 
