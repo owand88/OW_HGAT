@@ -1,0 +1,91 @@
+/*Aim: Review CR offerings on eBay to decide products for Lumina to scrape and track*/
+
+--Last 6 full Month (Aug2022 - Jan2023)
+select distinct month_id from dw_cal_dt 
+where (year_id=2022 and month_of_year_id between 8 and 12) or (year_id=2023 and month_of_year_id=1)
+order by 1;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- CR products sold in the L6M
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+create table P_InventoryPlanning_T.Lumina_CR_L6M as (
+select
+lstg.item_id
+,lstg.auct_end_dt as listing_end_date
+,lstg.auct_start_dt as listing_start_date
+,lstg.auct_title as listing_title
+,br.brand
+,mod.model
+,lstg.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+,min(ck.EU_B2C_C2C_flag) as B2C_C2C
+,sum(ck.GMV20_plan) as tot_GMV
+,sum(ck.GMV20_sold_quantity) AS tot_BI
+
+from prs_restricted_v.slng_trans_super_fact ck 
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on ck.item_id=lstg.item_id
+
+inner join (select meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id
+			from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8,9,10) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt
+and (cal.year_id=2022 and cal.month_of_year_id between 8 and 12) or (cal.year_id=2023 and cal.month_of_year_id=1)
+        
+left join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+--Brand
+left join
+(select 
+item_id
+,auct_end_dt
+,lower(prdct_aspct_nm) as lcase_aspect_name
+,upper(aspct_vlu_nm) as brand
+from access_views.item_aspct_clssfctn
+where lower(prdct_aspct_nm) = 'brand' 
+and ns_type_cd in ('df','nf')
+qualify (row_number() over (partition by item_id order by lower(prdct_aspct_nm)))=1--acquire just one row for brand
+)br
+on lstg.item_id = br.item_id and lstg.auct_end_dt = br.auct_end_dt
+
+--Model
+left join
+(select 
+item_id
+,auct_end_dt
+,lower(prdct_aspct_nm) as lcase_aspect_name
+,upper(aspct_vlu_nm) as model
+from access_views.item_aspct_clssfctn
+where lower(prdct_aspct_nm) = 'model' 
+and ns_type_cd in ('df','nf')
+qualify (row_number() over (partition by item_id order by lower(prdct_aspct_nm)))=1
+)mod
+on lstg.item_id = mod.item_id and lstg.auct_end_dt = mod.auct_end_dt
+
+where 
+lstg.item_cndtn_id = 2000
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.lstg_site_id = 3 
+and ck.iscore = 1
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+group by 1,2,3,4,5,6,7,8,9,10,11,12
+);
+
+--255,509
+select count(*),count(distinct item_id) from P_InventoryPlanning_T.Lumina_CR_L6M;
+
+--Add to Excel Data Connection
+select * from P_InventoryPlanning_T.Lumina_CR_L6M
+order by tot_GMV desc;
+--qualify (row_number() over (order by tot_GMV desc))<=1000

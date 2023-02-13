@@ -1,0 +1,136 @@
+/*Aim: Stats to support narrative of businesses turning to eBay sellers for fit-out needs
+
+Cost-of-doing-business pressure: Firms turning to refurbed tech to fight inflation
+ 
+Narrative: Online sellers specialising in refurbed tech are seeing huge growth as thrifty businesses shun costly brand-new equipment in a bid to mitigate the increasing cost of doing business.
+ 
+Key messages:
+•	The refurbished tech market is evolving rapidly and is a sophisticated marketplace capable of servicing business needs, often at a fraction of the cost of buying new.
+•	Misconceptions around the difficulties of fitting out an office with refurbed equipment – low quality, not suitable for the large-scale needs of businesses – are a thing of the past.
+•	As a result, sellers on the eBay platform are thriving as businesses turn to them for their fit-out needs.
+ 
+Data points needed:
+•	Data to show increasing demand from businesses for refurbed tech – office-relevant so bulk buy or multi-buy listings of laptops, phones, interactive whiteboards. Or, if more realistic, the more peripheral items i.e. keyboards, mice, headsets, cables etc. We could also look at search for this if it yields better uplifts.
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Categories of interest
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Mobile Phones & Communication(15032)Mobile & Smart Phones(9355) 
+Computers/Tablets & Networking(58058)Laptops & Netbooks(175672)
+Business, Office & Industrial(12576)Office Equipment & Supplies(25298)Office Equipment(50203)Flipcharts/Whiteboards(105998)
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Transactions
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.used_Q4_txn;
+create table p_uk_bc_t.used_Q4_txn as (
+select
+cal.retail_year
+,cal.retail_week
+,ck.GMV_dt
+,ck.transaction_id
+,ck.item_id
+,ck.item_vrtn_id
+,case when ck.item_vrtn_id=-999 then 0 else 1 end as MSKU_lstg
+,lstg.auct_titl as listing_title
+,categ_lvl3_id
+,categ_lvl3_name
+
+,lstg.slr_id as seller_id
+,slr.user_slctd_id as seller_name
+,slr.comp as seller_comp
+,slr.user_dsgntn_id as seller_type
+,case when ck.slr_cntry_id=3 then 'UK Seller' else 'Non-UK Seller' end as seller_cntry
+
+,ck.buyer_id as buyer_id
+,byr.user_slctd_id as buyer_name
+,byr.comp as buyer_comp
+,byr.user_dsgntn_id as buyer_type
+,case when ck.byr_cntry_id=3 then 'UK Buyer' else 'Non-UK Buyer' end as buyer_cntry
+
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+
+,sum(ck.GMV_plan_usd) as GMV_USD
+,sum(ck.quantity) AS tot_SI
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+
+inner join (select meta_categ_id, meta_categ_name, categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, leaf_categ_id, site_id
+			from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt 
+and cal.retail_year in (2021,2022) and cal.retail_week between 40 and 52
+    
+inner join access_views.dw_users slr
+on lstg.slr_id = slr.user_id
+
+left join access_views.dw_users byr
+on ck.buyer_id = byr.user_id
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+where 
+cat.categ_lvl2_id in (9355,175672)--mobile, laptop/notebook
+or cat.categ_lvl3_id = 50203--office equipment
+--and ck.slr_cntry_id = 3 --UK sellers
+--and ck.byr_cntry_id = 3 --UK buyers
+--and ck.slr_cntry_id = ck.byr_cntry_id --DOM
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Analysis
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+select count(*) from p_uk_bc_t.used_Q4_txn;
+
+drop table analysis;
+create temporary table analysis as (
+select 
+retail_year
+,categ_lvl3_name
+,case when categ_lvl3_name in ('PC Laptops & Netbooks','Apple Laptops') then 'Laptop / Notebook' else categ_lvl3_name end as cat
+,case when seller_type=2 then 1 else 0 end as business_seller
+,seller_cntry
+,buyer_type
+,case when buyer_cntry=2 then 1 else 0 end as business_seller_buyer
+,case when tot_SI>10 then 1 else 0 end as bulk_buy
+,case when item_cndtn_id <> 1000 then 1 else 0 end as Non_New
+,item_condition
+,count(distinct transaction_id||item_id) as txn_vol
+from p_uk_bc_t.used_Q4_txn
+group by 1,2,3,4,5,6,7,8,9,10
+);
+
+--0 row, use solely bulk_buy as business buyer indicator
+select * from analysis
+where business_seller_buyer=1 and bulk_buy=1;

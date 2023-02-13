@@ -15,5 +15,6 @@
             "username": "robevans",
             "askForPassword": true
         }
-    ]
+    ],
+    "python.analysis.typeCheckingMode": "basic"
 }
