@@ -1,0 +1,52 @@
+/*Aim:
+Categories classified as focus for Open Box in US
+
+Global Focus Categories: https://wiki.corp.ebay.com/pages/viewpage.action?pageId=960434499
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--US definition from wiki
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+and (cat.categ_lvl2_id in (9355,175673,175672,32852,15052) or cat.categ_lvl3_id in (20625,20710,181076))
+
+BBE.ITEM_CNDTN_ID = 1500 AND C.SITE_ID in (0)
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Category info for US and UK
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table cat;
+create temporary table cat as (
+select meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, leaf_categ_name, site_id
+from access_views.dw_category_groupings
+where leaf_categ_id=move_to
+and (categ_lvl2_id in (9355,175673,175672,32852,15052) or categ_lvl3_id in (20625,20710,181076))
+and site_id in (0,3)--US / UK
+and leaf_categ_id=move_to
+);
+
+--US site
+--138
+select count(*),count(distinct leaf_categ_id) from cat
+where site_id=0;
+
+--UK site
+--72
+select count(*),count(distinct leaf_categ_id) from cat
+where site_id=3;
+
+--Export to Excel
+select 
+US.*
+,UK.*
+,case when UK_leaf_categ_id is null then 1 else 0 end as US_Only 
+from 
+(
+(select categ_lvl2_id as  US_categ_lvl2_id, categ_lvl2_name as US_categ_lvl2_name, categ_lvl3_id as US_categ_lvl3_id, categ_lvl3_name as US_categ_lvl3_name, categ_lvl4_id as US_categ_lvl4_id, categ_lvl4_name as US_categ_lvl4_name, leaf_categ_id as US_leaf_categ_id, leaf_categ_name as US_leaf_categ_name from cat where site_id=0) us
+
+full join 
+
+(select categ_lvl2_id as  UK_categ_lvl2_id, categ_lvl2_name as UK_categ_lvl2_name, categ_lvl3_id as UK_categ_lvl3_id, categ_lvl3_name as UK_categ_lvl3_name, categ_lvl4_id as UK_categ_lvl4_id, categ_lvl4_name as UK_categ_lvl4_name, leaf_categ_id as UK_leaf_categ_id, leaf_categ_name as UK_leaf_categ_name from cat where site_id=3) uk
+
+on US_leaf_categ_id=UK_leaf_categ_id
+);
