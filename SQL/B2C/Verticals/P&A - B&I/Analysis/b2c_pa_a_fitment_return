@@ -1,0 +1,71 @@
+-----------------------------------------------------------------------------------------------------------------------------------
+-- Can you please create a report for return because ‘doesn’t fit’ for fitment enabled and disabled products by sellers? 
+--We will also require top level % return for both enabled and disabled.
+------------------------------------------------------------------------------------------------------------------------------
+
+--drop table if exists P_Ichan_T.b2c_pa_a_return_fitment ;   -- select * from P_Ichan_T.dec_seller_report_ll ;  
+create table  P_Ichan_T.b2c_pa_a_return_fitment as 
+
+select
+cal.retail_year
+,cal.retail_week
+--,cal.retail_wk_end_date
+--,ck.slr_id as seller_id
+--,u.user_slctd_id as seller_name
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+---,categ_lvl4_id,categ_lvl4_name
+,case when CK.LEAF_CATEG_ID= F.LEAF_CATEG_ID     AND CK.lstg_site_id=F.SITE_ID AND fmt_enabled = 'Y' then 'Y' else 'N' end as Fitment_Enabled
+,case when cncl_rqstr_type_cd = 1 then "Seller Cancellation"
+	  when cncl_rqstr_type_cd =2 then "Buyer Cancellation"
+	  else "N/A" end as cancellation_initiated
+
+,coalesce(lkp.rqst_rsn_desc,"Not Specified") as cancellation_request_reason
+
+,count(distinct ck.transaction_id) as cancellation_transaction
+
+from prs_restricted_v.slng_trans_super_fact ck  -- select * from prs_restricted_v.slng_trans_super_fact ck limit 100;
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on ck.item_id=lstg.item_id
+
+inner join access_views.dw_users u 
+on ck.slr_id = u.user_id
+  inner  JOIN   p_csi_tbs_t.SH_UKDE_FITMENT_CATEG_new AS F ON CK.LEAF_CATEG_ID= F.LEAF_CATEG_ID     AND CK.lstg_site_id=F.SITE_ID AND fmt_enabled = 'Y'
+inner join (
+	select meta_categ_name,meta_categ_id,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,categ_lvl5_id,categ_lvl5_name,categ_lvl6_id,categ_lvl6_name,categ_lvl7_id,categ_lvl7_name,leaf_categ_id,leaf_categ_name,site_id
+	from access_views.dw_category_groupings 
+	where sap_category_id not in (5,7,41,23,-999) 
+    group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17) as cat																
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id = 3 
+
+inner join access_views.dw_cal_dt cal 
+on  cal.cal_dt = ck.GMV_dt and cal.retail_year >=2022 and cal.age_for_rtl_week_id <= -1
+
+left join 
+	(select * from prs_restricted_v.ebay_trans_rltd_event
+	where item_lstd_site_id = 3
+	and bbe_elgb_trans_ind = 1)co
+on ck.item_id=co.item_id and ck.transaction_id=co.trans_id
+
+left join access_views.po_cncl_rqst_rsn_lkp lkp
+on co.cncl_rqst_rsn_cd=lkp.rqst_rsn_cd
+
+
+where ck.EU_B2C_C2C_flag='B2C'    
+and ck.slr_cntry_id = 3 																										
+and ck.byr_cntry_id = 3 	
+and ck.slr_cntry_id=ck.byr_cntry_id 
+and ck.lstg_site_id = 3 
+and ck.iscore = 1	
+and ck.cndtn_rollup_id=1
+and ck.rprtd_wacko_yn = 'N'	
+and ck.auct_end_dt > '2018-12-29' 
+--and ck.slr_id in 
+and co.cncl_rqst_id is not null--cancellation
+and cat.categ_lvl2_id =6030
+group by 1,2,3,4,5,6,7,8,9;
+
+select distinct cancellation_request_reason from P_Ichan_T.b2c_pa_a_return_fitment ;
