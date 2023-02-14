@@ -1,0 +1,269 @@
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--•	Seller Badging analysis to be done pre seller badging go live and will need to be able to monitor this through march (when product make their testing live)
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+--
+-- select distinct SELLER_ID as seller_id_active from    p_InventoryPlanning_t.tyres_install_active;
+ -- 198
+ -------live listing
+ select * from P_Ichan_T.b2c_pa_a_tyre_badging_ll where item_condition ='New' ;
+ 
+--1-- Listings
+--drop table if exists  P_Ichan_T.b2c_pa_a_tyre_badging_ll ;   -- select * from P_Ichan_T.dec_seller_report_ll ;  
+create table  P_Ichan_T.b2c_pa_a_tyre_badging_ll as 
+(
+select 
+
+CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Other' END AS Item_Condition,
+lst.Slr_id,
+U.user_slctd_id,
+
+--case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  'Other'  end as Condition,
+count(distinct lst.item_id) LL
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+	INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 --and cASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+inner join (  select distinct SELLER_ID from    p_InventoryPlanning_t.tyres_install_active ) dec on lst.slr_id=dec.seller_id
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+LEFT JOIN 	
+				(SELECT
+				LEAF_CATEG_ID,
+				CATEG_LVL2_ID,
+				CATEG_LVL3_ID,
+				CATEG_LVL4_ID,
+               META_CATEG_NAME,
+				CATEG_LVL3_NAME,
+				CATEG_LVL2_NAME,
+				CATEG_LVL4_NAME,
+case when a.categ_lvl2_id in (20710, 69197) then 'Electronics'
+when a.meta_categ_id in (26395) then 'lifestyle'
+when a.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573) then 'Home & Garden'
+when a.categ_lvl3_id in (35000) then 'Home & Garden'
+when a.categ_lvl3_id in (3244) then 'Parts & Accessories'
+when a.categ_lvl2_id in (46576) then 'Parts & Accessories'
+when a.categ_lvl3_id in (124982, 259225,180969, 260509)  then 'Business & Industrial'
+else bsns_vrtcl_name end as new_vertical 
+				from 				DW_CATEGORY_GROUPINGS a 
+				where  				site_id = 3 and
+				(case when a.categ_lvl2_id in (20710, 69197) then 'Electronics'
+when a.meta_categ_id in (26395) then 'lifestyle'
+when a.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573) then 'Home & Garden'
+when a.categ_lvl3_id in (35000) then 'Home & Garden'
+when a.categ_lvl3_id in (3244) then 'Parts & Accessories'
+when a.categ_lvl2_id in (46576) then 'Parts & Accessories'
+when a.categ_lvl3_id in (124982, 259225,180969, 260509)  then 'Business & Industrial'
+when bsns_vrtcl_name in ('Collectibles') and a.meta_categ_id in (220, 237, 550)  then 'Collectibles B2C'
+when bsns_vrtcl_name in ('Collectibles') and a.categ_lvl2_id in (180250) then 'Collectibles B2C' 
+else bsns_vrtcl_name end) in('Parts & Accessories','Business & Industrial') and
+				SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+				) rcat on
+				rcat.leaf_categ_id = cat.LEAF_CATEG_ID
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  --AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL  ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT  and retail_year >=2021
+--INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL         	ON CAL.CAL_DT =lst.AUCT_START_DT--  AND retail_year in (2021,2022) and age_for_rtl_week_id <= -1 and lst.AUCT_START_DT >= '2021-03-01'--  and  age_for_rtl_week_id >= -10
+--INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+--INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON  CAL.CAL_DT = lst.CREATED_DT AND 				RETAIL_YEAR >= 2017
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID and retail_year >=  2020
+--INNER JOIN dw_lstg_item_cold lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--WHERE lst.AUCT_end_dt >= date -- limiit on live listings
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+	
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and lst.SLR_CNTRY_ID =3
+	and cat.CATEG_LVL4_ID =179680 
+ group by 1,2,3) ;
+
+ --------and   retail_week in (2,3,13,14,27,28,29,30)) ;--
+ 
+ 
+  select * from P_Ichan_T.b2c_pa_a_tyre_badging_ll where item_condition ='New' ;
+-- 2.  GMV
+select * from P_InventoryPlanning_T.ic_tyre_badging_seller_list ---(new)
+
+Drop table if exists P_Ichan_T.b2c_pa_a_tyre_badging_bi ; -- select distinct vertical from   P_Ichan_T.dec_seller_report_bi limit 100 ;
+CREATE TABLE P_ICHAN_T.b2c_pa_a_tyre_badging_bi as
+( 
+SELECT 
+
+CASE WHEN Retail_year  IN (2018,2019) AND RETAIL_WEEK =1 THEN 2019
+WHEN Retail_year  IN (2019,2020) AND RETAIL_WEEK =1 THEN 2020
+WHEN Retail_year  IN (2020,2021) AND RETAIL_WEEK =53 THEN 2020
+WHEN Retail_year  IN (2021,2022) AND RETAIL_WEEK =52 THEN 2021
+ELSE Retail_year end as Retail_year ,
+AGE_FOR_RTL_WEEK_ID,
+retail_week,
+
+u.USER_SLCTD_ID,
+ck.seller_id,
+
+case when badging =1 then 'seller_badging'
+		when badging =0 then 'tyre_seller' else 'not included' end as Seller_Group,
+
+case 	when retail_week between 22 and 44 and retail_year =2022 then 'pre' 
+		when retail_week >=45 and retail_year =2022 then 'post'
+		when retail_year =2023 then 'post' else 'other ' end as Period,
+		
+Case when Group_A =1 then 'Yes' else 'No' end as t_test, 
+
+CATEG_LVL4_ID,
+
+CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Other' END AS Item_Condition,
+
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
+		when meta_categ_id in (26395) then 'Lifestyle'
+		when CATEG_LVL3_ID in (260325) then 'Lifestyle'
+		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+		when categ_lvl3_id in (3244) then 'Parts & Accessories'
+		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+		when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			else bsns_vrtcl_name end as vertical,
+
+SUM(CK.GMV_PLAN_USD) AS Total_GMV, 
+SUM(QUANTITY) AS BI,
+Total_GMV / BI AS ASP
+FROM DW_CHECKOUT_TRANS AS CK
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL        ON CAL.CAL_DT = CK.GMV_DT        AND CAL.RETAIL_YEAR >= 2021
+INNER JOIN DW_USEGM_HIST AS HIST          ON HIST.USER_ID = CK.SELLER_ID         AND HIST.USEGM_GRP_ID = 48          AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2015-12-25'       
+INNER JOIN PRS_RESTRICTED_V.USER_DNA_DIM AS RB 
+        ON RB.USER_ID = CK.BUYER_ID         
+inner join  P_InventoryPlanning_T.ic_tyre_badging_seller_list dec  on  ck.seller_id=dec.slr_id and  dec.item_condition ='New'  and dec.ll >=10  and dec.badging in (1,0) 
+LEFT JOIN LSTG_ITEM_CNDTN COND 
+ON COND.ITEM_SITE_ID = CK.SITE_ID 
+AND COND.ITEM_ID = CK.ITEM_ID 
+ INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID and cat.site_id =3
+INNER  JOIN DW_USERs U ON U.USER_ID= CK.SELLER_ID 
+WHERE 1=1
+AND CK.CK_WACKO_YN  =  'N'
+AND CK.SALE_TYPE NOT IN (10,15)
+AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+AND CAT.site_id = 3 
+AND CK.SLR_CNTRY_ID = 3
+and ck.byr_cntry_id =3
+and HIST.USEGM_ID = 206--- = 'b2c'
+AND CAL.age_for_rtl_week_id<0
+and retail_year >=2022
+and AGE_FOR_RTL_WEEK_ID >=-36
+and CATEG_LVL4_ID =179680  
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11) ;
+----
+Select * from  P_Ichan_T.b2c_pa_a_tyre_badging_bi limit 1000; 
+
+----- Prepare data for t-test sample
+drop table P_Ichan_T.b2c_pa_a_tyre_badging_sample  ;
+create table P_Ichan_T.b2c_pa_a_tyre_badging_sample as 
+select 
+seller_group,
+t_test,
+period,
+seller_id,
+USER_SLCTD_ID,
+sum(total_gmv) total_gmv,
+sum(bi) as total_BI,
+count(distinct retail_week) no_of_weeks
+from  P_Ichan_T.b2c_pa_a_tyre_badging_bi 
+where seller_group in ('seller_badging', 'tyre_seller' )
+and period in ( 'pre', 'post')
+and CATEG_LVL4_ID =179680  
+group by 1,2,3,4,5;
+-- 111
+
+select * from P_Ichan_T.b2c_pa_a_tyre_badging_sample  ;
+
+
+
+------ 3.  Funnel metrics
+ DROP TABLE IF EXISTS   P_Ichan_T.b2c_pa_a_tyre_badging_funnel_vi ;
+ CREATE TABLE P_Ichan_T.b2c_pa_a_tyre_badging_funnel_vi AS
+(
+select 
+cal.retail_year,
+cal.retail_week,
+
+case when badging =1 then 'seller_badging'
+		when badging = 0 then 'tyre_seller' else 'not included' end as Seller_Group,
+
+case 	when retail_week between 22 and 44 and retail_year =2022 then 'pre' 
+		when retail_week >=45 and retail_year =2022 then 'post'
+		when retail_year =2023 then 'post' else 'other ' end as Period,
+ck.seller_id,
+u.USER_SLCTD_ID,
+--CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Other' END AS Item_Condition_Type1,
+ --CAT.meta_categ_name,
+--	CAT.categ_lvl2_name,
+--	CAT.categ_lvl2_id,
+--CAT.categ_lvl3_id,
+--	CAT.categ_lvl3_name,
+categ_lvl4_id,
+ 	categ_lvl4_name,
+sum(SRP_IMPRSN_CNT) as SRP_IMP,
+SUM(SRP_VI_CNT) as SRP_VI,
+SUM(other_SRC_VI_CNT) as otherVi,
+SUM(watch_CNT) as Watches,
+SUM(STORE_IMPRSN_CNT) as Store_IMP,
+SUM(OFF_EBAY_VI_CNT) as OFF_EBAY_SRP,
+SUM(STORE_VI_CNT) as Store_VI,
+SUM(HOME_VI_CNT) as OFF_EBAY_VI,
+SUM(MYEBAY_VI_CNT) as MYEBAY_VI,
+SUM(DRCT_VI_CNT) DRCT_VI,
+SUM(TTL_VI_CNT) as TTL_VI
+FROM PRS_restricted_V.SLNG_TRFC_SUPER_FACT ck --- select * from   PRS_restricted_V.SLNG_TRFC_SUPER_FACT where site_id = 3  limit 1000;
+     INNER JOIN ( select meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_name, categ_lvl4_id, LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME  ,SAP_CATEGORY_ID,
+					case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' -- added smart home
+					when meta_categ_id in (26395) then 'Lifestyle'
+					when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573) then 'Home & Garden'
+					when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+					when categ_lvl3_id in (3244) then 'Parts & Accessories'
+					when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+					when categ_lvl2_id in (46576) then 'Parts & Accessories'
+					when bsns_vrtcl_name in ('Collectibles') and meta_categ_id in (220, 237, 550)  then 'Collectibles B2C'
+					when bsns_vrtcl_name in ('Collectibles') and categ_lvl2_id in (180250) then 'Collectibles B2C' 
+			
+					else bsns_vrtcl_name end as new_vertical
+				from DW_CATEGORY_GROUPINGS where SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) group by 1,2,3,4,5,6,7,8 ,9,10,11,12)  AS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+inner join  P_InventoryPlanning_T.ic_tyre_badging_seller_list dec    on  ck.seller_id=dec.slr_id and  dec.item_condition ='New'  and dec.ll >=10  and dec.badging in (1,0) 
+-- 
+--INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT         ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID         AND CK.SITE_ID = CAT.SITE_ID and cat.site_id = 3 
+left outer join dw_users u on ck.seller_id = u.user_id
+LEFT  JOIN DW_USEGM_HIST HIST ON HIST.USER_ID=ck.Seller_ID AND HIST.USEGM_ID = 206
+inner join dw_cal_dt cal on ck.cal_dt = cal.cal_dt AND cal.RETAIL_YEAR >=2022 and AGE_FOR_RTL_WEEK_ID <=-1
+ LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID,item_cndtn_id from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+WHERE 1=1
+and ck.site_id = 3 
+AND HIST.USEGM_ID = 206
+and ck.CAL_DT >= date '2018-12-01'
+and CNDTN_ROLLUP_ID = 1 
+and CATEG_LVL4_ID =179680  
+GROUP BY 1,2,3,4,5,6,7,8
+);
+-- 1437 
+-- SELECT * FROM   P_Ichan_T.b2c_pa_a_tyre_badging_funnel_vi  LIMIT 100; 
+
+
+ DROP TABLE IF EXISTS   P_Ichan_T.b2c_pa_a_tyre_badging_funnel_join ;
+ CREATE TABLE P_Ichan_T.b2c_pa_a_tyre_badging_funnel_join AS
+(
+select a.*,
+b.BI
+from ( select distinct * from    P_Ichan_T.b2c_pa_a_tyre_badging_funnel_vi where  period in ( 'pre' , 'post' ))   a 
+left join  (select *  from  P_Ichan_T.b2c_pa_a_tyre_badging_bi  where categ_lvl4_id  =179680 and item_condition ='New' ) b on a.seller_id=b.seller_id and a.retail_year=b.retail_year and   a.retail_week=b.retail_week --and a.categ_lvl2_id=b.categ_lvl2_id and a.Item_Condition_Type1=b.Item_Condition
+);
+---
+--select count(*) from   P_Ichan_T.b2c_pa_a_tyre_badging_funnel_join  limit 100 ;
+
+
+--=OFF_EBAY_SRP+Store_IMP+SRP_IMP as total_Impressions,
+--=TTL_VI/'Total Impressions' as CLICK RATE VI/IMP,
+--=BI/TTL_VI as Conversion
