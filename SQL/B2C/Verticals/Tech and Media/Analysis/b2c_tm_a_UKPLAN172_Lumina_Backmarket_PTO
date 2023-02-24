@@ -48,7 +48,8 @@ eb.ExportDate
 ,bm.CurrentPrice as BM_CurrentPrice
 ,bm.ShippingPrice as BM_ShippingPrice
 ,bm.Seller as BM_Seller
-,case when (eb.CheckOutPrice+eb.ShippingPrice) <= (bm.CheckOutPrice+eb.ShippingPrice) then 1 else 0 end as comprice_flag
+--,case when (eb.CheckOutPrice+eb.ShippingPrice) <= (bm.CheckOutPrice+eb.ShippingPrice) then 1 else 0 end as comprice_flag/*Rahul from Lumina advised that CheckOutPrice is CurrentPrice + ShippingPrice*/
+,case when eb.CheckOutPrice <= bm.CheckOutPrice then 1 else 0 end as comprice_flag
 
 from
 
