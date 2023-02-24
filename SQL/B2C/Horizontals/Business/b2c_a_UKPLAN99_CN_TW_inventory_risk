@@ -21,7 +21,7 @@ Leaf_categ_id + Brand almost product level. Example: Samsung TV products
 Substitute: non-Chinese sellers with inventory not in China (only domestic)
 */
 
---select distinct glbl_rprt_geo_cd,glbl_rprt_geo_desc from access_views.glbl_rprt_geo_dim order by 1
+--select distinct glbl_rprt_geo_cd,glbl_rprt_geo_desc from access_views.glbl_rprt_geo_dim order by 1;
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Tidy up / make sense of code supplied by Giovanni from DE team with comments
@@ -345,6 +345,16 @@ group by 1,2
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Go through updated code sent by Giovanni on 2023-01-20
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--2022-02-15 to 2023-02-14
+select 
+min(GMV_dt),max(GMV_dt)
+from dw_gem2_cmn_ck_i a
+inner join dw_cal_dt b
+on a.GMV_dt=b.cal_dt
+where a.GMV_dt >= current_date-364*1-2 and a.GMV_dt <= current_date-364*0-2
+;
+
+
 /* create main transaction table */
 create temporary table gem1
 select
@@ -629,3 +639,560 @@ FROM
 CNrisk
 group by 1,2,3,4,5,6,7,8,9
 ;
+
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Suggested actions from Tugrul on 2023-02-06. Adapt Giovanni's revised code to show risk at seller level
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*Suggestions:
+- analyze the Seller concentration for the risk categories;
+- How many sellers are exposed and how many sellers represent the top 20% GMB risk broken down by Forward Deployed and Offshore Inventory risk types
+- This will also show whether we can focus on a few Sellers with a fulfilment deal to reduce the risk exposure with limited effort
+- We can work with the UK based resellers to buy the inventory and hold it here. Downside is that there will be an increase in cost
+- Trading team can review the inventory of the largest Sellers to see if they can find alternative supply from elsewhere
+*/
+
+/*****All GMB from US/UK/DE buyers*****/
+--Run on 2023-02-15 11:15am
+/* create main transaction table */
+create temporary table gem1
+select
+g.item_id
+,cat.bsns_vrtcl_name vertical
+,cat.meta_categ_name meta
+,cat.categ_lvl2_name l2
+,g.leaf_categ_id
+,g.lstg_site_id site_id
+,case
+	when g.byr_cntry_id = 77 then 'DE'
+	when g.byr_cntry_id = 3 then 'UK'
+	when g.byr_cntry_id = 1 then 'US'
+end as byr_country
+,case
+	when b2cfingeo.finance_geo_group_name =  'EMEA' and g.user_dsgntn_id = 2        THEN 'B2C'
+	when b2cfingeo.finance_geo_group_name != 'EMEA' and b2cslr_type.seller_group_cd = 101 then 'B2C'
+	else 'C2C'
+end as b2c_c2c
+,geoitem.finance_geo_group_name item_loc_region
+,c.rev_rollup item_location
+,geoslr.finance_geo_group_name slr_region
+,fd.rev_rollup slr_country
+,g.slr_id
+,u.user_slctd_id as slr_name
+,case
+	when c.rev_rollup  in ('CN','TW') then 'stock in CN'--items locating in CN/TW (offshore)
+	when fd.rev_rollup in ('CN','TW') then 'CN fwd deployed'--CN/TW sellers (forwad deployed)
+	else 'non CN TW'--item not located in CN/TW or not CN/TW sellers
+end as inventory
+,sum(case when gmv_dt >= current_date-364*1-2 and gmv_dt <= current_date-364*0-2 then core_gmv_plan_usd_amt else 0 end) gmv_plan_t1y
+,sum(case when gmv_dt >= current_date-364*1-2 and gmv_dt <= current_date-364*0-2 then core_item_cnt         else 0 end)       si_t1y
+,sum(case when gmv_dt >= current_date-364*2-2 and gmv_dt <= current_date-364*1-2 then core_gmv_plan_usd_amt else 0 end) gmv_plan_t2y
+,sum(case when gmv_dt >= current_date-364*2-2 and gmv_dt <= current_date-364*1-2 then core_item_cnt         else 0 end)       si_t2y
+,sum(case when gmv_dt >= current_date-364*3-2 and gmv_dt <= current_date-364*2-2 then core_gmv_plan_usd_amt else 0 end) gmv_plan_t3y
+,sum(case when gmv_dt >= current_date-364*3-2 and gmv_dt <= current_date-364*2-2 then core_item_cnt         else 0 end)       si_t3y
+,sum(case when gmv_dt >= current_date-364*4-2 and gmv_dt <= current_date-364*3-2 then core_gmv_plan_usd_amt else 0 end) gmv_plan_t4y
+,sum(case when gmv_dt >= current_date-364*4-2 and gmv_dt <= current_date-364*3-2 then core_item_cnt         else 0 end)       si_t4y
+from
+(
+select
+    GMV_dt
+   ,slr_id
+   ,lstg_site_id
+   ,leaf_categ_id
+   ,lstg_id item_id
+   ,lstg_end_dt
+   ,slr_cntry_id
+   ,byr_cntry_id
+   ,lstg_curncy_id
+   ,seller_type_cd
+   ,user_dsgntn_id
+   ,core_gmv_plan_usd_amt
+   ,core_item_cnt
+   ,ck_trans_id
+   ,oms_shpng_lstg_curncy_amt
+from
+	dw_gem2_cmn_ck_i as gem
+where 
+	gem.byr_cntry_id in (77,3,1)
+	and gem.incld_ck_yn_id=1
+	and gem.lstg_type_code not in (10,12,13,15)
+	and gem.adj_type_id not in (-7,-1,3,5)
+	and gem.lstg_end_dt >= current_date-(364*4)-2
+	and gem.gmv_dt      >= current_date-(364*4)-2 and gem.gmv_dt < current_date-2
+	and gem.core_gmv_plan_usd_amt > 0
+) g
+inner join dw_category_groupings cat on cat.leaf_categ_id = g.leaf_categ_id and cat.site_id = g.lstg_site_id
+inner join dw_lstg_item i on i.item_id = g.item_id and i.auct_end_dt >= current_date-(364*4)-2
+inner join dw_countries c on c.cntry_id = i.item_cntry_id
+inner join access_views.glbl_rprt_geo_dim geoitem on geoitem.rev_rollup_id = c.rev_rollup_id
+inner join dw_countries fd on fd.cntry_id = i.slr_cntry_id
+inner join access_views.glbl_rprt_geo_dim geoslr on geoslr.rev_rollup_id = fd.rev_rollup_id
+
+inner join dw_countries b2ccntry on b2ccntry.cntry_id = g.slr_cntry_id
+inner join dw_rev_rollup b2crev on b2crev.rev_rollup_id = b2ccntry.rev_rollup_id
+inner join glbl_rprt_geo_dim  b2cfingeo on b2cfingeo.glbl_rprt_geo_cd < 300 and b2cfingeo.rev_rollup_id = b2crev.rev_rollup_id
+inner join ssa_seller_type_dim b2cslr_type on b2cslr_type.seller_type_cd = g.seller_type_cd
+
+inner join dw_users u on g.slr_id=u.user_id
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15;
+
+--2,323,083,037
+select count(*) from gem1;
+
+/* build brand to item table */
+create temporary table brand using PARQUET
+select distinct a.item_id, a.auct_end_dt, upper(a.tag_value_txt) as brand, tag_name, a.tag_value_txt
+,case
+	when upper(a.tag_name) = 'MARKE' 			then '1 MARKE' 			
+	when upper(a.tag_name) = 'HERSTELLER' 	then '2 HERSTELLER' 	
+	when upper(a.tag_name) = 'BRAND' 			then '3 BRAND' 			
+	when upper(a.tag_name) = 'MANUFACTURER'   then '4 MANUFACTURER' 
+	else upper(a.tag_value_txt)
+end as rankk
+,row_number() over(partition by a.item_id order  by rankk) rank2
+from dw_attr_lstg_tag_dtl a
+inner join (select distinct item_id from gem1) g on g.item_id = a.item_id
+where
+a.auct_end_dt >= current_date-(364*4)-2
+and upper(a.tag_name) like any ('BRAND', 'MARKE', 'MARQUE', 'HERSTELLER', 'MANUFACTURER', 'MARCA', 'MERK', 'MARKA', 'PRODUCENT', 'БРЕНД', 'PART MANUFACTURER', 'OBJET FABRICANT', 'REIFENHERSTELLER', 'FELGENHERSTELLER', 'HERSTELLER/ANBIETER')
+group by 1,2,3,4,5,6
+qualify rank2 = 1
+; 
+
+/* add brand info to gmv */
+create temporary table cnrisk
+select
+gem.*
+,brand.brand
+from
+gem1 gem
+left join brand on brand.item_id = gem.item_id
+;
+
+--Create perm table for reference
+create table P_InventoryPlanning_T.cnrisk as 
+(select * from cnrisk);
+
+--Mutilple rows for the same item
+select item_id,count(*) from P_InventoryPlanning_T.cnrisk
+group by 1
+having count(*)>1
+
+--6 different leaf_categ_id for the same item
+select * from P_InventoryPlanning_T.cnrisk
+where item_id=302511552844;
+
+--1 leaf categ id for the item
+select leaf_categ_id from dw_lstg_item
+where item_id=302511552844;
+
+
+select * from P_InventoryPlanning_T.cnrisk
+where item_id=112602444158
+
+/*
+--This is a proxy logic to normalise categories across different regions. Not all leaf_categ_id from UK and DE exists in US category hierarchy (e.g. leaf_categ_id=179653) >> needs to size % of items impacted
+--Will cause duplication when joining this L2 normalisation dataset with the base transaction temp dataset as there can be mulitple leaf_categ_id attached to an item
+
+/* L2 naming normalization */
+create temporary table l2eng
+select distinct
+ c.bsns_vrtcl_name vertical
+,c.meta_categ_name meta
+,c.categ_lvl2_name l2
+,c.leaf_categ_id
+from
+dw_category_groupings c
+where
+site_id = 0
+and c.leaf_categ_id in (
+select distinct base.leaf_categ_id from P_InventoryPlanning_T.cnrisk base
+inner join dw_category_groupings c on c.leaf_categ_id = base.leaf_categ_id and c.site_id = 0)
+;
+
+/* Inventory substitution opportunity */
+--2h20m to run
+create table P_InventoryPlanning_T.cnrisk_substitute as (
+select
+coalesce(apac.byr_country,dome.byr_country) byr_country
+,case
+	when IsNotNull(apac.vertical)  and IsNull(dome.vertical   ) then 'only CN'
+	when IsNull(   apac.vertical)  and IsNotNull(dome.vertical) then 'only domestic'
+	when IsNotNull(apac.vertical)  and IsNotNull(dome.vertical) then 'duped'
+	else 'err'
+	end as inventory
+,coalesce(apac.slr_id,dome.slr_id) as seller_id
+,coalesce(apac.slr_name,dome.slr_name) as seller_name
+,coalesce(apac.slr_country,dome.slr_country) as seller_country
+,sum(apac.t1y_gmb_CNStock    ) t1y_gmb_CnStock
+,sum(apac.t1y_gmb_FwdDeployed) t1y_gmb_FwdDeployed
+,sum(dome.t1y_gmb_NonCN      ) t1y_gmb_NonCN
+
+,sum(apac.t2y_gmb_CNStock    ) t2y_gmb_CnStock
+,sum(apac.t2y_gmb_FwdDeployed) t2y_gmb_FwdDeployed
+,sum(dome.t2y_gmb_NonCN      ) t2y_gmb_NonCN
+
+,sum(apac.t3y_gmb_CNStock    ) t3y_gmb_CnStock
+,sum(apac.t3y_gmb_FwdDeployed) t3y_gmb_FwdDeployed
+,sum(dome.t3y_gmb_NonCN      ) t3y_gmb_NonCN
+
+,sum(apac.t4y_gmb_CNStock    ) t4y_gmb_CnStock
+,sum(apac.t4y_gmb_FwdDeployed) t4y_gmb_FwdDeployed
+,sum(dome.t4y_gmb_NonCN      ) t4y_gmb_NonCN
+from
+	(select
+	byr_country	
+	,l2eng.vertical
+	,l2eng.meta
+	,l2eng.l2    
+	,l2eng.leaf_categ_id
+	,brand   
+	,B2C_C2C
+	,slr_id
+	,slr_name
+	,slr_country
+	,sum(case when inventory = 'stock in CN'     then gmv_plan_t1y else 0 end) t1y_gmb_CNStock 
+	,sum(case when inventory = 'CN fwd deployed' then gmv_plan_t1y else 0 end) t1y_gmb_FwdDeployed 
+	
+	,sum(case when inventory = 'stock in CN'     then gmv_plan_t2y else 0 end) t2y_gmb_CNStock 
+	,sum(case when inventory = 'CN fwd deployed' then gmv_plan_t2y else 0 end) t2y_gmb_FwdDeployed 
+	
+	,sum(case when inventory = 'stock in CN'     then gmv_plan_t3y else 0 end) t3y_gmb_CNStock 
+	,sum(case when inventory = 'CN fwd deployed' then gmv_plan_t3y else 0 end) t3y_gmb_FwdDeployed 
+	
+	,sum(case when inventory = 'stock in CN'     then gmv_plan_t4y else 0 end) t4y_gmb_CNStock 
+	,sum(case when inventory = 'CN fwd deployed' then gmv_plan_t4y else 0 end) t4y_gmb_FwdDeployed 
+	from
+	P_InventoryPlanning_T.cnrisk
+	left join l2eng on l2eng.leaf_categ_id = P_InventoryPlanning_T.cnrisk.leaf_categ_id
+	where
+	inventory in ('stock in CN', 'CN fwd deployed')
+	group by 1,2,3,4,5,6,7,8,9,10
+	) apac
+full outer join (
+	select
+	byr_country
+	,l2eng.vertical
+	,l2eng.meta
+	,l2eng.l2  
+	,l2eng.leaf_categ_id
+	,brand   
+	,B2C_C2C
+	,slr_id
+	,slr_name
+	,slr_country
+	,sum(gmv_plan_t1y) t1y_gmb_NonCN
+	,sum(gmv_plan_t2y) t2y_gmb_NonCN
+	,sum(gmv_plan_t3y) t3y_gmb_NonCN
+	,sum(gmv_plan_t4y) t4y_gmb_NonCN
+	from
+	P_InventoryPlanning_T.cnrisk
+    left join l2eng on l2eng.leaf_categ_id = P_InventoryPlanning_T.cnrisk.leaf_categ_id
+	where
+	inventory = 'non CN TW'
+	group by 1,2,3,4,5,6,7,8,9,10
+	) dome
+		on
+			    apac.byr_country   = dome.byr_country
+			and apac.leaf_categ_id = dome.leaf_categ_id 
+			and apac.vertical      = dome.vertical
+			and apac.meta          = dome.meta    
+			and apac.l2            = dome.l2      
+			and apac.brand         = dome.brand  
+			and apac.B2C_C2C       = dome.B2C_C2C
+group by 1,2,3,4,5)
+;
+
+
+--Check data
+--GMB figure too high >> dupulicates >> revise logic
+select 
+inventory
+,sum(t1y_gmb_CnStock)
+,sum(t1y_gmb_FwdDeployed)
+,sum(t1y_gmb_NonCN)
+from P_InventoryPlanning_T.cnrisk_substitute
+where byr_country='UK'
+group by 1;
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Create bespoke code for the analysis (different from Giovanni's version). Focus on transactions of latest year
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists item;
+create temp table item as (
+select
+base.item_id
+,itm.leaf_categ_id
+,base.brand
+,base.site_id
+,base.byr_country
+,base.slr_country
+,base.slr_id
+,base.slr_name
+--US category structure
+,UScat.bsns_vrtcl_name 
+,UScat.meta_categ_name
+,UScat.categ_lvl2_name
+,case when UScat.bsns_vrtcl_name is not null then 1 else 0 end as US_leaf_match
+,case when base.brand is not null or base.brand not in ('UNBRANDED','MARKENLOS') then 1 else 0 end as brand_flag
+,inventory
+,min(base.b2c_c2c) as B2C_C2C--accomodate sellers with changed status
+,sum(gmv_plan_t1y) as gmv_t1y
+from P_InventoryPlanning_T.cnrisk base
+inner join access_views.dw_lstg_item itm
+on base.item_id=itm.item_id
+--L2 normalisation
+left join 
+(select distinct bsns_vrtcl_name, meta_categ_name, categ_lvl2_name, leaf_categ_id from access_views.dw_category_groupings where site_id=0) UScat
+on itm.leaf_categ_id=UScat.leaf_categ_id
+where
+base.inventory in ('stock in CN', 'CN fwd deployed','non CN TW')
+and base.gmv_plan_t1y>0
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+);
+
+--Data check
+--Same GMB as base table
+select 
+inventory
+,sum(gmv_t1y)
+from item
+where byr_country='UK'
+group by 1;
+
+select 
+inventory
+,sum(gmv_plan_t1y)
+from P_InventoryPlanning_T.cnrisk
+where byr_country='UK'
+group by 1;
+
+--Item can be bought by US/UK/DE buyer
+select item_id, count(*) from item
+group by 1
+having count(*)>1;
+
+select * from item
+where item_id=154836113531;
+
+/*****Quantify % missed from the inventory substitution opportunity analysis*****/
+--Overall 9% of items not matched with a US leaf match
+--US buyer (4%)
+--UK buyer (11%)
+--DE buyer (23%)
+select byr_country, US_leaf_match, count(distinct item_id) from item
+group by 1,2
+order by 1,2;
+
+--Overall 26% of items not have brand info
+--US buyer (27%)
+--UK buyer (24%)
+--DE buyer (26%)
+select byr_country, brand_flag, count(distinct item_id) from item
+group by 1,2
+order by 1,2;
+
+--68% of items have a US leaf category match and brand info
+--US buyer (69%)
+--UK buyer (69%)
+--DE buyer (59%)
+select 
+byr_country
+,case when brand_flag=1 and US_leaf_match=1 then 1 else 0 end as incl
+,count(distinct item_id) 
+from item
+group by 1,2
+order by 1,2;
+
+--551,054,351, too many rows to flag for substitution opportunity >> roll up to L2
+select count(*) from item;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Inventory substitution opportunity based on all items in base with both brand info and a matched US category
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_InventoryPlanning_T.cnrisk_substitute_opp;
+create table P_InventoryPlanning_T.cnrisk_substitute_opp as (
+select
+apac.byr_country
+,case when IsNotNull(apac.leaf_categ_id)  and IsNull(nonapac.leaf_categ_id) then 1 else 0 end as Only_CN_TW
+,apac.slr_id
+,apac.slr_name
+,apac.slr_country
+,apac.B2C_C2C
+,apac.vertical
+,apac.meta
+,apac.L2
+,sum(apac.t1y_CNStock    ) t1y_gmb_CnStock
+,sum(apac.t1y_FwdDeployed) t1y_gmb_FwdDeployed
+
+from
+(select 
+byr_country 
+,leaf_categ_id
+,bsns_vrtcl_name as vertical
+,meta_categ_name as meta
+,categ_lvl2_name as L2
+,brand
+,B2C_C2C
+,slr_id
+,slr_name
+,slr_country
+,sum(case when inventory = 'stock in CN'     then gmv_t1y else 0 end) t1y_CNStock 
+,sum(case when inventory = 'CN fwd deployed' then gmv_t1y else 0 end) t1y_FwdDeployed 
+from item 
+where inventory in ('stock in CN','CN fwd deployed')
+and brand_flag=1 and US_leaf_match=1
+group by 1,2,3,4,5,6,7,8,9,10) apac
+
+left join 
+
+(select
+byr_country 
+,leaf_categ_id
+,bsns_vrtcl_name as vertical
+,meta_categ_name as meta
+,categ_lvl2_name as L2
+,brand
+,B2C_C2C
+,sum(gmv_t1y) as t1y_NonCN
+from item 
+where inventory in ('non CN TW')
+and brand_flag=1 and US_leaf_match=1
+group by 1,2,3,4,5,6,7) nonapac
+
+on
+apac.byr_country       = nonapac.byr_country 
+and apac.leaf_categ_id = nonapac.leaf_categ_id
+and apac.vertical      = nonapac.vertical
+and apac.meta          = nonapac.meta    
+and apac.L2            = nonapac.L2  
+and apac.brand 		   = nonapac.brand  
+and apac.B2C_C2C       = nonapac.B2C_C2C
+
+group by 1,2,3,4,5,6,7,8,9)
+;
+
+--Data check
+--Same GMB as base table
+select 
+inventory
+,sum(gmv_t1y)
+from item
+where brand_flag=1 and US_leaf_match=1
+group by 1;
+
+
+select 
+sum(t1y_gmb_CnStock)
+,sum(t1y_gmb_FwdDeployed) 
+from P_InventoryPlanning_T.cnrisk_substitute_opp;
+ 
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Analysis
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--18% at risk not replaceable (similar to Giovanni's output on 21Jan23 for Overall At Risk Not Replaceable at 18%)
+select
+Only_CN_TW
+,sum(t1y_gmb_CnStock)+sum(t1y_gmb_FwdDeployed) as CNTWStock_FwdDeployed
+,(sum(t1y_gmb_CnStock)+sum(t1y_gmb_FwdDeployed)) / sum((sum(t1y_gmb_CnStock)+sum(t1y_gmb_FwdDeployed))) over() as CNTWStock_perc
+from P_InventoryPlanning_T.cnrisk_substitute_opp
+group by 1;
+
+/*****Overall*****/
+
+drop table if exists p_uk_bc_t.risk_USUKDE;
+create table p_uk_bc_t.risk_USUKDE as (
+select 
+a.*
+,sum(CNTWStock_FwdDeployed_perc) over (order by CNTWStock_FwdDeployed_perc desc rows unbounded preceding) as CNTWStock_FwdDeployed_cul_perc
+,row_number() over (order by CNTWStock_FwdDeployed_perc desc) as rank 
+from
+(
+select
+slr_id
+,slr_name
+,slr_country
+,min(B2C_C2C) as slr_type
+,sum(t1y_gmb_CnStock)+sum(t1y_gmb_FwdDeployed) as CNTWStock_FwdDeployed
+,(sum(t1y_gmb_CnStock)+sum(t1y_gmb_FwdDeployed)) / sum((sum(t1y_gmb_CnStock)+sum(t1y_gmb_FwdDeployed))) over() as CNTWStock_FwdDeployed_perc
+from P_InventoryPlanning_T.cnrisk_substitute_opp
+where Only_CN_TW=1
+group by 1,2,3)a
+);
+
+--71,323 total sellers with at risk not replaceable inventory
+select count(*),count(distinct slr_id) from p_uk_bc_t.risk_USUKDE;
+
+--60% total at risk not replaceable GMB from 2379 sellers (2370 B2C + 9 C2C)
+select slr_type, count(*) from p_uk_bc_t.risk_USUKDE
+where CNTWStock_FwdDeployed_cul_perc<=0.6--2379
+--where CNTWStock_FwdDeployed_cul_perc<=0.7--3820
+--where CNTWStock_FwdDeployed_cul_perc<=0.8--6257
+group by 1;
+
+--C2C sellers ranked 711 +
+select * from p_uk_bc_t.risk_USUKDE
+where CNTWStock_FwdDeployed_cul_perc<=0.6
+and slr_type='C2C';
+
+--Restricting to B2C of the top 2379 sellers = 59.99% of total at risk not replaceable GMB
+select max(CNTWStock_FwdDeployed_cul_perc) from p_uk_bc_t.risk_USUKDE
+where slr_type='B2C' and rank<=2379;
+
+--2338 CN sellers (99% of the B2C sellers)
+select slr_country,count(*) from p_uk_bc_t.risk_USUKDE
+where CNTWStock_FwdDeployed_cul_perc<=0.6
+and slr_type='B2C'
+group by 1
+order by 2 desc;
+
+
+--44% inventory GMB of the 2370 B2C sellers is from the Parts & Accessories L2, followed by 7% in Yard, Garden & Outdoor Living (HG)
+select
+a.vertical
+,a.meta
+,a.L2
+,sum(a.t1y_gmb_CnStock)+sum(a.t1y_gmb_FwdDeployed) as CNTWStock_FwdDeployed
+,(sum(a.t1y_gmb_CnStock)+sum(a.t1y_gmb_FwdDeployed)) / sum((sum(a.t1y_gmb_CnStock)+sum(a.t1y_gmb_FwdDeployed))) over() as CNTWStock_FwdDeployed_perc
+,row_number() over (order by (sum(a.t1y_gmb_CnStock)+sum(a.t1y_gmb_FwdDeployed)) desc) as rank 
+from P_InventoryPlanning_T.cnrisk_substitute_opp a
+inner join p_uk_bc_t.risk_USUKDE b
+on a.slr_id=b.slr_id
+where b.slr_type='B2C' and b.rank<=2379
+group by 1,2,3
+order by CNTWStock_FwdDeployed_perc desc;
+
+
+
+--Add to Excel data connection
+--Out of all transactions made by US/UK/DE buyers in the latest 1 year and inventory that have brand info and can be matched to US category:
+--Total of Forward Deployment GMV is $2,687,625,623 and CN/TW stock GMB is $998,552,893
+select 
+byr_country
+,Only_CN_TW
+,sum(t1y_gmb_CnStock) as CNTWStock
+,sum(t1y_gmb_FwdDeployed) as FwdDeployed
+from P_InventoryPlanning_T.cnrisk_substitute_opp
+group by 1,2;
+
+--Not replaceable at risk
+select 
+a.byr_country
+,a.slr_id
+,a.slr_name
+,a.slr_country
+,b.slr_type
+,a.vertical
+,a.meta
+,a.L2
+,sum(t1y_gmb_CnStock) as t1y_gmb_CnStock
+,sum(t1y_gmb_FwdDeployed) as t1y_gmb_FwdDeployed
+from P_InventoryPlanning_T.cnrisk_substitute_opp a
+left join (select slr_id,min(B2C_C2C) as slr_type from P_InventoryPlanning_T.cnrisk_substitute_opp group by 1) b--accomodate seller changing status
+on a.slr_id=b.slr_id
+where a.Only_CN_TW=1
+group by 1,2,3,4,5,6,7,8;
