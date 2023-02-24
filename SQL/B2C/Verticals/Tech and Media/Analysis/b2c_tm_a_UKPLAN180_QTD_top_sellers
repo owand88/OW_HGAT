@@ -1,0 +1,57 @@
+/*
+UKPLAN180
+Aim: Identify top / churned sellers in preparation for the Tech monthly update on 2023-02-24
+*/
+
+create table p_uk_bc_t.inv as (
+select 
+base.retail_year
+,base.retail_week 
+,base.seller_id
+,usr.user_slctd_id as seller_name
+,base.inventory_prop
+,sum(base.GMV) as tot_GMV
+,sum(base.BI) as tot_BI
+from P_CSI_TBS_T.UKI_Final_V1_trading_item base
+
+inner join access_views.dw_users usr
+on base.seller_id = usr.user_id 
+
+where 
+base.inventory_prop in (
+    'Appliances New Focus'
+    ,'Appliances Open Box Focus'
+    ,'Audio & TVs New Focus'
+    ,'Audio & TVs Open Box Focus'
+    ,'Computing New Focus'
+    ,'Computing Open Box Focus')
+and base.age_for_rtl_year_id in (0,-1) and base.retail_week between 1 and 7
+group by 1,2,3,4,5
+);
+
+--84 rows for 6 inventory props over 7 weeks for 2 years
+select distinct inventory_prop, retail_year||retail_week 
+from p_uk_bc_t.inv
+order by 1,2;
+
+
+
+--Add to Excel data connection
+
+--136,623 rows
+select * from p_uk_bc_t.inv;
+
+--34,069 rows
+select 
+seller_name
+,seller_id
+,inventory_prop
+,sum(case when retail_year = 2023 then tot_GMV end) as 2023_Q1TD_GMV
+,sum(case when retail_year = 2023 then tot_BI end) as 2023_Q1TD_BI
+,sum(case when retail_year = 2022 then tot_GMV end) as 2022_Q1TD_GMV
+,sum(case when retail_year = 2022 then tot_BI end) as 2022_Q1TD_BI
+from p_uk_bc_t.inv
+group by 1,2,3
+order by 2023_Q1TD_GMV desc;
+
+--qualify (row_number() over (partition by inventory_prop order by 2023_Q1TD_GMV desc))=1000
