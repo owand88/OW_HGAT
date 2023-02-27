@@ -938,7 +938,7 @@ base.item_id
 ,UScat.categ_lvl2_name
 ,case when UScat.bsns_vrtcl_name is not null then 1 else 0 end as US_leaf_match
 ,case when base.brand is not null 
---or base.brand not in ('UNBRANDED','MARKENLOS')--remove this restriction as large proportion of items can be genuinely unbranded
+--or base.brand not in ('UNBRAND','MARKENLOS')--remove this restriction as large proportion of items can be genuinely unbranded
 then 1 else 0 end as brand_flag
 ,inventory
 ,min(base.b2c_c2c) as B2C_C2C--accomodate sellers with changed status
@@ -1009,18 +1009,18 @@ from item
 group by 1,2
 order by 1,2;
 
---Before applying brand restriction: 11.7% null; 7.0% Unbranded; 2.4% Apple
+--Before applying brand restriction (remove nulls): 11.7% null; 7.4% Unbranded; 2.4% Apple
 select 
-case when brand in ('UNBRANDED','MARKENLOS') then 'UNBRANDED' else brand end as brand
+case when brand like any ('%UNBRAND%','%MARKENLOS%','%未知%') then 'UNBRANDED' else brand end as brand
 ,sum(gmv_t1y) as gmv_t1y
 ,sum(gmv_t1y) / sum(sum(gmv_t1y)) over() as gmv_t1y_perc
 from item
 group by 1
 order by 2 desc;
 
---After applying brand restriction: 7.9% Unbranded; 2.7% Apple; 1.3% Samsung
+--After applying brand restriction (remove nulls): 8.3% Unbranded; 2.7% Apple; 1.3% Samsung
 select 
-case when brand in ('UNBRANDED','MARKENLOS') then 'UNBRANDED' else brand end as brand
+case when brand like any ('%UNBRAND%','%MARKENLOS%','%未知%') then 'UNBRANDED' else brand end as brand
 ,sum(gmv_t1y) as gmv_t1y
 ,sum(gmv_t1y) / sum(sum(gmv_t1y)) over() as gmv_t1y_perc
 from item
@@ -1039,6 +1039,7 @@ create table P_InventoryPlanning_T.cnrisk_substitute_opp as (
 select
 apac.byr_country
 ,case when IsNotNull(apac.leaf_categ_id)  and IsNull(nonapac.leaf_categ_id) then 1 else 0 end as Only_CN_TW
+,apac.brand
 ,apac.slr_id
 ,apac.slr_name
 ,apac.slr_country
@@ -1093,7 +1094,7 @@ and apac.L2            = nonapac.L2
 and apac.brand 		   = nonapac.brand  
 and apac.B2C_C2C       = nonapac.B2C_C2C
 
-group by 1,2,3,4,5,6,7,8,9)
+group by 1,2,3,4,5,6,7,8,9,10)
 ;
 
 --Data check
@@ -1177,7 +1178,7 @@ and slr_type='B2C'
 group by 1
 order by 2 desc;
 
---44.2% inventory GMB of the 2372 B2C sellers is from the Parts & Accessories L2, followed by 6.8% in Yard, Garden & Outdoor Living (HG)
+--50% of the "At risk not replaceable" GMB from these 2372 B2C sellers comes from the Parts & Accessories L2, followed by 6% from Yard, Garden & Outdoor Living (H&G)
 select
 a.vertical
 ,a.meta
@@ -1189,7 +1190,22 @@ from P_InventoryPlanning_T.cnrisk_substitute_opp a
 inner join p_uk_bc_t.risk_USUKDE b
 on a.slr_id=b.slr_id
 where b.slr_type='B2C' and b.rank<=2381
+and a.Only_CN_TW=1
 group by 1,2,3
+order by CNTWStock_FwdDeployed_perc desc;
+
+--Brand from the "At risk not replaceable" inventory of the 2372 B2C sellers is well-populated
+select
+case when brand like any ('%UNBRAND%','%MARKENLOS%','%未知%') then 'UNBRANDED' else brand end as brand
+,sum(a.t1y_gmb_CnStock)+sum(a.t1y_gmb_FwdDeployed) as CNTWStock_FwdDeployed
+,(sum(a.t1y_gmb_CnStock)+sum(a.t1y_gmb_FwdDeployed)) / sum((sum(a.t1y_gmb_CnStock)+sum(a.t1y_gmb_FwdDeployed))) over() as CNTWStock_FwdDeployed_perc
+,row_number() over (order by (sum(a.t1y_gmb_CnStock)+sum(a.t1y_gmb_FwdDeployed)) desc) as rank 
+from P_InventoryPlanning_T.cnrisk_substitute_opp a
+inner join p_uk_bc_t.risk_USUKDE b
+on a.slr_id=b.slr_id
+where b.slr_type='B2C' and b.rank<=2381
+and a.Only_CN_TW=1
+group by 1
 order by CNTWStock_FwdDeployed_perc desc;
 
 
