@@ -813,7 +813,7 @@ inner join dw_category_groupings c on c.leaf_categ_id = base.leaf_categ_id and c
 ;
 
 /* Inventory substitution opportunity */
---2h20m to run
+--Lots of dups with the seller level join
 create table P_InventoryPlanning_T.cnrisk_substitute as (
 select
 coalesce(apac.byr_country,dome.byr_country) byr_country
@@ -907,7 +907,7 @@ group by 1,2,3,4,5)
 
 
 --Check data
---GMB figure too high >> dupulicates >> revise logic
+--GMB figure too high >> duplicates >> revise logic
 select 
 inventory
 ,sum(t1y_gmb_CnStock)
@@ -1143,7 +1143,13 @@ and slr_type='C2C';
 select max(CNTWStock_FwdDeployed_cul_perc) from p_uk_bc_t.risk_USUKDE
 where slr_type='B2C' and rank<=2379;
 
---2338 CN sellers (99% of the B2C sellers)
+--2346 are CN sellers (99% of the 2379 B2C+C2C sellers)
+select slr_country,count(*) from p_uk_bc_t.risk_USUKDE
+where CNTWStock_FwdDeployed_cul_perc<=0.6
+group by 1
+order by 2 desc;
+
+--2338 are CN sellers (99% of the 2370 B2C sellers)
 select slr_country,count(*) from p_uk_bc_t.risk_USUKDE
 where CNTWStock_FwdDeployed_cul_perc<=0.6
 and slr_type='B2C'
