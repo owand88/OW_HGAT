@@ -1,0 +1,85 @@
+
+------------------------------------------------------------------- ----------------------------------------------- --------------------------------- 
+------Can you provide a list of all sellers in Car Parts L2 who have opted in to receive marketing communications?
+------This is an educational piece and we will get more sellers talking about installation services on ebay by providing them this information
+------------------------------------------------------------------------ ----------------------------------------------- 
+Drop table if exists P_Ichan_T.b2c_pa_a_target_seller_carpart; -- select distinct vertical from   P_Ichan_T.dec_seller_report_bi limit 100 ;
+CREATE TABLE P_ICHAN_T.b2c_pa_a_target_seller_carpart as
+( 
+SELECT 
+
+u.USER_SLCTD_ID,
+ck.seller_id,
+
+--CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New' WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurbished'  WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used' ELSE 'Other' END AS Item_Condition,
+/*
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
+		when meta_categ_id in (26395) then 'Lifestyle'
+		when CATEG_LVL3_ID in (260325) then 'Lifestyle'
+		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+		when categ_lvl3_id in (3244) then 'Parts & Accessories'
+		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+		when categ_lvl2_id in (46576) then 'Parts & Accessories'
+			else bsns_vrtcl_name end as vertical,*/
+
+SUM(CK.GMV_PLAN_USD) AS Total_GMV, 
+SUM(QUANTITY) AS BI,
+Total_GMV / BI AS ASP
+FROM DW_CHECKOUT_TRANS AS CK
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL        ON CAL.CAL_DT = CK.GMV_DT        AND CAL.RETAIL_YEAR >= 2021
+INNER JOIN DW_USEGM_HIST AS HIST          ON HIST.USER_ID = CK.SELLER_ID         AND HIST.USEGM_GRP_ID = 48          AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2015-12-25'       
+INNER JOIN PRS_RESTRICTED_V.USER_DNA_DIM AS RB 
+        ON RB.USER_ID = CK.BUYER_ID         
+
+LEFT JOIN LSTG_ITEM_CNDTN COND 
+ON COND.ITEM_SITE_ID = CK.SITE_ID 
+AND COND.ITEM_ID = CK.ITEM_ID 
+ INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID and cat.site_id =3
+INNER  JOIN DW_USERs U ON U.USER_ID= CK.SELLER_ID   -- Select * from   DW_USERs  where user_id = 1077516705 
+WHERE 1=1
+AND CK.CK_WACKO_YN  =  'N'
+AND CK.SALE_TYPE NOT IN (10,15)
+AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) 
+AND CAT.site_id = 3 
+AND CK.SLR_CNTRY_ID = 3
+and ck.byr_cntry_id =3
+and HIST.USEGM_ID = 206--- = 'b2c'
+AND CAL.age_for_rtl_week_id<0
+--and retail_year >=2023
+and AGE_FOR_RTL_WEEK_ID >=-52
+and CATEG_LVL2_ID =6030
+and  CNDTN_ROLLUP_ID = 1
+GROUP BY 1,2) ;
+----
+
+--Select * from P_Ichan_T.b2c_pa_a_target_seller_carpart ;
+drop table   P_Ichan_T.b2c_pa_a_target_seller_carpart_tele ;
+create table   P_Ichan_T.b2c_pa_a_target_seller_carpart_tele AS 
+select user_id , min(want_telemarketing ) as want_telemarketing,
+min(want_direct_mail) as want_direct_mail
+from  DW_USERs 
+where user_id in ( Select distinct seller_id from P_Ichan_T.b2c_pa_a_target_seller_carpart  ) 
+group by 1; 
+
+
+-- OUTPUT
+----
+drop table   P_Ichan_T.b2c_pa_a_target_seller_carpart_OUTPUT ; 
+Create table   P_Ichan_T.b2c_pa_a_target_seller_carpart_OUTPUT AS 
+
+Select A.*,
+B.want_telemarketing,
+B.want_direct_mail
+from P_Ichan_T.b2c_pa_a_target_seller_carpart A 
+LEFT JOIN P_Ichan_T.b2c_pa_a_target_seller_carpart_tele B ON A.SELLER_ID=B.user_ID AND want_telemarketing ='Y' 
+where  want_telemarketing ='Y' 
+;
+SELECT * FROM P_Ichan_T.b2c_pa_a_target_seller_carpart_OUTPUT ;
+
+
+
