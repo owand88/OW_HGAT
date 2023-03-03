@@ -15,7 +15,7 @@ We are looking for a report to use on a weekly basis, that identifies listings t
 */
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
---Prepare raw data
+--Prepare raw data and add competitively-priced flag 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 /*
 --Data check
@@ -48,7 +48,7 @@ eb.ExportDate
 ,bm.CurrentPrice as BM_CurrentPrice
 ,bm.ShippingPrice as BM_ShippingPrice
 ,bm.Seller as BM_Seller
---,case when (eb.CheckOutPrice+eb.ShippingPrice) <= (bm.CheckOutPrice+eb.ShippingPrice) then 1 else 0 end as comprice_flag/*Rahul from Lumina advised that CheckOutPrice is CurrentPrice + ShippingPrice*/
+--,case when (eb.CheckOutPrice+eb.ShippingPrice) <= (bm.CheckOutPrice+eb.ShippingPrice) then 1 else 0 end as comprice_flag/*Rahul from Lumina advised on 2023-02-24 that CheckOutPrice is CurrentPrice + ShippingPrice*/
 ,case when eb.CheckOutPrice <= bm.CheckOutPrice then 1 else 0 end as comprice_flag
 
 from
@@ -63,7 +63,7 @@ on eb.MWID=bm.MWID and eb.eBayListingID=bm.eBayListingID
 );
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
---Add seller info for the competitive lisings
+--Add listing and seller info for the competitive lisings
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 drop table P_InventoryPlanning_T.Lumina_mobile_eb_bm_compet;
 create table P_InventoryPlanning_T.Lumina_mobile_eb_bm_compet as (
@@ -241,11 +241,11 @@ base.ExportDate as LuminaReportExport_dt
 ,base.eB_CheckOutPrice
 --,base.eB_CurrentPrice
 ,base.eB_ShippingPrice
-,base.eB_CheckOutPrice + base.eB_ShippingPrice as eB_TotalPrice
+--,base.eB_CheckOutPrice + base.eB_ShippingPrice as eB_TotalPrice/*Rahul from Lumina advised on 2023-02-24 that CheckOutPrice is CurrentPrice + ShippingPrice*/
 ,base.BM_CheckOutPrice
 --,base.BM_CurrentPrice
 ,base.BM_ShippingPrice
-,base.BM_CheckOutPrice + base.BM_ShippingPrice as BM_TotalPrice
+--,base.BM_CheckOutPrice + base.BM_ShippingPrice as BM_TotalPrice/*Rahul from Lumina advised on 2023-02-24 that CheckOutPrice is CurrentPrice + ShippingPrice*/
 ,BM_TotalPrice - eB_TotalPrice as price_amt_cheaper
 
 from P_InventoryPlanning_T.Lumina_mobile_eb_bm_compet base
