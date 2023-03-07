@@ -1,0 +1,101 @@
+/*UKPlan-187
+
+The nominated Tech Q1 inventory props include both 1500 (New - Other) and 1750 (New - With defects) conditions as “Open Box Focus”.
+Quantify GMV impact if aligning with the US definition which includes only the item condition 1500 (New - Other).
+
+*/
+create table p_uk_bc_t.tech_gmv_2023RW1_8 as (
+select
+meta_categ_id,categ_lvl2_id,categ_lvl3_id,meta_categ_name,categ_lvl2_name,categ_lvl3_name
+
+--Inv prop categories which have a focus in Open Box
+,case 
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) then 'Appliances Focus'
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) then 'Audio & TVs Focus'  
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) then 'Computing Focus'
+when new_vertical = 'Electronics' and cat.categ_lvl3_id in (9355) then 'Mobile Focus'
+when new_vertical = 'Electronics' and cat.categ_lvl2_id in (178893) then 'Smart Watches Focus'
+when new_vertical = 'Electronics' and (cat.categ_lvl2_id in (3676,162497) or cat.categ_lvl3_id in (3702,3709,4616,11183,20311,23895,31510,31529,31534,42190,44932,44995,44996,44999,45002,51082,58297,61816,61840,67870,75518,80183,96915,99269,101270,116309,116346,158837,158846,170597,175677,175678,175679,175680,175709,175710)) then 'Tablets & Network Hardware Focus'
+else null end as inventory_prop_focus_group
+
+,case when inventory_prop_focus_group is not null then 'Focus' else 'Not Focus' end as inventory_prop
+
+,cndtn.item_cndtn_id
+
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+
+,sum(ck.GMV_plan_usd) as tot_GMV
+,sum(ck.quantity) AS tot_SI
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+        
+inner join (select meta_categ_id,categ_lvl2_id,categ_lvl3_id,meta_categ_name,categ_lvl2_name,categ_lvl3_name,leaf_categ_id,site_id
+			,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+             when meta_categ_id in (26395) then 'Lifestyle'
+             when categ_lvl3_id in (260325) then 'Lifestyle'
+             when categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
+             when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+             when categ_lvl3_id in (3244) then 'Parts & Accessories'
+             when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+             when categ_lvl2_id in (46576) then 'Parts & Accessories'
+             when categ_lvl2_id in (63, 29223) then 'Collectibles'
+             else bsns_vrtcl_name end as new_vertical
+	        from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,41,23,-999) 
+			group by 1,2,3,4,5,6,7,8,9)  as cat
+on lstg.leaf_categ_id=cat.leaf_categ_id
+and lstg.item_site_id=cat.site_id and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal
+on ck.GMV_dt=cal.cal_dt
+and cal.age_for_rtl_year_id=0 and cal.age_for_rtl_week_id<=-1--Till RW8
+
+inner join (select usegm_grp_id,usegm_id,end_date,user_id,beg_date 
+		    from access_views.dw_usegm_hist 
+	        where usegm_grp_id = 48 																						
+	        and usegm_id = 206 																								
+	        and end_date >= '2015-12-30' 
+			group by 1,2,3,4,5) as hist 																						
+on hist.user_id=lstg.slr_id and lstg.auct_start_dt between hist.beg_date and hist.end_date	
+
+left join (select item_id,cndtn_rollup_id,item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id=cndtn.item_id
+        
+where 
+cat.new_vertical='Electronics'
+and ck.slr_cntry_id=3 
+and ck.byr_cntry_id=3 
+and ck.slr_cntry_id=ck.byr_cntry_id 
+and ck.rprtd_wacko_yn='N'
+and ck.auct_end_dt>'2018-12-29'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+
+group by 1,2,3,4,5,6,7,8,9,10
+);
+
+--2215 rows
+select count(*) from p_uk_bc_t.tech_gmv_2023RW1_8
+
+--Add to Excel data connection
+select * from p_uk_bc_t.tech_gmv_2023RW1_8;

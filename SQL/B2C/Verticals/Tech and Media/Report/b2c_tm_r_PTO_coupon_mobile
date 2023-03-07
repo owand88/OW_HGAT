@@ -1,0 +1,341 @@
+/*Process to select competitively priced listings for the weekly PTO coupon (UKPLAN-172)
+Code for initial discovery: https://github.ebay.com/uk-planning/uk-planning/blob/master/SQL/B2C/Verticals/Tech%20and%20Media/Analysis/b2c_tm_a_UKPLAN172_Lumina_Backmarket_PTO
+
+1.	Lumina sends report Tuesday morning
+2.      Bonnie completes file for PTO coupon listing selection by Wednesday morning. Notify Matt Potter & coupon analysts
+3.	Price override live on Thursday
+
+•	Select competitively priced listings 
+Criteria:
+ebay pricing <= BM pricing (scraped Check Out Price + £3.99 service fee)
+
+•	Add a new flag to indicate if the competitively-priced listings should be selected for price-override.
+Criteria:
+1.	Seller standard is not “Below Standard”
+2.	Seller INR rate < 2% (0.02) and SNAD rate < 7% (0.07) 
+*/
+
+/*
+select * from P_InventoryPlanning_T.Lumina_export
+where eBayListingID is not null and eBayListingID <> 0
+
+select count(*) from P_InventoryPlanning_T.Lumina_export;
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Prep Lumina data
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists lumina;
+create temporary table lumina as (
+--Prep raw data and add competitively-priced flag 
+with base (
+select 
+eb.ExportDate
+,eb.MWID
+,eb.CategoryName
+,eb.ProductName
+,eb.Brand
+,eb.Colour
+,eb.eBayListingID
+,eb.MemorySize
+,eb.ModelNo
+,eb.CurrentPrice as eB_CurrentPrice
+,eb.ShippingPrice as eB_ShippingPrice
+,eb.CheckOutPrice as eB_CheckOutPrice
+,eb.Seller as eB_Seller
+,bm.CurrentPrice as BM_CurrentPrice
+,bm.ShippingPrice as BM_ShippingPrice
+,bm.CheckOutPrice as BM_CheckOutPrice
+,bm.Seller as BM_Seller
+,case when eb.CheckOutPrice <= bm.CheckOutPrice + 3.99 then 1 else 0 end as comprice_flag
+
+from
+
+(select * from P_InventoryPlanning_T.Lumina_export
+where site='eBay' and eBayListingID is not null and eBayListingID <> 0) eb
+inner join 
+(select * from P_InventoryPlanning_T.Lumina_export
+where site='Backmarket' and eBayListingID is not null and eBayListingID <> 0) bm
+
+on eb.MWID=bm.MWID and eb.eBayListingID=bm.eBayListingID
+)
+--Add listing and seller info for the competitively-priced lisings
+,listing as (
+select 
+lstg.item_id
+,cndtn.item_cndtn_id
+,cndtn.item_condition
+,case when MSKU.item_id is not null then 1 else 0 end as MSKU_flag
+,lstg.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,std.seller_standard
+,base.ExportDate
+,base.MWID
+,base.CategoryName
+,base.ProductName
+,base.Brand
+,base.Colour
+,base.MemorySize
+,base.ModelNo
+,base.eB_CurrentPrice
+,base.eB_ShippingPrice
+,base.eB_CheckOutPrice
+,base.BM_CurrentPrice
+,base.BM_ShippingPrice
+,base.BM_CheckOutPrice
+,base.BM_Seller
+
+from access_views.dw_lstg_item lstg
+
+inner join base
+on lstg.item_id=base.eBayListingID and base.comprice_flag=1--competitively priced
+
+inner join access_views.dw_users u
+on lstg.slr_id=u.user_id
+
+left join 
+	(select 
+	user_id
+	,sps_slr_level_cd
+	,case when sps_slr_level_cd = 1 then 'Top Rated' 
+		  when sps_slr_level_cd = 2 then 'Above Standard' 
+		  when sps_slr_level_cd = 3 then 'Standard' 
+		  when sps_slr_level_cd = 4 then 'Below Standard' 
+		  else 'No seller standard' end as seller_standard
+	,last_eval_dt 
+	from prs_restricted_v.sps_level_metric_sum--released every 20th of the month
+	where sps_eval_type_cd = 1 and sps_prgrm_id = 3--Seller Standard evaluation type= Effective; Seller Performance Standard Program ID=UK
+	group by 1,2,3,4
+	qualify (row_number() over (partition by user_id order by last_eval_dt desc))=1)std
+on lstg.slr_id=std.user_id
+
+left join (select distinct item_id from access_views.lstg_item_vrtn) MSKU
+on lstg.item_id=MSKU.item_id
+
+left join (
+		   select 
+		   item_id
+		   ,item_cndtn_id
+		   ,case when item_cndtn_id = 1000 then 'New'
+	  			 when item_cndtn_id = 1500 then 'New - Other'
+	  			 when item_cndtn_id = 1750 then 'New - With defects'
+	  			 
+	  			 when item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  			 
+	  			 when item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  			 when item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  			 when item_cndtn_id = 2030 then 'Refurb - Good'
+	  			 when item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  			 	  
+	  			 when item_cndtn_id = 3000 then 'Used'
+	  			 when item_cndtn_id = 4000 then 'Used - Very Good'
+	  			 when item_cndtn_id = 5000 then 'Used - Good'
+	  			 when item_cndtn_id = 6000 then 'Used - Acceptable'
+	  			 when item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  			 else 'Other'
+	  			 end as item_condition
+			from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id=cndtn.item_id
+)
+--Seller mobile INR and SNAD rates in the latest 90 days
+,BBE as (
+select distinct
+slr.seller_id
+,slr.seller_name
+,ck.item_id
+,ck.transaction_id
+,case when upper(cps.final_claim_type_name) like '%INR%' then 1 else 0 end as INR_flag
+,case when upper(cps.final_claim_type_name) like '%SNAD%' then 1 else 0 end as SNAD_flag 
+
+from access_views.dw_checkout_trans ck
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id and lstg.leaf_categ_id=9355--mobile only
+
+inner join (select distinct seller_id, seller_name from listing) slr
+on ck.seller_id=slr.seller_id
+
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt 
+and ck.GMV_dt between current_date()  - 91 and current_date()  - 2
+and ck.auct_end_dt >= current_date()  - 91
+
+left join access_views.cps_embg_super_fact cps 
+on ck.item_id = cps.item_id and ck.transaction_id = cps.trxn_id
+)
+--Summary of all competitively-priced lisings
+,all (select 
+lg.ExportDate as LuminaReportExport_dt
+,lg.item_id
+,case when (ss.INR/ss.txn_vol)<0.02 and (ss.SNAD/ss.txn_vol)<0.07 and lg.seller_standard <> 'Below Standard' then 1 else 0 end as include_flag
+,lg.item_condition
+,lg.MSKU_flag
+,lg.seller_id
+,lg.seller_name
+,lg.seller_standard
+,ss.INR/ss.txn_vol as INR_rate_L90D
+,ss.SNAD/ss.txn_vol as SNAD_rate_L90D
+,lg.eB_CheckOutPrice
+,lg.BM_CheckOutPrice+3.99 as BM_CheckOutPrice_plus_ServiceFee
+,(lg.BM_CheckOutPrice+3.99) - lg.eB_CheckOutPrice as price_amt_cheaper
+,lg.BM_Seller
+,lg.Brand
+,lg.ModelNo
+,lg.ProductName
+,lg.Colour
+,lg.MemorySize
+,lg.eb_CurrentPrice
+,lg.eB_ShippingPrice
+,lg.BM_CurrentPrice
+,lg.BM_ShippingPrice
+,lg.BM_CheckOutPrice
+,lg.MWID
+
+from listing lg
+
+left join (
+			select 
+			seller_id
+			,count(*) as txn_vol
+			,sum(INR_flag) as INR
+			,sum(SNAD_flag) as SNAD
+			from BBE
+			group by 1) ss
+on lg.seller_id=ss.seller_id
+)
+--Create a rank for the competitively-priced lisings to be included in the PTO coupon (due to the weekly 200 listings cap)
+,include as (
+select 
+item_id
+,include_flag
+,productname
+,MWID
+,price_amt_cheaper
+,row_number() over (order by price_amt_cheaper desc) as price_variance_rank
+from all
+where include_flag=1
+)
+,incl_rank as (
+select 
+include.*
+,rank.price_variance_min_rank 
+,dense_rank() over (order by rank.price_variance_min_rank) include_rank
+from include
+left join
+(select item_id,min(price_variance_rank) as price_variance_min_rank from include group by 1) rank
+on include.item_id=rank.item_id
+)
+--Add rank info to the summary
+select 
+all.*
+,incl_rank.include_rank
+from all
+left join incl_rank
+on all.item_id = incl_rank.item_id and all.MWID = incl_rank.MWID
+);
+
+
+create temp table adjust as (
+with include as (
+select 
+item_id
+,include_flag
+,productname
+,MWID
+,price_amt_cheaper
+,row_number() over (order by price_amt_cheaper desc) as price_variance_rank
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+where include_flag=1
+)
+,incl_rank as (
+select 
+include.*
+,rank.price_variance_min_rank 
+,dense_rank() over (order by rank.price_variance_min_rank) include_rank
+from include
+left join
+(select item_id,min(price_variance_rank) as price_variance_min_rank from include group by 1) rank
+on include.item_id=rank.item_id
+)
+--Add rank info to the summary
+select 
+all.*
+,incl_rank.include_rank
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO all
+left join incl_rank
+on all.item_id = incl_rank.item_id and all.MWID = incl_rank.MWID
+);
+
+
+
+/*
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Data check
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select 
+include_flag
+,case when include_rank <=200 then 1 else 0 end as include_top200_flag
+,count(*)
+,count(distinct MWID)
+,count(distinct item_id) 
+from lumina
+where LuminaReportExport_dt = (select max(LuminaReportExport_dt) from lumina)
+group by 1,2;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Add latest data to master dataset for PTO coupon process
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--1. Create backup
+drop table if exists P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup;
+create table P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup
+as
+(select * from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO);
+
+--Check
+select LuminaReportExport_dt,count(*) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+group by 1 order by 1 desc;
+
+select LuminaReportExport_dt,count(*) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup
+group by 1 order by 1 desc;
+
+
+--2. Add data of latest week
+drop table if exists P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup_LatestWeekAdd;
+create table P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup_LatestWeekAdd
+as
+(
+select * from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup
+union all
+select * from lumina
+);
+
+--Check
+select LuminaReportExport_dt,count(*) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup_LatestWeekAdd
+group by 1 order by 1 desc;
+
+
+--3. Replace main table with backup
+drop table if exists P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO;
+create table P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+as (select * from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup_LatestWeekAdd);
+
+select LuminaReportExport_dt,count(*) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+group by 1 order by 1 desc;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Export to Matt/Mark
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select * from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+where LuminaReportExport_dt = (select max(LuminaReportExport_dt) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO)
+order by include_flag desc, price_amt_cheaper desc, MWID, item_id;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Code used in the PTO coupon process
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select distinct item_id 
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+where 
+include_rank <=200
+and LuminaReportExport_dt = (select max(LuminaReportExport_dt) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO)
+
+*/

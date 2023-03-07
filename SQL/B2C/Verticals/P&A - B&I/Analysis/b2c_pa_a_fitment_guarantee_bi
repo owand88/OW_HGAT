@@ -1,0 +1,120 @@
+sjk
+
+-- trxns eligible for fitment guarantee
+drop table if exists P_INVENTORYPLANNING_T.fitment_guarantee;
+CREATE  TABLE P_INVENTORYPLANNING_T.fitment_guarantee AS
+select distinct
+a.item_id, 
+a.trans_id, 
+a.cre_date, 
+c.property_name, 
+c.property_value
+from DW_OMS_LINE_ITEM a
+inner join DW_OMS_ORDER_PROPERTIES c on a.oms_order_id = c.oms_order_id 
+	and a.OMS_LINE_ITEM_ID = c.OMS_LINE_ITEM_ID 
+	and PROPERTY_NAME = 'FITMENT_COMPATIBILITY'
+	and property_value = 'FITS_YES'
+left join DW_OMS_ORDER b on a.oms_order_id = b.oms_order_id
+;
+--- 7903960 
+--select item_id, max(PROPERTY_NAME) as PROPERTY_NAME , max(property_value) as property_value from  P_INVENTORYPLANNING_T.fitment_guarantee  group by 1 limit 100;
+
+-- base table
+drop table if exists P_INVENTORYPLANNING_T.fitment_guarantee_2;
+CREATE  TABLE P_INVENTORYPLANNING_T.fitment_guarantee_2 AS
+SELECT 
+f.trxn_dt,
+a.rtrn_open_dt,
+	f.trxn_site_id,
+	f.trxn_id,
+	f.item_id,
+	f.trxn_qty,
+	a.RTRN_ID
+	,a.claim_type
+	,case when a.rtrn_rsn_cd = 20 then 'Doesnt fit my vehicle' else e.rtrn_rsn_desc end as rtrn_rsn_desc
+	,f.gmv_usd_amt
+	,a.CLAIM_AMNT_USD
+	,cat.CATEG_LVL3_ID
+	,cat.categ_lvl3_name
+	,cat.categ_lvl4_name
+	,cat.categ_lvl5_name,
+	f.slr_id,
+	f.byr_id,
+case when fg.property_value = 'FITS_YES' then 1 else 0 end as Byr_Finder_Complete_Flag
+FROM IDL_CHECKOUT_TRANS_FACT f  --- SELECT * FROM   IDL_CHECKOUT_TRANS_FACT where  lstg_site_id in (3) LIMIT 1000 ; 
+left join  P_BP_RES_STRATEGY_T.RETURN_BASE a on f.trxn_id = a.trxn_id and f.item_id = a.item_id 
+left join P_BP_RES_STRATEGY_T.RETURN_refunds c on c.rtrn_id = a.rtrn_id
+left join DW_SHPMT_RTRN_RSNS_LKP e on e.rtrn_rsn_cd = a.rtrn_rsn_cd
+left join DW_CATEGORY_GROUPINGS cat on cat.LEAF_CATEG_ID = f.leaf_ctgry_id and cat.site_id = f.lstg_site_id
+left join P_INVENTORYPLANNING_T.fitment_guarantee fg on fg.item_id=f.item_id and fg.trans_id = f.trxn_id
+where cat.BSNS_VRTCL_NAME = 'Parts & Accessories'-- and cat.CATEG_LVL2_ID in (6030, 10063)
+and f.trxn_site_id in (3) and f.lstg_site_id in (3) -- filtered for US
+and f.trxn_dt between '2022-10-01' and '2022-12-31'
+---and fg.property_value = 'FITS_YES' 
+;
+--select sum(trxn_qty) BI from P_INVENTORYPLANNING_T.fitment_guarantee_2  ; 
+-- BI
+   --------------------
+   -- pa total txn
+   DROP TABLE  P_ICHAN_T.FITMENT_category_GMV_quarter_pa_all ;
+        CREATE TABLE P_ICHAN_T.FITMENT_category_GMV_quarter_pa_all as 
+(
+SELECT 
+--cal.retail_year,
+--cal.retail_week,
+--cal.QTR_ID,
+--CK.SELLER_ID,
+
+case when CATEG_LVL2_ID in ( 6030, 10063) then 'Car_parts_and_moto' else 'Other' end as Categ_group,
+case when CK.SITE_ID=F.SITE_ID AND CK.LEAF_CATEG_ID=F.LEAF_CATEG_ID  AND fmt_enabled = 'Y' then 'Fitment_enabled' else 'N' end as Fitment_Enabled,
+     CASE WHEN(CAST (CASE WHEN CAST (COLD.flags10 as INT) < 0  THEN CAST (COLD.flags10 as INT) + 2147483648 ELSE CAST (COLD.flags10 AS INT  )  END AS   INT  ) & 64 )  >= 1 THEN 'FA_Adopted' ELSE 'N' END AS FA ,
+	 case when fg.item_id =ck.item_id  then 'FITMENT_COMPATIBILITY' else 'NA' end as Fitment,
+	 
+	 
+     CASE when fg.item_id =ck.item_id  then 'FA_Adopted'
+	 WHEN(CAST (CASE WHEN CAST (COLD.flags10 as INT) < 0  THEN CAST (COLD.flags10 as INT) + 2147483648 ELSE CAST (COLD.flags10 AS INT  )  END AS   INT  ) & 64 )  >= 1 THEN 'FA_Adopted' ELSE 'N' END AS Fitment_summary ,	 
+--	 property_name, 
+property_value,
+--CASE WHEN HIST.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END SEGMENT,
+---SUM(CK.ITEM_PRICE*QUANTITY*LPR.CURNCY_PLAN_RATE) AS Total_GMV, 
+     SUM(gmv_plan_usd) AS Total_GMV,
+SUM(QUANTITY) AS BI,
+count(distinct transaction_id) as txn,
+sum(case when  refund_amt > 0  then 1 else 0 end) as refund,
+sum(case when  refund_amt > 0  then QUANTITY else 0 end) as refund_bi
+
+from DW_CHECKOUT_TRANS AS CK 
+--inner  JOIN  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR  ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL  ON CAL.CAL_DT = CK.gmv_dt  and retail_year >=2021 ----and  AGE_FOR_RTL_WEEK_ID  >=(-52) 
+AND CK.gmv_dt >= '2020-01-01'
+AND CK.gmv_dt >= '2020-01-01'
+INNER JOIN (select LEAF_CATEG_ID, meta_categ_id, meta_categ_name, CATEG_LVL2_ID, CATEG_LVL2_name, categ_lvl3_name, categ_lvl3_id, categ_lvl4_name, categ_lvl4_id, bsns_vrtcl_name
+			from DW_CATEGORY_GROUPINGS CAT where CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) and site_id = 3 
+			-- and  categ_lvl2_id in(6030,14770) 
+			group by LEAF_CATEG_ID, meta_categ_id, meta_categ_name, CATEG_LVL2_ID, CATEG_LVL2_name, categ_lvl3_name, categ_lvl3_id, categ_lvl4_name, categ_lvl4_id, bsns_vrtcl_name) cat
+ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+   INNER JOIN DW_LSTG_ITEM  AS COLD ON CK.ITEM_ID = COLD.ITEM_ID ---AND CK.LSTG_END_DT = COLD.AUCT_END_DT 
+   left join (  select  item_id, max(PROPERTY_NAME) as PROPERTY_NAME , max(property_value) as property_value from  P_INVENTORYPLANNING_T.fitment_guarantee  group by 1 ) fg  on fg.item_id =ck.item_id 
+LEFT  JOIN DW_USEGM_HIST HIST 
+ON HIST.USER_ID=ck.Seller_ID 
+AND HIST.USEGM_GRP_ID  = 48 
+AND CASE WHEN ck.gmv_dt < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.gmv_dt END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+left join DW_USERS A ON A.USER_ID=CK.SELLER_ID
+    LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+LEFT JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_NEW WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   ON CK.SITE_ID=F.SITE_ID AND CK.LEAF_CATEG_ID=F.LEAF_CATEG_ID 
+WHERE 1=1
+--and CNDTN_ROLLUP_ID IN(1,3)
+AND CK.CK_WACKO_YN  =  'N'
+AND CK.SALE_TYPE NOT IN (10,15)
+AND CK.SLR_CNTRY_ID = 3
+and COLD.site_id=3
+and ck.byr_cntry_id =3
+and HIST.USEGM_ID = 206
+and bsns_vrtcl_name = 'Parts & Accessories'
+AND GMV_DT between '2022-01-01' and '2022-12-31'
+---AND FMT_ENABLED = 'Y'
+GROUP BY
+1,2,3,4,5,6
+ );  
+ select * from  P_ICHAN_T.FITMENT_category_GMV_quarter_pa_all ; 
