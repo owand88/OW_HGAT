@@ -2,7 +2,9 @@ Select a.*,b.GMV,b.sold_items
 From
 (Select
 ck.slr_id,
+case when u.comp is null then u.user_slctd_id else u.comp End as company_name,
 	case when U.USER_DSGNTN_ID=2  then 'B2C' else 'C2C' end as bus_flag,
+  case when UPPER(BRND.ASPCT_VLU_NM_BRAND) in ('MODIFIED', 'CUSTOMIZED','YES') then 'Modified' else 'Unmodified' End as modified,
 	count(distinct ck.item_id) as LL
 
 FROM DW_LSTG_ITEM AS ck
@@ -55,10 +57,9 @@ and ck.wacko_YN = 'N'
 AND ck.AUCT_TYPE_CODE NOT in (10,15)
 and cat.META_CATEG_ID = 281
 and cat.CATEG_LVL2_ID NOT IN (260324)
-and ck.slr_CNTRY_ID in (3)
-and (case when ck.START_PRICE_LSTG_CURNCY > ck.RSRV_PRICE_LIST_CRNCY then ck.START_PRICE_LSTG_CURNCY else ck.RSRV_PRICE_LIST_CRNCY End)*lpr.CURNCY_PLAN_RATE >= 300
-and UPPER(BRND.ASPCT_VLU_NM_BRAND) not in ('MODIFIED', 'CUSTOMIZED','YES')
-GROUP BY 1,2
+and ck.slr_CNTRY_ID = 3
+and (case when ck.START_PRICE_LSTG_CURNCY > ck.RSRV_PRICE_LIST_CRNCY then ck.START_PRICE_LSTG_CURNCY else ck.RSRV_PRICE_LIST_CRNCY End) >= 500
+GROUP BY 1,2,3,4
 ) a
 
 LEFT JOIN
@@ -66,7 +67,9 @@ LEFT JOIN
 (
 select
 	ck.seller_id,
+  case when u.comp is null then u.user_slctd_id else u.comp End as company_name,
 		case when U.USER_DSGNTN_ID=2  then 'B2C' else 'C2C' end as bus_flag,
+    case when UPPER(BRND.ASPCT_VLU_NM_BRAND) in ('MODIFIED', 'CUSTOMIZED','YES') then 'Modified' else 'Unmodified' End as modified,
 	SUM(ck.gmv_plan_usd) AS GMV,
 	sum(ck.QUANTITY) as sold_items
 	
@@ -116,12 +119,14 @@ WHERE 1=1
 AND ck.AUCT_end_dt >= '2018-01-01'                    
 and cat.META_CATEG_ID = 281
 and cat.CATEG_LVL2_ID NOT IN (260324)
-and ck.slr_CNTRY_ID in (3)
-and ck.ITEM_PRICE*lpr.CURNCY_PLAN_RATE >= 300
-and UPPER(BRND.ASPCT_VLU_NM_BRAND) not in ('MODIFIED', 'CUSTOMIZED','YES')
-		GROUP BY 1,2
+and ck.slr_CNTRY_ID = 3
+and ck.byr_cntry_id = 3
+and ck.ITEM_PRICE >= 500
+		GROUP BY 1,2,3,4
 ) b
 	on a.slr_id = b.seller_id
 	and a.bus_flag = b.bus_flag
+  and a.modified = b.modified
 	
-	
+Where 1=1
+and modified = 'Unmodified'
