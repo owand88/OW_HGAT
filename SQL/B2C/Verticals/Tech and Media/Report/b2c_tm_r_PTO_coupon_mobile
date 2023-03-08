@@ -2,8 +2,9 @@
 Code for initial discovery: https://github.ebay.com/uk-planning/uk-planning/blob/master/SQL/B2C/Verticals/Tech%20and%20Media/Analysis/b2c_tm_a_UKPLAN172_Lumina_Backmarket_PTO
 
 1.	Lumina sends report Tuesday morning
-2.      Bonnie completes file for PTO coupon listing selection by Wednesday morning. Notify Matt Potter & coupon analysts
+2.  Bonnie completes file for PTO coupon listing selection by Wednesday morning. Notify Matt Potter & coupon analysts
 3.	Price override live on Thursday
+
 
 •	Select competitively priced listings 
 Criteria:
@@ -12,13 +13,14 @@ ebay pricing <= BM pricing (scraped Check Out Price + £3.99 service fee)
 •	Add a new flag to indicate if the competitively-priced listings should be selected for price-override.
 Criteria:
 1.	Seller standard is not “Below Standard”
-2.	Seller INR rate < 2% (0.02) and SNAD rate < 7% (0.07) 
+2.	Seller INR rate < 2% (0.02) and SNAD rate < 7% (0.07) --SNAD threshold changed to <5% on 2023-03-08 following Mark's feedback
 */
 
 /*
 select * from P_InventoryPlanning_T.Lumina_export
 where eBayListingID is not null and eBayListingID <> 0
 
+--5767 rows
 select count(*) from P_InventoryPlanning_T.Lumina_export;
 */
 
@@ -167,7 +169,8 @@ on ck.item_id = cps.item_id and ck.transaction_id = cps.trxn_id
 ,all (select 
 lg.ExportDate as LuminaReportExport_dt
 ,lg.item_id
-,case when (ss.INR/ss.txn_vol)<0.02 and (ss.SNAD/ss.txn_vol)<0.07 and lg.seller_standard <> 'Below Standard' then 1 else 0 end as include_flag
+--,case when (ss.INR/ss.txn_vol)<0.02 and (ss.SNAD/ss.txn_vol)<0.07 and lg.seller_standard <> 'Below Standard' then 1 else 0 end as include_flag--Threshold used for the first PTO coupon live on 2023-03-03
+,case when (ss.INR/ss.txn_vol)<0.02 and (ss.SNAD/ss.txn_vol)<0.05 and lg.seller_standard <> 'Below Standard' then 1 else 0 end as include_flag--Adjusted SNAD rate threshold on 2023-03-08 based on Mark's feedback
 ,lg.item_condition
 ,lg.MSKU_flag
 ,lg.seller_id
@@ -235,52 +238,32 @@ on all.item_id = incl_rank.item_id and all.MWID = incl_rank.MWID
 );
 
 
-create temp table adjust as (
-with include as (
-select 
-item_id
-,include_flag
-,productname
-,MWID
-,price_amt_cheaper
-,row_number() over (order by price_amt_cheaper desc) as price_variance_rank
-from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
-where include_flag=1
-)
-,incl_rank as (
-select 
-include.*
-,rank.price_variance_min_rank 
-,dense_rank() over (order by rank.price_variance_min_rank) include_rank
-from include
-left join
-(select item_id,min(price_variance_rank) as price_variance_min_rank from include group by 1) rank
-on include.item_id=rank.item_id
-)
---Add rank info to the summary
-select 
-all.*
-,incl_rank.include_rank
-from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO all
-left join incl_rank
-on all.item_id = incl_rank.item_id and all.MWID = incl_rank.MWID
-);
-
 
 
 /*
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 --Data check
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select * from lumina;
+
+--472 products from 65 sellers are competitively priced
+--32 sellers met the criteria, 230 products from 187 listings are selected for PTO coupon
 select 
 include_flag
 ,case when include_rank <=200 then 1 else 0 end as include_top200_flag
 ,count(*)
 ,count(distinct MWID)
 ,count(distinct item_id) 
+,count(distinct seller_id) 
 from lumina
-where LuminaReportExport_dt = (select max(LuminaReportExport_dt) from lumina)
-group by 1,2;
+group by 1,2
+order by include_flag,include_top200_flag;
+
+--Those not made it to the top 200
+select * from lumina
+where 
+include_flag=1 and include_rank>200
+order by item_id;
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 --Add latest data to master dataset for PTO coupon process
