@@ -1,0 +1,229 @@
+/*
+Following previous analysis (https://github.ebay.com/uk-planning/uk-planning/blob/master/SQL/B2C/Verticals/Tech%20and%20Media/Analysis/b2c_tm_a_UKPLAN100_mobile_price_change), 
+Matt Potter sent a warning email on 2023-02-13 to 8 sellers that they would be excluded from future coupons if their coupon price change behavior persists. 
+JOY15 which is the next coupon to launch will be used to verify.
+
+Analyze the highest performing EPID in the JOY15 coupon (live on 24Feb RW8 to 28Feb RW9) that has at least 3 months GMV (for each of the 8 sellers that were flagged in previous analysis as price manipulating during coupon period) to track if their behavior persists.
+
+Sellers to track are:
+• Musicmagpie (1046392160)
+• techmobile4u (1382161425)
+• loop_mobile (106197597)
+• Idoodirect (103159216)
+• the_ioutlet_extra (688643289)
+• vendiapp (2140685083)
+• onemoremobile (1179924860)
+• stockmustgo (182055505)
+
+1046392160,1382161425,106197597,103159216,688643289,2140685083,1179924860,182055505
+*/
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- 2023 coupon till RW9
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.2023coupon;
+create table p_uk_bc_t.2023coupon as (
+select 
+coupon_name
+,discount_offer
+,date(start_date) as start_dt
+,date(end_date) as end_dt
+,datediff(end_date, start_date)+1 as promo_duration_day
+,sum(B2C_GMB_USD_PLAN) as GMB
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 a
+where 
+promotion_type in ('seller coupon')
+and retail_year=2023 and end_date<='2023-03-01'
+group by 1,2,3,4,5
+having GMB>1000 
+);
+
+select * from p_uk_bc_t.2023coupon
+order by start_dt;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- All UK domestic transactions of the 8 sellers with PTO redemption info (Use transaction and redemption data from 2023-01-01 to 2023-03-04 end of RW9)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.mobile_txn_RW1_9;
+create table p_uk_bc_t.mobile_txn_RW1_9 as (
+select
+cal.retail_week
+,ck.GMV_dt
+,ck.transaction_id
+,ck.item_id
+,ck.item_vrtn_id
+,case when ck.item_vrtn_id=-999 then 0 else 1 end as MSKU_lstg
+,coalesce(eps.prod_ref_id,epms.prod_ref_id) as EPID
+,epn.prod_title as EPID_name
+,lstg.auct_titl as listing_title
+,lstg.auct_start_dt as listing_start_dt
+,lstg.auct_end_dt as listing_end_dt
+,lstg.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+,case when red.user_id is not null then 1 else 0 end as redeem_flag
+,red.coupon_name
+,red.discount_offer
+,red.redmd_date
+,red.redmd_amt
+,red.GMB as GMB_before_redmd_GBP
+,red.GMB-red.redmd_amt as GMB_minus_redmd_amt_GBP
+,sum(ck.GMV_lc_amt) as GMV_GBP
+,sum(ck.GMV_plan_usd) as GMV_USD
+,sum(ck.quantity) AS tot_SI
+,sum(ck.refund_amt) as tot_refund
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id = lstg.item_id
+
+inner join (select meta_categ_id, meta_categ_name, categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, leaf_categ_id, site_id
+			from access_views.dw_category_groupings group by 1,2,3,4,5,6,7,8) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+        
+inner join access_views.dw_cal_dt as cal
+on ck.GMV_dt = cal.cal_dt and cal.retail_year=2023 and cal.retail_week <= 9
+
+left join (select 
+		   a.user_id
+		   ,a.transaction_id
+		   ,a.item_id
+		   ,b.coupon_name
+		   ,b.discount_offer
+		   ,a.redmd_amt
+		   ,a.redmd_date
+		   ,a.GMB
+		   ,a.qty_bght
+		   from prs_restricted_v.dw_eip_lylty_red_ref a
+		   inner join p_uk_bc_t.2023coupon b
+		   on a.incntv_cd = b.coupon_name
+		   where refund_flag=0
+		   ) red
+on ck.transaction_id = red.transaction_id and ck.item_id = red.item_id and ck.buyer_id = red.user_id
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+left join access_views.ctlg_item_fact eps
+on lstg.item_id=eps.item_id
+
+left join access_views.ctlg_vrtn_fact epms
+on lstg.item_id=epms.item_id and ck.item_vrtn_id=epms.item_vrtn_id
+
+left join access_views.ctlg_prod_fact epn
+on coalesce(eps.prod_ref_id,epms.prod_ref_id)=epn.prod_ref_id
+
+where 
+cat.categ_lvl2_id=9355--mobile only
+and ck.seller_id in (1046392160,1382161425,106197597,103159216,688643289,2140685083,1179924860,182055505)
+and ck.byr_cntry_id = 3 --UK buyers
+and ck.rprtd_wacko_yn = 'N'
+and ck.auct_end_dt > '2022-12-31'
+and lstg.auct_type_code not in (10,15)
+and lstg.item_site_id = 3
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21
+);
+
+
+--8 sellers
+select distinct seller_id from p_uk_bc_t.mobile_txn_RW1_9; 
+
+--13436
+select count(*), count(distinct item_id||transaction_id) from p_uk_bc_t.mobile_txn_RW1_9; 
+
+--stockmustgo did not participate in the JOY15 coupon
+select distinct seller_name from p_uk_bc_t.mobile_txn_RW1_9
+where coupon_name='JOY15'; 
+
+--stockmustgo has transactions in Week 9 but no coupon redemption
+select * from p_uk_bc_t.mobile_txn_RW1_9
+where seller_id=182055505 and retail_week=9
+order by GMV_dt;
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Top Mobile EPID + condition for each of the 7 sellers in 2023 (also with at least one JOY15 redemption)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.mobile_top7slr_topepid;
+create table p_uk_bc_t.mobile_top7slr_topepid as (
+select 
+a.seller_id
+,a.seller_name
+,a.item_cndtn_id
+,a.item_condition
+,a.EPID
+,a.EPID_name
+,sum(a.GMV_USD) as tot_GMV_USD
+from p_uk_bc_t.mobile_txn_RW1_9 a
+inner join (select distinct seller_id, EPID, item_cndtn_id from p_uk_bc_t.mobile_txn_RW1_9 where coupon_name='JOY15') b
+on a.seller_id=b.seller_id and a.EPID=b.EPID and a.item_cndtn_id=b.item_cndtn_id
+group by 1,2,3,4,5,6
+qualify (row_number() over (partition by seller_id order by tot_GMV_USD desc))<=1
+);
+
+select * from p_uk_bc_t.mobile_top7slr_topepid;
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Transactions of the top Mobile EPID + condition for each of the 7 sellers in 2023 (also with at least one JOY15 redemption)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists p_uk_bc_t.mobile_top7slr_topepid_txn;
+create table p_uk_bc_t.mobile_top7slr_topepid_txn as (
+select 
+a.*
+,a.GMV_GBP/a.tot_SI as ASP_GBP
+,case when a.coupon_name is null then ASP_GBP else round(a.GMB_minus_redmd_amt_GBP/a.tot_SI) end as Final_ABP_GBP
+,case when a.coupon_name is null then ASP_GBP else round(a.GMB_before_redmd_GBP/a.tot_SI) end as Final_ASP_Buyer_See_GBP
+from p_uk_bc_t.mobile_txn_RW1_9 a
+inner join p_uk_bc_t.mobile_top7slr_topepid b
+where a.seller_id=b.seller_id and a.EPID=b.EPID and a.item_cndtn_id=b.item_cndtn_id
+);
+
+--Add to Excel connection
+select * from p_uk_bc_t.mobile_top7slr_topepid_txn;--2023 RW1-9 transactions of the top 7 EPID+Condition
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Top EPID + Condition (Daily average view for graphing)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Add to Excel connection
+
+-- Top EPID + Condition
+select
+seller_name
+,EPID
+,EPID_name
+,item_condition
+,GMV_dt
+,coupon_name
+,case when coupon_name is not null then 1 else 0 end as coupon_flag
+,discount_offer
+,avg(Final_ASP_Buyer_See_GBP) as daily_ASP_Buyer_See_GBP
+,avg(Final_ABP_GBP) as daily_ABP_GBP
+from p_uk_bc_t.mobile_top7slr_topepid_txn
+--where seller_id=1046392160--musicmagpie
+--where seller_id=106197597--loop_mobile
+--where seller_id=1382161425--techmobile4u
+--where seller_id=688643289--the_ioutlet_extra
+--where seller_id=2140685083--vendiapp
+--where seller_id=1179924860--onemoremobile
+where seller_id=103159216--idoodirect
+group by 1,2,3,4,5,6,7,8
+qualify (row_number() over (partition by GMV_dt order by coupon_flag desc))=1
+order by GMV_dt;
