@@ -17,10 +17,11 @@ Criteria:
 */
 
 /*
+--2688 rows
 select * from P_InventoryPlanning_T.Lumina_export
-where eBayListingID is not null and eBayListingID <> 0
+where eBayListingID is not null and eBayListingID <> 0;
 
---5767 rows
+--5779 rows
 select count(*) from P_InventoryPlanning_T.Lumina_export;
 */
 
@@ -238,16 +239,14 @@ on all.item_id = incl_rank.item_id and all.MWID = incl_rank.MWID
 );
 
 
-
-
 /*
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 --Data check
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 select * from lumina;
 
---472 products from 65 sellers are competitively priced
---32 sellers met the criteria, 230 products from 187 listings are selected for PTO coupon
+--433 products from 65 sellers are competitively priced
+--29 sellers met the criteria, 172 products from 131 listings are selected for PTO coupon
 select 
 include_flag
 ,case when include_rank <=200 then 1 else 0 end as include_top200_flag
@@ -264,6 +263,126 @@ select * from lumina
 where 
 include_flag=1 and include_rank>200
 order by item_id;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Manual adjustment
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--From the third coupon (16-23Mar): 
+--Whitelist MusicMagpie Excellent and Very Good listings for future weeks if the 200 cap is not reached (email from Mark on 2023-03-09)
+--Possibly include "onemoremobile" and "the_ioutlet_extra" in the weekly 5% coupon as reward for not continuing the coupon price change behaviour (email from Mark on 2023-03-13)
+
+--Mark "We have data which identifies the ‘Good’ condition phones have a significantly higher SNAD rate for Magpie but their 'Excellent' and 'Very Good' are performing ok. 
+--They're working on their 'Good' condition to improve SNADs so we want to incentivise them with the uplift in their strong conditions."
+
+• Musicmagpie (1046392160)
+• onemoremobile (1179924860)
+• the_ioutlet_extra (688643289)
+
+--Musicmagpie SNAD rate exceeds threshold of 5%
+--onemoremobile SNAD rate and INR rate both exceed threshold
+select * from lumina
+where seller_id in (1046392160,1179924860,688643289)
+order by seller_id,item_id;
+
+--31 rows
+drop table if exists adjustlumina;
+create temporary table adjustlumina as (
+with adjust as (
+select 
+a.* 
+,row_number() over (order by price_amt_cheaper desc) as price_variance_rank
+from lumina a
+where seller_id=1046392160 and item_condition in ('Refurb - Excellent','Refurb - Very Good')
+or seller_id=1179924860
+)
+,adjust_incl_rank as (
+select 
+adjust.*
+,rank.price_variance_min_rank 
+,dense_rank() over (order by rank.price_variance_min_rank) as adjust_include_rank
+from adjust
+left join
+(select item_id,min(price_variance_rank) as price_variance_min_rank from adjust group by 1) rank
+on adjust.item_id=rank.item_id
+)
+,combine as (
+select 
+a.*
+,case when b.MWID is not null then 1 else 0 end as adjust_flag
+,case when a.include_flag=1 or adjust_flag=1 then 1 else 0 end as include_flag_adjust
+,case when a.include_rank is not null then a.include_rank 
+	  when b.MWID is not null then b.adjust_include_rank+1000
+	  else null
+	  end as include_rank_adjust
+from lumina a
+left join adjust_incl_rank b
+on a.MWID=b.MWID
+order by include_rank_adjust
+)
+,final_rank as (
+select 
+combine.* 
+,dense_rank() over (order by include_rank_adjust) as include_dense_rank_adjust
+from combine
+where include_flag_adjust=1
+order by include_rank_adjust
+)
+select
+a.LuminaReportExport_dt
+,a.item_id
+,a.include_flag_adjust as include_flag
+,a.item_condition
+,a.MSKU_flag
+,a.seller_id
+,a.seller_name
+,a.seller_standard
+,a.INR_rate_L90D
+,a.SNAD_rate_L90D
+,a.eB_CheckOutPrice
+,a.BM_CheckOutPrice_plus_ServiceFee
+,a.price_amt_cheaper
+,a.BM_Seller
+,a.Brand
+,a.ModelNo
+,a.ProductName
+,a.Colour
+,a.MemorySize
+,a.eb_CurrentPrice
+,a.eB_ShippingPrice
+,a.BM_CurrentPrice
+,a.BM_ShippingPrice
+,a.BM_CheckOutPrice
+,a.MWID
+,b.include_dense_rank_adjust as include_rank
+from combine a
+left join final_rank b
+on a.MWID=b.MWID
+);
+
+select * from adjustlumina
+order by include_flag desc, include_rank;
+
+--433
+select count(*) from adjustlumina;
+
+--After adjustment, 203 products from 146 listings by 31 sellers are selected for PTO coupon
+select 
+include_flag
+,case when include_rank <=200 then 1 else 0 end as include_top200_flag
+,count(*)
+,count(distinct MWID)
+,count(distinct item_id) 
+,count(distinct seller_id) 
+from adjustlumina
+group by 1,2
+order by include_flag,include_top200_flag;
+
+drop table lumina;
+create temporary table lumina as (
+select * from adjustlumina
+);
+
+select * from lumina;
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 --Add latest data to master dataset for PTO coupon process
@@ -310,7 +429,7 @@ group by 1 order by 1 desc;
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 select * from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
 where LuminaReportExport_dt = (select max(LuminaReportExport_dt) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO)
-order by include_flag desc, price_amt_cheaper desc, MWID, item_id;
+order by include_flag desc, include_rank, MWID, item_id;
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 --Code used in the PTO coupon process
