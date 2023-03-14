@@ -9,6 +9,8 @@ https://ebayinc.sharepoint.com/:x:/r/sites/UKTechMedia/_layouts/15/Doc.aspx?sour
 select * from P_InventoryPlanning_T.Tech_coupon_seller_ID;
 
 */
+
+
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- CX Main Survey (Business Vertical) UK B2C seller, UK buyer
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -24,6 +26,7 @@ ck.slr_id as  seller_id
 ,t.bsns_vrtcl_name
 ,cat.new_vertical
 ,case when new_vertical = 'Electronics' then 1 else 0 end as UK_Elec_flag
+,case when new_vertical = 'Media' then 1 else 0 end as UK_Media_flag
 ,cal.month_id
 ,t.ck_trans_id
 ,t.lstg_id
@@ -90,7 +93,7 @@ and t.user_cntry_id=3 -- Survey completed by UK buyer
 and t.tchpnt_id in (92) -- New CX Buyer Main
 and t.lstg_id not in (-99)
 and q.qstn_id in ( 36001, 37000)
-group by 1,2,3,4,5,6,7,8,9,10,11,12
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13
 ); 
 
 /*
@@ -99,20 +102,19 @@ select count(*),count(distinct user_srvy_rspns_id),count(distinct buyer_id),coun
 from P_InventoryPlanning_T.csat_vertical
 where UK_Elec_flag=1;
 */
+
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--- Summary
+--Seller with Elec / Media B2C Dom GMV YTD
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-drop table if exists P_InventoryPlanning_T.tech_seller_standard;
-create table P_InventoryPlanning_T.tech_seller_standard as (
---Seller with Elec B2C Dom GMV YTD
-with slr as 
-(
+drop table if exists P_InventoryPlanning_T.tech_media_seller_standard_slr;
+create table P_InventoryPlanning_T.tech_media_seller_standard_slr as (
 select
 ck.seller_id
 ,u.user_slctd_id as seller_name
 ,case when coup_slr.seller_id is not null then 1 else 0 end as Tech_coupon_seller_flag
 ,std.seller_standard
-,sum(ck.GMV_plan_usd) as YTD_GMV
+,sum(case when new_vertical='Electronics' then ck.GMV_plan_usd end) as Tech_YTD_GMV
+,sum(case when new_vertical='Media' then ck.GMV_plan_usd end) as Media_YTD_GMV
 
 from access_views.dw_checkout_trans ck 
 
@@ -170,7 +172,7 @@ left join
 on lstg.slr_id=std.user_id
       
 where 
-cat.new_vertical='Electronics'
+(cat.new_vertical='Electronics' or cat.new_vertical='Media')
 and ck.slr_cntry_id=3 
 and ck.byr_cntry_id=3 
 and ck.slr_cntry_id=ck.byr_cntry_id 
@@ -180,14 +182,19 @@ and lstg.auct_type_code not in (10,15)
 and lstg.item_site_id = 3
 
 group by 1,2,3,4
-)
---Seller Elec INR and SNAD rates in the latest 90 days
-,BBE as (
+);
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Seller Elec / Media INR and SNAD rates in the latest 90 days
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_InventoryPlanning_T.tech_media_seller_standard_BBE;
+create table P_InventoryPlanning_T.tech_media_seller_standard_BBE as (
 select 
 distinct
 slr.seller_id
 ,ck.item_id
 ,ck.transaction_id
+,case when cat.new_vertical = 'Electronics' then 1 else 0 end as UK_Elec_flag
+,case when cat.new_vertical = 'Media' then 1 else 0 end as UK_Media_flag
 ,case when upper(cps.final_claim_type_name) like '%INR%' then 1 else 0 end as INR_flag
 ,case when upper(cps.final_claim_type_name) like '%SNAD%' then 1 else 0 end as SNAD_flag 
 
@@ -213,27 +220,31 @@ inner join (select meta_categ_id,categ_lvl2_id,categ_lvl3_id,meta_categ_name,cat
 on lstg.leaf_categ_id=cat.leaf_categ_id
 and lstg.item_site_id=cat.site_id and cat.site_id=3
 
-inner join slr
+inner join P_InventoryPlanning_T.tech_media_seller_standard_slr slr
 on ck.seller_id=slr.seller_id
 
 inner join access_views.dw_cal_dt as cal 
 on cal.cal_dt = ck.GMV_dt 
-and ck.GMV_dt between current_date()  - 91 and current_date()  - 2
-and ck.auct_end_dt >= current_date()  - 91
+and ck.GMV_dt between current_date()  - 90 and current_date()  - 1
+and ck.auct_end_dt >= current_date()  - 90
 
 left join access_views.cps_embg_super_fact cps 
 on ck.item_id = cps.item_id and ck.transaction_id = cps.trxn_id
 
 where 
-cat.new_vertical='Electronics'
-)
+cat.new_vertical in ('Electronics','Media')
+);
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Summary
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_InventoryPlanning_T.tech_media_seller_standard;
+create table P_InventoryPlanning_T.tech_media_seller_standard as (
 --Refurb (CR+SR) CSAT (Planning Team's latest report) https://github.ebay.com/uk-planning/uk-planning/blob/master/SQL/B2C/Horizontals/CSAT/b2c_csat_r_main_analysis
-,cref as (
+with cref as (
 select 
 seller_id
-,count(distinct (case when age_for_month_id=-1 then user_id end)) as M_1_total_response
-,count(distinct (case when age_for_month_id=-1 and Satisfied_with_eBay='Extremely satisfied' then user_id end)) as M_1_extremely_satistified_user
-,M_1_extremely_satistified_user/M_1_total_response as LM_Refurb_CSAT
+,count(distinct (case when age_for_month_id=-1 then user_id end)) as LM_Refurb_survey_total_response
+,count(distinct (case when age_for_month_id=-1 and Satisfied_with_eBay='Extremely satisfied' then user_id end)) as LM_Refurb_survey_Extemely_Satisfied
 from p_sansen_t.csat_refurb
 where age_for_month_id in (-1)
 group by 1
@@ -242,11 +253,20 @@ group by 1
 ,ctech as (
 select 
 seller_id
-,count(distinct buyer_id) as M_1_total_response
-,count(distinct (case when Satisfied_with_eBay='Extremely satisfied' then buyer_id end)) as M_1_extremely_satistified_user
-,M_1_extremely_satistified_user/M_1_total_response as LM_Tech_CSAT
+,count(distinct buyer_id) as LM_Tech_survey_total_response
+,count(distinct (case when Satisfied_with_eBay='Extremely satisfied' then buyer_id end)) as LM_Tech_survey_Extemely_Satisfied
 from P_InventoryPlanning_T.csat_vertical
 where UK_Elec_flag=1
+group by 1
+)
+--Media CSAT
+,cmedia as (
+select 
+seller_id
+,count(distinct buyer_id) as LM_Media_survey_total_response
+,count(distinct (case when Satisfied_with_eBay='Extremely satisfied' then buyer_id end)) as LM_Media_survey_Extemely_Satisfied
+from P_InventoryPlanning_T.csat_vertical
+where UK_Media_flag=1
 group by 1
 )
 select 
@@ -254,24 +274,46 @@ slr.seller_id
 ,slr.seller_name
 ,slr.Tech_coupon_seller_flag
 ,slr.seller_standard
-,slr.YTD_GMV
-,ss.INR/ss.txn_vol as INR_rate_L90D
-,ss.SNAD/ss.txn_vol as SNAD_rate_L90D
-,cref.LM_Refurb_CSAT
-,cref.M_1_total_response as LM_Refurb_Survey_Response
-,ctech.LM_Tech_CSAT
-,ctech.M_1_total_response as LM_Tech_Survey_Response
---,case when (ss.INR/ss.txn_vol)<0.02 and (ss.SNAD/ss.txn_vol)<0.05 and slr.seller_standard <> 'Below Standard' then 1 else 0 end as standard_pass_flag
+,coalesce(slr.Tech_YTD_GMV,0)+coalesce(slr.Media_YTD_GMV,0) as Tech_Media_YTD_GMV
+,(coalesce(ss.Tech_INR,0)+coalesce(ss.Media_INR,0))/(coalesce(ss.Tech_txn_vol_L90D,0)+coalesce(ss.Media_txn_vol_L90D,0)) as Tech_Media_INR_rate_L90D
+,(coalesce(ss.Tech_SNAD,0)+coalesce(ss.Media_SNAD,0))/(coalesce(ss.Tech_txn_vol_L90D,0)+coalesce(ss.Media_txn_vol_L90D,0)) as Tech_Media_SNAD_rate_L90D
+,coalesce(cref.LM_Refurb_survey_Extemely_Satisfied,0)/coalesce(cref.LM_Refurb_survey_total_response,0) as LM_Refurb_CSAT
+,(coalesce(ctech.LM_Tech_survey_Extemely_Satisfied,0)+coalesce(cmedia.LM_Media_survey_Extemely_Satisfied,0))/(coalesce(ctech.LM_Tech_survey_total_response,0)+coalesce(cmedia.LM_Media_survey_total_response,0)) as LM_Tech_Media_CSAT
 
-from slr
+,coalesce(slr.Tech_YTD_GMV,0) as Tech_YTD_GMV
+,coalesce(slr.Media_YTD_GMV,0) as Media_YTD_GMV
+
+,coalesce(ss.Tech_INR,0)/coalesce(ss.Tech_txn_vol_L90D,0) as Tech_INR_rate_L90D
+,coalesce(ss.Tech_SNAD,0)/coalesce(ss.Tech_txn_vol_L90D,0) as Tech_SNAD_rate_L90D
+,coalesce(ss.Tech_txn_vol_L90D,0) as Tech_txn_vol_L90D
+
+,coalesce(ss.Media_INR,0)/coalesce(ss.Media_txn_vol_L90D,0) as Media_INR_rate_L90D
+,coalesce(ss.Media_SNAD,0)/coalesce(ss.Media_txn_vol_L90D,0) as Media_SNAD_rate_L90D
+,coalesce(ss.Media_txn_vol_L90D,0) as Media_txn_vol_L90D
+
+,coalesce(cref.LM_Refurb_survey_Extemely_Satisfied,0) as LM_Refurb_survey_Extemely_Satisfied
+,coalesce(cref.LM_Refurb_survey_total_response,0) as LM_Refurb_survey_total_response
+
+,coalesce(ctech.LM_Tech_survey_Extemely_Satisfied,0)/coalesce(ctech.LM_Tech_survey_total_response,0) as LM_Tech_CSAT
+,coalesce(ctech.LM_Tech_survey_Extemely_Satisfied,0) as LM_Tech_survey_Extemely_Satisfied
+,coalesce(ctech.LM_Tech_survey_total_response,0) as LM_Tech_survey_total_response
+
+,coalesce(cmedia.LM_Media_survey_Extemely_Satisfied,0)/coalesce(cmedia.LM_Media_survey_total_response,0) as LM_Media_CSAT
+,coalesce(cmedia.LM_Media_survey_Extemely_Satisfied,0) as LM_Media_survey_Extemely_Satisfied
+,coalesce(cmedia.LM_Media_survey_total_response,0) as LM_Media_survey_total_response
+
+from P_InventoryPlanning_T.tech_media_seller_standard_slr slr
 
 left join (
 			select 
 			seller_id
-			,count(*) as txn_vol
-			,sum(INR_flag) as INR
-			,sum(SNAD_flag) as SNAD
-			from BBE
+			,count(case when UK_Elec_flag=1 then item_id||transaction_id end) as Tech_txn_vol_L90D
+			,sum(case when UK_Elec_flag=1 then INR_flag end) as Tech_INR
+			,sum(case when UK_Elec_flag=1 then SNAD_flag end) as Tech_SNAD
+			,count(case when UK_Media_flag=1 then item_id||transaction_id end) as Media_txn_vol_L90D
+			,sum(case when UK_Media_flag=1 then INR_flag end) as Media_INR
+			,sum(case when UK_Media_flag=1 then SNAD_flag end) as Media_SNAD
+			from P_InventoryPlanning_T.tech_media_seller_standard_BBE
 			group by 1) ss
 on slr.seller_id=ss.seller_id
 
@@ -280,33 +322,42 @@ on slr.seller_id=cref.seller_id
 
 left join ctech 
 on slr.seller_id=ctech.seller_id
+
+left join cmedia
+on slr.seller_id=cmedia.seller_id
 );
 
 /*
---40939 rows
-select count(*),count(distinct seller_id) from P_InventoryPlanning_T.tech_seller_standard;
+--Data check
+--48373
+select count(*),count(distinct seller_id) from P_InventoryPlanning_T.tech_media_seller_standard_slr;
+
+--48373
+select count(*),count(distinct seller_id) from P_InventoryPlanning_T.tech_media_seller_standard;
 
 --12 sellers in William Cotrulia's list but not in the dataset
 select * from P_InventoryPlanning_T.Tech_coupon_seller_ID--William Cotrulia's list
 where seller_id not in
-(select seller_id from P_InventoryPlanning_T.tech_seller_standard where Tech_coupon_seller_flag=1)
+(select seller_id from P_InventoryPlanning_T.tech_media_seller_standard where Tech_coupon_seller_flag=1)
 order by 1;
 
 --197 sellers
-select * from P_InventoryPlanning_T.tech_seller_standard
+select * from P_InventoryPlanning_T.tech_media_seller_standard
 where 
 Tech_coupon_seller_flag=1
 and seller_standard <> "Below Standard";
 
---151 sellers
-select * from P_InventoryPlanning_T.tech_seller_standard
+--153 sellers
+select * from P_InventoryPlanning_T.tech_media_seller_standard
 where 
 Tech_coupon_seller_flag=1
 and seller_standard <> "Below Standard"
-and INR_rate_L90D < 0.02 and SNAD_rate_L90D < 0.05;
+and Tech_Media_INR_rate_L90D < 0.02 and Tech_Media_SNAD_rate_L90D < 0.05;
 */
 
-
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Report
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 --Export to Excel
 --In Will's list but not in the dataset
 select 
@@ -339,5 +390,95 @@ on a.seller_id=b.user_id
 order by 1;
 
 --Add to Excel data connection
-select * from P_InventoryPlanning_T.tech_seller_standard
-order by YTD_GMV desc;
+select * from P_InventoryPlanning_T.tech_media_seller_standard
+order by Tech_Media_YTD_GMV desc;
+
+
+--Data date range
+
+--Report generated date
+select distinct cal_dt 
+from access_views.dw_cal_dt
+where cal_dt=current_date;
+
+--YTD GMV latest date
+--2023-03-13
+select max(GMV_dt) from access_views.dw_checkout_trans;
+
+--Transaction date range
+--2022-12-14 to 2023-03-13
+select min(cal_dt), max(cal_dt)
+from access_views.dw_cal_dt
+where cal_dt between current_date()  - 90 and current_date()  - 1;
+
+--INR/SNAD latest data date
+--2023-03-13
+select max(trxn_dt),max(rcnt_cps_claim_open_dt),max(rcnt_cps_claim_close_dt) 
+from access_views.cps_embg_super_fact;
+
+--Seller standard latest monthly release
+--2023-02-20
+select max(last_eval_dt)
+from prs_restricted_v.sps_level_metric_sum--released every 20th of the month
+where sps_eval_type_cd = 1 and sps_prgrm_id = 3
+and user_id=1046392160--specify musicmapie to get the monthly date, otherwise include all the overwrite dates
+order by 1 desc;
+
+
+
+/*
+--Check musicmapie / buyitdirect SNAD rate
+create temporary table sl as (
+select 
+distinct
+cat.new_vertical
+,cat.categ_lvl2_name
+,ck.item_id
+,ck.transaction_id
+,case when upper(cps.final_claim_type_name) like '%INR%' then 1 else 0 end as INR_flag
+,case when upper(cps.final_claim_type_name) like '%SNAD%' then 1 else 0 end as SNAD_flag 
+
+from access_views.dw_checkout_trans ck
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+
+inner join (select meta_categ_id,categ_lvl2_id,categ_lvl3_id,meta_categ_name,categ_lvl2_name,categ_lvl3_name,leaf_categ_id,site_id
+			,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+             when meta_categ_id in (26395) then 'Lifestyle'
+             when categ_lvl3_id in (260325) then 'Lifestyle'
+             when categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
+             when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+             when categ_lvl3_id in (3244) then 'Parts & Accessories'
+             when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+             when categ_lvl2_id in (46576) then 'Parts & Accessories'
+             when categ_lvl2_id in (63, 29223) then 'Collectibles'
+             else bsns_vrtcl_name end as new_vertical
+	        from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,41,23,-999) 
+			group by 1,2,3,4,5,6,7,8,9)  as cat
+on lstg.leaf_categ_id=cat.leaf_categ_id
+and lstg.item_site_id=cat.site_id and cat.site_id=3
+
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt 
+and ck.GMV_dt between current_date()  - 91 and current_date()  - 2
+and ck.auct_end_dt >= current_date()  - 91
+
+left join access_views.cps_embg_super_fact cps 
+on ck.item_id = cps.item_id and ck.transaction_id = cps.trxn_id
+
+where 
+cat.new_vertical in ('Electronics','Media')
+--and ck.seller_id=1046392160---musicmagpie
+and ck.seller_id=54386791--buyitdirect
+);
+
+select 
+categ_lvl2_name
+,count(*) as txn_vol
+,sum(INR_flag) as INR
+,sum(SNAD_flag) as SNAD
+from sl
+group by 1;
+*/
