@@ -1,0 +1,144 @@
+/*
+Jira: UKPLAN-207
+
+Title: Pro Trader Alumni Report 
+Author: Tugrul Ates
+Date: 2023-03-13
+*/
+
+--GMV
+with seller_gmv_cbt as 
+(
+select 
+t1.slr_id as seller_id
+,t2.cohort_quarter
+,t2.cohort_year
+,t2.quarter_start_date
+,t2.quarter_end_date
+,sum(
+	case when t1.gmv_dt >= t2.quarter_start_date and t1.gmv_dt <= t2.quarter_end_date then t1.gmv20_plan
+	else 0 
+	end) as gmv_plan
+	
+,sum(
+	case when t1.gmv_dt >= date_add(t2.quarter_start_date,-365) and t1.gmv_dt <= date_add(t2.quarter_end_date, -365) then t1.gmv20_plan
+	else 0 
+	end) as gmv_plan_last_year
+
+,sum(
+	case when t1.gmv_dt >= t2.quarter_start_date and t1.gmv_dt <= t2.quarter_end_date and t1.byr_cntry_id != t1.slr_cntry_id then t1.gmv20_plan
+	else 0 
+	end) as cbt_gmv
+	
+,sum(
+	case when t1.gmv_dt >= date_add(t2.quarter_start_date,-365) and t1.gmv_dt <= date_add(t2.quarter_end_date, -365) and t1.byr_cntry_id != t1.slr_cntry_id then t1.gmv20_plan
+	else 0 
+	end) as cbt_gmv_last_year
+	
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT as t1
+inner join P_InventoryPlanning_T.protrader_alumni_seller_cohorts as t2
+on t1.slr_id = t2.seller_id 
+where 1=1
+and t1.slr_cntry_id = 3
+and t1.ck_wacko_yn = 'N'
+and t1.iscore = 1
+--and t1.slr_id = 1199569148
+-- and t1.gmv_dt >= t2.quarter_start_date
+-- and t1.gmv_dt <= t2.quarter_end_date
+group by 1,2,3,4,5
+)
+
+
+--Live Listings and Promoted Listings Adoption
+, seller_LL_PLS as 
+(
+select 
+distinct t1.seller_id 
+,t1.cohort_quarter
+,t1.cohort_year
+,count(distinct 
+	case 
+	when t2.auct_start_dt < t1.quarter_end_date and t2.auct_end_dt >= t1.quarter_start_date then t2.item_id 
+	else null
+	end) as active_live_listings_during_quarter
+	
+,count(distinct 
+	case 
+	when t2.auct_start_dt < date_add(t1.quarter_end_date,-365) and t2.auct_end_dt >= date_add(t1.quarter_start_date,-365) then t2.item_id 
+	else null
+	end) as active_live_listings_during_quarter_last_year
+	
+,count(distinct 
+	case 
+	when t2.auct_start_dt >= t1.quarter_start_date and t2.auct_start_dt <= t1.quarter_end_date then t2.item_id 
+	else null
+	end) as created_listings_during_quarter
+	
+	
+,count(distinct 
+	case 
+	when t2.auct_start_dt >= date_add(t1.quarter_start_date,-365) and t2.auct_start_dt <= date_add(t1.quarter_end_date,-365) then t2.item_id 
+	else null
+	end) as created_listings_during_quarter_last_year
+
+,count(distinct 
+	case 
+	when date(t3.start_ts) < t1.quarter_end_date and date(t3.end_ts) >= t1.quarter_start_date then t2.item_id 
+	else null
+	end) as active_promoted_listings_during_quarter
+
+,count(distinct 
+	case 
+	when date(t3.start_ts) < date_add(t1.quarter_end_date,-365) and date(t3.end_ts) >= date_add(t1.quarter_start_date,-365) then t2.item_id 
+	else null
+	end) as active_promoted_listings_during_quarter_last_year
+	
+,count(distinct 
+	case 
+	when date(t3.start_ts) >= t1.quarter_start_date and date(t3.start_ts) <= t1.quarter_end_date then t2.item_id 
+	else null
+	end) as created_promoted_listings_during_quarter
+
+,count(distinct 
+	case 
+	when date(t3.start_ts) >= date_add(t1.quarter_start_date,-365) and date(t3.start_ts) <= date_add(t1.quarter_end_date,-365) then t2.item_id 
+	else null
+	end) as created_promoted_listings_during_quarter_last_year
+
+from P_InventoryPlanning_T.protrader_alumni_seller_cohorts as t1
+left join DW_LSTG_ITEM as t2 
+on t1.seller_id = t2.slr_id 
+
+left join PRS_RESTRICTED_V.PL_ADS_CMPGN_ITEM as t3
+on t1.seller_id = t3.slr_id
+and t2.slr_id = t3.slr_id
+and t2.item_id = t3.item_id
+
+where 1=1 
+and t2.item_site_id = 3
+and t2.wacko_yn = 'N'
+and t2.auct_type_code NOT IN (10,15)  --10: CreditPartialSale, 15: AWCredit --> This exclusion logic was taken from "GitHub/uk-planning/Home_Garden/b2c_hg_a_Large Merchant Migration Listings" scrip
+--and t1.seller_id = 1199569148
+-- and t2.auct_start_dt < t1.quarter_end_date
+-- and t2.auct_end_dt >= t1.quarter_start_date
+group by 1,2,3
+)
+
+select 
+t1.* 
+,t2.active_live_listings_during_quarter
+,t2.active_live_listings_during_quarter_last_year 
+,t2.created_listings_during_quarter
+,t2.created_listings_during_quarter_last_year
+,t2.active_promoted_listings_during_quarter
+,t2.active_promoted_listings_during_quarter_last_year
+,t2.created_promoted_listings_during_quarter
+,t2.created_promoted_listings_during_quarter_last_year
+from seller_gmv_cbt as t1
+inner join seller_LL_PLS as t2
+on t1.seller_id = t2.seller_id 
+and t1.cohort_quarter = t2.cohort_quarter
+and t1.cohort_year = t2.cohort_year
+order by t1.cohort_year, t1.cohort_quarter
+
+
