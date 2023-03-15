@@ -1,0 +1,160 @@
+/*
+Initial performance review on the first batch of mobile listings selected for the 5% PTO coupon live on 2023-03-03 (total 198 listings) at EPID level.
+Identify performance of sellers at different SNAD buckets.
+
+Example SNAD buckets:
+1-3% = $Z
+3-5% = $Y
+5-7% = $X
+
+Get a good baseline for the first PTO coupon, so we can derive GMV impact in the instance of future adjustment when sellers with 5-7% SNAD rate are removed from the PTO coupon process (would buyers transfer into other sellers?).
+Also gives a clear message to sellers in the 5-7% SNAD bucket who have felt the benefit from the 5% coupon to incentivize into improving their SNAD performance.
+*/
+
+--198 listings in the first PTO coupon (ran from 2023-03-03 [Fri] to supposedly 2023-03-09 [Thu])
+select distinct item_id 
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+where 
+include_rank <=200
+and LuminaReportExport_dt = (select max(LuminaReportExport_dt) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Transaction with PTO redemption info (Use transaction and redemption data from 2023-03-03 to 2023-03-07)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--2023-03-07
+select max(GMV_dt) from access_views.dw_checkout_trans;
+--2023-03-07
+select max(redmd_date) from prs_restricted_v.dw_eip_lylty_red_ref where incntv_cd='SCORE5';
+
+drop table if exists p_UK_BC_t.first_Tech_PTO;
+create table p_UK_BC_t.first_Tech_PTO as (
+with lstg as (
+select distinct 
+a.LuminaReportExport_Dt
+,a.item_id
+,b.auct_titl as listing_title
+,b.auct_start_dt as listing_start_dt
+,b.auct_end_dt as listing_end_dt
+,a.item_condition
+,a.MSKU_flag
+,a.seller_id
+,a.seller_name
+,a.seller_standard
+,a.INR_rate_L90D
+,a.SNAD_rate_L90D
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO a
+inner join access_views.dw_lstg_item b
+on a.item_id=b.item_id
+where include_rank <=200
+and LuminaReportExport_dt = (select max(LuminaReportExport_dt) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO)
+)
+,trans as (
+select
+lstg.LuminaReportExport_Dt
+,lstg.item_id
+,ck.item_vrtn_id
+,lstg.seller_id
+,case when byr_cntry_id = 3 then 'UK Buyer' else 'Non-UK Buyer' end as buyer_country
+,ck.GMV_dt
+,ck.transaction_id
+,case when red.user_id is not null then 1 else 0 end as redeem_flag
+,red.redmd_date
+,red.redmd_amt
+,red.GMB-red.redmd_amt as GMB_GBP_after_redemption
+,ck.GMV_lc_amt as GMV_GBP
+,ck.GMV_plan_usd as GMV_USD
+,ck.quantity as SI
+
+from access_views.dw_checkout_trans ck 
+
+inner join lstg
+on ck.item_id = lstg.item_id
+        
+inner join access_views.dw_cal_dt as cal
+on ck.GMV_dt = cal.cal_dt and cal.cal_dt between '2023-03-03' and '2023-03-07'
+
+left join (select 
+		   user_id
+		   ,transaction_id
+		   ,item_id
+		   ,redmd_amt
+		   ,redmd_date
+		   ,GMB
+		   ,qty_bght
+		   from prs_restricted_v.dw_eip_lylty_red_ref
+		   where incntv_cd='SCORE5'--5% PTO coupon
+		   and refund_flag=0
+		   and redmd_date between '2023-03-03' and '2023-03-07'
+		   ) red
+on ck.transaction_id = red.transaction_id and ck.item_id = red.item_id and ck.buyer_id = red.user_id
+
+where 
+ck.rprtd_wacko_yn='N'
+)
+select
+lstg.LuminaReportExport_Dt
+,lstg.item_id
+,case when trans.item_id is not null then 1 else 0 end as converted_lstg
+,lstg.item_condition
+,lstg.listing_title
+,lstg.listing_start_dt
+,lstg.listing_end_dt
+,lstg.MSKU_flag
+,trans.item_vrtn_id
+,coalesce(eps.prod_ref_id,epms.prod_ref_id) as EPID
+,epn.prod_title as EPID_name
+,lstg.seller_id
+,lstg.seller_name
+,lstg.seller_standard
+,lstg.INR_rate_L90D
+,lstg.SNAD_rate_L90D
+,case when lstg.SNAD_rate_L90D between 0.00 and 0.009 then '<1%'
+	  when lstg.SNAD_rate_L90D <= 0.03 then '1% - 3%'
+	  when lstg.SNAD_rate_L90D <= 0.05 then '3% - 5%'
+	  when lstg.SNAD_rate_L90D <= 0.07 then '5% - 7%'
+	  else 'N/A' end as SNAD_rate_bucket
+,trans.GMV_dt
+,trans.transaction_id
+,trans.redeem_flag
+,trans.redmd_date
+,trans.redmd_amt
+,trans.GMB_GBP_after_redemption
+,trans.GMV_GBP
+,trans.GMV_USD
+,trans.SI
+,trans.buyer_country
+from lstg
+
+left join trans 
+on lstg.item_id = trans.item_id
+
+left join access_views.ctlg_item_fact eps
+on lstg.item_id = eps.item_id
+
+left join access_views.ctlg_vrtn_fact epms
+on lstg.item_id = epms.item_id and trans.item_vrtn_id = epms.item_vrtn_id
+
+left join access_views.ctlg_prod_fact epn
+on coalesce(eps.prod_ref_id,epms.prod_ref_id) = epn.prod_ref_id
+);
+
+--Data check
+select count(*),count(distinct item_vrtn_id||transaction_id) 
+from p_UK_BC_t.first_Tech_PTO
+where GMV_dt is not null;
+
+select * from p_UK_BC_t.first_Tech_PTO; 
+
+--2023-03-03 to 2023-03-07
+select min(redmd_date),max(redmd_date)
+from p_UK_BC_t.first_Tech_PTO
+where redeem_flag=1;
+
+--72 (170 variants) out of 198 listings converted (36%) in the period of 2023-03-03 to 2023-03-07
+select converted_lstg,count(distinct item_id),count(distinct item_id||item_vrtn_id)  
+from p_UK_BC_t.first_Tech_PTO
+group by 1; 
+
+--133 redemptions
+select count(*),count(distinct item_id||transaction_id),count(distinct transaction_id) from p_UK_BC_t.first_Tech_PTO
+where redeem_flag=1;
