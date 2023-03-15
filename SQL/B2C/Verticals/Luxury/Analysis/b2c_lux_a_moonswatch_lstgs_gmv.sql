@@ -120,24 +120,24 @@ group by 1,2,3,4,5
 
 select    
 src.SESSION_START_DT
-,case when lower(brand) like ('%swatch%') then 'Swatch'
-	when lower(brand) like ('%omega%') then 'Omega'
-	Else 'Other' End as brand
-,case when lower(src.query) like ('%moon%') then 'Yes' else '-' end as possible_moon_lstg 
+,brand
+,case when lower(src.keyword) like any ('%moonswatch%','%moon swatch%','%moon x swatch%','%moonxswatch%') then 'Yes' else '-' end as moonswatch_search 
 ,count(*) as src_cnt 
 
-from  access_views.srch_cnvrsn_event_fact src       
-inner join
+from  access_views.SRCH_KEYWORDS_EXT_FACT src       
+left join
 	(
 	select lstg.item_id
-	,brand
+	,case when lower(brand) like ('%swatch%') then 'Swatch'
+		when lower(brand) like ('%omega%') then 'Omega'
+		Else 'Other'
+		End as brand
 	
 	from DW_LSTG_ITEM lstg
 	INNER JOIN DW_CAL_DT CAL
 		ON lstg.AUCT_START_DT <= cal.CAL_DT
 		and lstg.AUCT_END_DT >= cal.CAL_DT
 		AND cal.CAL_DT >= '2023-02-28'
-		and cal.cal_dt <= '2023-03-09'
 	INNER JOIN DW_CATEGORY_GROUPINGS CAT 
 		ON CAT.LEAF_CATEG_ID = lstg.LEAF_CATEG_ID 
 		AND CAT.SITE_ID = 3
@@ -165,16 +165,16 @@ inner join
 				on lstg.item_id = brand.item_id
 	Where 1=1
 	and lstg.ITEM_SITE_ID = 3
-	and lstg.auct_titl like any ('%moonswatch%','%moon swatch%')
+-- 	and lower(brand) like any ('%swatch%','%omega%')
+-- 	and lstg.auct_titl like any ('%moonswatch%','%moon swatch%')
 	and cat.CATEG_LVL2_ID = 260324
 	
 	Group by 1,2
 	) LST
-		on substring(src.items,1,instr(src.items,',')-1) = lst.item_id--Assume the first item appears is the most relevant to the search input
+		on src.FIRST_ITEM_ID = lst.item_id--Assume the first item appears is the most relevant to the search input
 
 
 where src.site_id = 3 
-and (src.SESSION_START_DT >= '2023-02-28' and src.SESSION_START_DT <= '2023-03-09')
+and (src.SESSION_START_DT >= '2023-02-28')
 
 group by 1,2,3
-
