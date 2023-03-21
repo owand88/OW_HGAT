@@ -91,7 +91,7 @@ From
 	(
 	Select 
 	cal.retail_year
-	, case when (cat.CATEG_LVL3_ID = 260325) then 'Watches'
+	, case when (cat.CATEG_LVL2_ID = 260324) then 'Watches'
 		when (cat.CATEG_LVL3_ID = 169291) OR (cat.CATEG_LVL4_ID IN (52357,163570,169285,45258,2996,45237,169271)) then 'Handbags'
 		when cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) then 'Sneakers'
 		when (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) then 'Jewellery'
@@ -153,7 +153,7 @@ From
 	(
 	Select 
 	cal.retail_year
-	, case when (cat.CATEG_LVL3_ID = 260325) then 'Watches'
+	, case when (cat.CATEG_LVL2_ID = 260324) then 'Watches'
 		when (cat.CATEG_LVL3_ID = 169291) OR (cat.CATEG_LVL4_ID IN (52357,163570,169285,45258,2996,45237,169271)) then 'Handbags'
 		when cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) then 'Sneakers'
 		when (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) then 'Jewellery'
@@ -214,34 +214,26 @@ Group by 1
 	
 Select 
 cal.retail_year
-, case when (cat.CATEG_LVL3_ID = 260325) then 'Watches'
+, case when (cat.CATEG_LVL2_ID = 260324) then 'Watches'
 	when (cat.CATEG_LVL3_ID = 169291) OR (cat.CATEG_LVL4_ID IN (52357,163570,169285,45258,2996,45237,169271)) then 'Handbags'
 	when cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) then 'Sneakers'
 	when (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) then 'Jewellery'
 	Else 'Other'
 	End as category
-, case when ((lower(brand) like any ('%unknown%','%null%','%unbrand%','none','%not applicable%','%n/a%')) or (brand is null)) then 'UNKNOWN' else brand end as brand
-, case when ((lower(model) like any ('%unknown%','%null%','%unbrand%','none','%not applicable%','%n/a%')) or (model is null)) then 'UNKNOWN' else model end as model
-, days_in_ty
+, brand
+, model
 , sum(ck.gmv_plan_usd) as gmv
 , sum(ck.QUANTITY) as sold_items
-, avg(ck.ITEM_PRICE) as asp_gbp
 , 0 as ll
 
 From DW_CHECKOUT_TRANS ck
 INNER JOIN DW_CAL_DT cal
 	on ck.gmv_dt = cal.CAL_DT
 	and cal.RETAIL_YEAR >= 2021
-	and cal.retail_year <= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
 INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT 
 		ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
 		AND CAT.SITE_ID = 3
 		AND CAT.SAP_CATEGORY_ID NOT in (5,7,41,23,-999) 
-FULL OUTER JOIN
-	(select count(distinct CAL_DT) as days_in_ty
-	From DW_CAL_DT
-	Where retail_year = (select retail_year from DW_CAL_DT where AGE_FOR_DT_ID = -1 group by 1)
-	and AGE_FOR_DT_ID <= -1) ty
 left join (
 			Select a.ITEM_ID
 			,case when a.brand = tb.brand then a.brand else 'Outside Top 20 Brands' end as brand
@@ -318,7 +310,7 @@ left join (
 Where 1=1
 and ck.SLR_CNTRY_ID = 3
 
-Group by 1,2,3,4,5
+Group by 1,2,3,4
 
 
 
@@ -328,18 +320,16 @@ UNION ALL
 
 Select 
 cal.retail_year
-, case when (cat.CATEG_LVL3_ID = 260325) then 'Watches'
+, case when (cat.CATEG_LVL2_ID = 260324) then 'Watches'
 	when (cat.CATEG_LVL3_ID = 169291) OR (cat.CATEG_LVL4_ID IN (52357,163570,169285,45258,2996,45237,169271)) then 'Handbags'
 	when cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) then 'Sneakers'
 	when (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) then 'Jewellery'
 	Else 'Other'
 	End as category
-, case when ((lower(brand) like any ('%unknown%','%null%','%unbrand%','none','%not applicable%','%n/a%')) or (brand is null)) then 'UNKNOWN' else brand end as brand
-, case when ((lower(model) like any ('%unknown%','%null%','%unbrand%','none','%not applicable%','%n/a%')) or (model is null)) then 'UNKNOWN' else model end as model
-, days_in_ty
+, brand
+, model
 , 0 as gmv
 , 0 as sold_items
-, 0 as asp_gbp
 , count(distinct ck.ITEM_ID) as ll
 
 From DW_LSTG_ITEM ck
@@ -347,16 +337,10 @@ INNER JOIN DW_CAL_DT cal
 	on ck.auct_start_dt <= cal.CAL_DT
 	and ck.AUCT_END_DT >= cal.cal_dt
 	and cal.RETAIL_YEAR >= 2021
-	and cal.retail_year <= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
 INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT 
 		ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
 		AND CAT.SITE_ID = 3
 		AND CAT.SAP_CATEGORY_ID NOT in (5,7,41,23,-999) 
-FULL OUTER JOIN
-	(select count(distinct CAL_DT) as days_in_ty
-	From DW_CAL_DT
-	Where retail_year = (select retail_year from DW_CAL_DT where AGE_FOR_DT_ID = -1 group by 1)
-	and AGE_FOR_DT_ID = -1) ty
 left join (
 			Select a.ITEM_ID
 			,case when a.brand = tb.brand then a.brand else 'Outside Top 20 Brands' end as brand
@@ -432,6 +416,5 @@ left join (
 
 Where 1=1
 and ck.SLR_CNTRY_ID = 3
-and ck.item_site_id = 3
 
-Group by 1,2,3,4,5
+Group by 1,2,3,4
