@@ -1,14 +1,19 @@
--- drop table if exists P_CSI_TBS_T.UK_GMV_REVENUE;
-
--- CREATE TABLE P_CSI_TBS_T.UK_GMV_REVENUE AS
--- GET ALL REVENUE
-
 with seller as
 (
 Select user_id as seller_id, user_slctd_id as seller_name
 From DW_USERS 
 Where user_id in (167935447 )
 )
+
+,
+
+dates as 
+(select *
+From DW_CAL_DT
+Where retail_year in (2021,2022,2023)
+and AGE_FOR_RTL_WEEK_ID < 0)
+
+
 
 
 (
@@ -73,7 +78,7 @@ FROM (
 				! gcr.lstg_site_id in(223, -1, -2, -3) and  
 				! gcr.lstg_type_code in(10,12,15, -4) and  
 				! gcr.lstg_site_id in(223, -1, -2, -3) and  
-				! gcr.adj_type_id in( -7, -1,3,5) and gcr.slr_cntry_id in (3 ,77)
+				! gcr.adj_type_id in( -7, -1,3,5) and gcr.slr_cntry_id in (3)
 			GROUP BY 1,2,3,4,5,6,7,8,9
 
 			UNION ALL 
@@ -89,7 +94,7 @@ FROM (
 				! gcr.lstg_type_code in(10,12,15, -4) and  
 				! gcr.lstg_site_id in(223, -1, -2, -3) and  
 				! gcr.adj_type_id in( -7, -1,3,5) and 
-				gcr.iswacko_yn_id=1 and gcr.slr_cntry_id in (3 ,77)
+				gcr.iswacko_yn_id=1 and gcr.slr_cntry_id in (3)
 			 GROUP BY 1,2,3,4,5,6,7,8,9
 
 			UNION ALL
@@ -107,7 +112,7 @@ FROM (
 				! gcr.lstg_site_id in(223, -1, -2, -3) and  
 				! gcr.lstg_type_code in(10,12,15, -4) and  
 				! gcr.lstg_site_id in(223, -1, -2, -3) and  
-				! gcr.adj_type_id in( -7, -1,3,5) and gcr.slr_cntry_id in (3 ,77)
+				! gcr.adj_type_id in( -7, -1,3,5) and gcr.slr_cntry_id in (3)
 			GROUP BY 1,2,3,4,5,6,7,8,9
 
 			UNION ALL 
@@ -122,7 +127,7 @@ FROM (
 				! gcr.lstg_type_code in(10,12,15, -4) and  
 				! gcr.lstg_site_id in(223, -1, -2, -3) and  
 				! gcr.adj_type_id in( -7, -1,3,5) and 
-				gcr.iswacko_yn_id=1 and gcr.slr_cntry_id in (3 ,77)
+				gcr.iswacko_yn_id=1 and gcr.slr_cntry_id in (3)
 			 GROUP BY 1,2,3,4,5,6,7,8,9
  
 ) as gem2
@@ -131,7 +136,7 @@ inner join ACCESS_VIEWS.dw_acct_actn_code_lkp as actn on gem2.actn_code=actn.act
 inner join ACCESS_VIEWS.dw_action_codes as actncode on actn.actn_code=actncode.actn_code
 inner join ACCESS_VIEWS.dw_acct_lstg_rev_bkt_lkp as bkt on  (actn.rev_bkt_id=bkt.rev_bkt_id and  lower(rev_grp_code) like lower('%GEM%'))
 inner join ACCESS_VIEWS.ssa_curncy_plan_rate_dim as cr on cr.curncy_id=gem2.blng_curncy_id
-inner join ACCESS_VIEWS.dw_cal_dt as x on gem2.acct_trans_dt=x.cal_dt
+inner join dates as x on gem2.acct_trans_dt=x.cal_dt
 inner join seller s on s.seller_id = gem2.slr_id
 left join ACCESS_VIEWS.dw_usegm_hist as usegm_hist on  ( (usegm_hist.user_id=gem2.slr_id and usegm_hist.usegm_grp_id=48) and gem2.acct_trans_dt between  usegm_hist.beg_date and usegm_hist.end_date) 
 left join prs_restricted_v.dna_cust_seller_sgmntn_hist as hist on  ( (hist.slr_id=gem2.slr_id and current_date between  hist.cust_slr_sgmntn_beg_dt and hist.cust_slr_sgmntn_end_dt) and hist.cust_sgmntn_grp_cd between  36 and 41)
@@ -144,8 +149,7 @@ left join
 		sps1.user_id = gem2.slr_id and ( gem2.acct_trans_dt >= sps1.EFCTV_START_DT and sps1.ACTV_IND = 1) 	 */
 
 WHERE  
-x.RETAIL_YEAR = 2022
-and x.RTL_QTR_OF_RTL_YEAR_ID = 4
+1=1
 -- and age_for_rtl_week_id < 0
 -- and bkt.LSTG_REV_BKT_DESC in ('FValue Credit', 'FValue Fee')
 and gem2.blng_curncy_id = 3
@@ -185,7 +189,7 @@ SELECT
 FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS as ck
 inner join ACCESS_VIEWS.dw_category_groupings as cat on  ( (ck.leaf_categ_id=cat.leaf_categ_id and ck.site_id=cat.site_id) and  ! cat.sap_category_id in(5,7,23,41, -999))
 inner join ACCESS_VIEWS.ssa_curncy_plan_rate_dim as cr on cr.curncy_id=ck.lstg_curncy_id
-inner join ACCESS_VIEWS.dw_cal_dt as x on ck.GMV_DT=x.cal_dt
+inner join dates as x on ck.GMV_DT=x.cal_dt
 inner join seller s on s.seller_id = ck.seller_id
 left join ACCESS_VIEWS.dw_usegm_hist as usegm_hist on  ( (usegm_hist.user_id=ck.SELLER_ID and usegm_hist.usegm_grp_id=48) and ck.GMV_DT between  usegm_hist.beg_date and usegm_hist.end_date) 
 left join prs_restricted_v.dna_cust_seller_sgmntn_hist as hist on  ( (hist.slr_id= ck.SELLER_ID and current_date between  hist.cust_slr_sgmntn_beg_dt and hist.cust_slr_sgmntn_end_dt) and hist.cust_sgmntn_grp_cd between  36 and 41)
@@ -193,12 +197,11 @@ left join prs_restricted_v.cust_sgmntn as lkp on hist.cust_sgmntn_cd=lkp.cust_sg
 
 			
 WHERE  
-x.RETAIL_YEAR = 2022
-and x.RTL_QTR_OF_RTL_YEAR_ID = 4
+1=1
 and	! ck.SALE_TYPE in(10,15)
 and lower(ck.ck_wacko_yn)=lower('N') 
 and x.cal_dt>=to_date('2018-01-01')
-and ck.slr_cntry_id in (3 ,77)
+and ck.slr_cntry_id in (3)
 
  GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
 )
