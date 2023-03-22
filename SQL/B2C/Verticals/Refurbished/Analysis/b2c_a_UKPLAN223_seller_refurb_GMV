@@ -46,7 +46,7 @@ from access_views.dw_checkout_trans ck
 inner join access_views.dw_lstg_item lstg
 on ck.item_id=lstg.item_id
 
-inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id,
+inner join (select bsns_vrtcl_name as original_vertical, meta_categ_id, meta_categ_name,categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id
 			,case when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
      		 when cat.meta_categ_id in (26395) then 'Lifestyle'
      		 when cat.categ_lvl3_id in (260325) then 'Lifestyle'
