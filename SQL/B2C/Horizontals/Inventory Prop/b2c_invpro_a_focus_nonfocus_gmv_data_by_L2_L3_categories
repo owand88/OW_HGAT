@@ -49,17 +49,18 @@ group by 1,2,3,4,5;
 select 
 t2.RETAIL_YEAR
 ,t2.QTR_OF_YEAR_ID
-,case   when t3.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
-            when t3.meta_categ_id in (26395) then 'Lifestyle'
-            when t3.CATEG_LVL3_ID in (260325) then 'Lifestyle'
-            when t3.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
-            when t3.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
-            when t3.categ_lvl3_id in (3244) then 'Parts & Accessories'
-            when t3.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
-            when t3.categ_lvl2_id in (46576) then 'Parts & Accessories'
-            when t3.categ_lvl2_id in (63, 29223) then 'Collectibles'
-            else t3.bsns_vrtcl_name
-        end as new_vertical
+,case 
+	when t3.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+	when t3.meta_categ_id in (26395) then 'Lifestyle'
+	when t3.categ_lvl3_id in (260325) then 'Lifestyle'
+	when t3.categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
+	when t3.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+	when t3.categ_lvl3_id in (3244) then 'Parts & Accessories'
+	when t3.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+	when t3.categ_lvl2_id in (46576) then 'Parts & Accessories'
+	when t3.categ_lvl2_id in (63, 29223) then 'Collectibles'
+	else t3.bsns_vrtcl_name 
+	end as new_vertical
 ,t3.categ_lvl2_name
 ,t3.categ_lvl3_name
 ,case when t1.slr_cntry_id != t1.byr_cntry_id then 'CBT' else 'DOM' end as dom_cbt_flag
