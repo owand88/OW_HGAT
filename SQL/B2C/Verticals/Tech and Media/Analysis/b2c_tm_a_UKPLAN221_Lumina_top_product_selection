@@ -1,0 +1,265 @@
+/*
+UKPLAN-221
+For the key Tech categories, get a list of top 5000 EPIDs / EPIDs+Condition / Listing + Brand + Model.
+
+•	Computing
+•	Mobile 
+•	Appliances
+•	Sound & Vision
+
+•	Top 5000 listing in L24W
+•	Top 5000 EPIDs in L24W
+•	Top 5000 EPID + Condition in L24W
+•	Top 5000 EPID in SR condition in L24W
+•	Top 5000 EPID in CR condition in L24W
+•	Top 5000 EPID in non-CR or SR conditions in L24W
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Category ID (https://github.ebay.com/uk-planning/uk-planning/blob/master/SQL/B2C/Horizontals/Inventory%20Prop/b2c_invpro_a_2023Q1_definition)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+•	Computing
+(cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063))
+
+•	Mobile 
+categ_lvl2_id=9355
+
+•	Appliances
+(cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) 
+
+•	Audio & TVs
+cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058)
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- L24W transactions from UK B2C sellers on UK site
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table P_InventoryPlanning_T.Lumina_top_product;
+create table P_InventoryPlanning_T.Lumina_top_product as (
+select
+lstg.item_id
+,lstg.auct_end_dt as listing_end_dt
+,lstg.auct_start_dt as listing_start_dt
+,lstg.auct_titl as listing_title
+,coalesce(eps.prod_ref_id,epms.prod_ref_id) as EPID
+,epn.prod_title as EPID_name
+,br.brand
+,mod.model
+,lstg.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+,case when (cat.categ_lvl2_id in (54968,171961) or cat.categ_lvl3_id in (164,167,169,177,179,1244,3761,16145,27386,31509,39976,42000,42017,44980,80183,111418,111422,131511,131542,158816,158817,168059,170083,171485,175671,175674,182085,182089,182090,183063)) then 'Computing'
+	  when (cat.categ_lvl2_id in (20710) or cat.categ_lvl3_id in (185114,260508)) then 'Appliances'
+	  when cat.categ_lvl3_id in (11071,14990,48647,72406,80077,111694,112529,168058) then 'Audio & TVs'
+	  when cat.categ_lvl2_id = 9355 then 'Mobile'
+	  else 'N/A' end as Key_Category
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+	  
+,sum(ck.GMV_plan_usd) as tot_GMV
+,sum(ck.quantity) AS tot_SI
+
+from access_views.dw_checkout_trans ck 
+
+inner join access_views.dw_lstg_item lstg
+on ck.item_id=lstg.item_id
+
+inner join (select meta_categ_id,meta_categ_name,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,leaf_categ_id,site_id 
+			from access_views.dw_category_groupings
+			where sap_category_id not in (5,7,23,41,-999)
+			group by 1,2,3,4,5,6,7,8) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id 
+and lstg.item_site_id = cat.site_id 
+and cat.site_id=3
+
+inner join access_views.dw_cal_dt as cal 
+on ck.GMV_dt = cal.cal_dt 
+and (cal.age_for_rtl_week_id between -24 and -1)--2022RW40-2023RW11 (~L6M)
+
+inner join dw_usegm_hist hist  
+on lstg.slr_id = hist.user_id     
+and hist.usegm_grp_id = 48 and hist.usegm_id = 206 
+and lstg.auct_start_dt between hist.beg_date and hist.end_date
+
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+--Brand
+left join
+(select 
+item_id
+,auct_end_dt
+,lower(prdct_aspct_nm) as lcase_aspect_name
+,upper(aspct_vlu_nm) as brand
+from access_views.item_aspct_clssfctn
+where lower(prdct_aspct_nm) = 'brand' 
+and ns_type_cd in ('df','nf')
+qualify (row_number() over (partition by item_id order by lower(prdct_aspct_nm)))=1--acquire just one row for brand
+)br
+on lstg.item_id = br.item_id 
+and lstg.auct_end_dt = br.auct_end_dt
+
+--Model
+left join
+(select 
+item_id
+,auct_end_dt
+,lower(prdct_aspct_nm) as lcase_aspect_name
+,upper(aspct_vlu_nm) as model
+from access_views.item_aspct_clssfctn
+where lower(prdct_aspct_nm) = 'model' 
+and ns_type_cd in ('df','nf')
+qualify (row_number() over (partition by item_id order by lower(prdct_aspct_nm)))=1
+)mod
+on lstg.item_id = mod.item_id 
+and lstg.auct_end_dt = mod.auct_end_dt
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+left join access_views.ctlg_item_fact eps
+on lstg.item_id = eps.item_id
+
+left join access_views.ctlg_vrtn_fact epms
+on lstg.item_id = epms.item_id and ck.item_vrtn_id = epms.item_vrtn_id
+
+left join access_views.ctlg_prod_fact epn
+on coalesce(eps.prod_ref_id,epms.prod_ref_id) = epn.prod_ref_id
+
+where 
+ck.slr_cntry_id = 3 --UK sellers
+and ck.site_id = 3 
+and ck.rprtd_wacko_yn = 'N'
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+having Key_Category <> 'N/A'
+);
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Export top products of different cuts
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--1,012,807
+select count(*) from P_InventoryPlanning_T.Lumina_top_product
+
+--Top 5000 listing in L24W
+create table p_uk_bc_t.top_lstg as (
+select 
+Key_Category
+,item_id
+,item_condition
+,listing_title
+,brand
+,model
+,seller_name
+,listing_start_dt
+,listing_end_dt
+,sum(tot_GMV) as L24W_GMV
+,sum(tot_SI) as L24W_SI
+from P_InventoryPlanning_T.Lumina_top_product
+group by 1,2,3,4,5,6,7,8,9
+qualify (row_number() over (partition by Key_Category order by L24W_GMV desc))<=5000
+);
+
+--Top 5000 EPIDs in L24W
+create table p_uk_bc_t.top_EPID as (
+select 
+Key_Category
+,EPID
+,EPID_name
+,sum(tot_GMV) as L24W_GMV
+,sum(tot_SI) as L24W_SI
+from P_InventoryPlanning_T.Lumina_top_product
+where EPID is not null
+group by 1,2,3
+qualify (row_number() over (partition by Key_Category order by L24W_GMV desc))<=5000
+);
+
+--Top 5000 EPID + Condition in L24W
+create table p_uk_bc_t.top_EPID_cndtn as (
+select 
+Key_Category
+,EPID
+,EPID_name
+,EPID||' '||item_cndtn_id as combine--for pivot table sorting
+,item_condition
+,sum(tot_GMV) as L24W_GMV
+,sum(tot_SI) as L24W_SI
+from P_InventoryPlanning_T.Lumina_top_product
+where EPID is not null
+group by 1,2,3,4,5
+qualify (row_number() over (partition by Key_Category order by L24W_GMV desc))<=5000
+);
+
+--Top 5000 EPID in SR condition in L24W
+create table p_uk_bc_t.top_EPID_SR as (
+select 
+Key_Category
+,item_condition
+,EPID
+,EPID_name
+,EPID||' '||item_cndtn_id as combine--for pivot table sorting
+,sum(tot_GMV) as L24W_GMV
+,sum(tot_SI) as L24W_SI
+from P_InventoryPlanning_T.Lumina_top_product
+where EPID is not null and item_cndtn_id in (2010,2020,2030)
+group by 1,2,3,4,5
+qualify (row_number() over (partition by Key_Category order by L24W_GMV desc))<=5000
+);
+
+--Top 5000 EPID in CR condition in L24W
+create table p_uk_bc_t.top_EPID_CR as (
+select 
+Key_Category
+,item_condition
+,EPID
+,EPID_name
+,sum(tot_GMV) as L24W_GMV
+,sum(tot_SI) as L24W_SI
+from P_InventoryPlanning_T.Lumina_top_product
+where EPID is not null and item_cndtn_id = 2000
+group by 1,2,3,4
+qualify (row_number() over (partition by Key_Category order by L24W_GMV desc))<=5000
+);
+
+--Top 5000 EPID in non-CR or SR conditions in L24W
+drop table p_uk_bc_t.top_EPID_nonCRSR;
+create table p_uk_bc_t.top_EPID_nonCRSR as (
+select 
+Key_Category
+,item_cndtn_id
+,item_condition
+,EPID
+,EPID_name
+,EPID||' '||item_cndtn_id as combine--for pivot table sorting
+,sum(tot_GMV) as L24W_GMV
+,sum(tot_SI) as L24W_SI
+from P_InventoryPlanning_T.Lumina_top_product
+where EPID is not null and item_cndtn_id not in (2000,2010,2020,2030)
+group by 1,2,3,4,5,6
+qualify (row_number() over (partition by Key_Category order by L24W_GMV desc))<=5000
+);
+
+--Add to Excel data connection
+select * from p_uk_bc_t.top_lstg; 
+select * from p_uk_bc_t.top_EPID;
+select * from p_uk_bc_t.top_EPID_cndtn;
+select * from p_uk_bc_t.top_EPID_SR;
+select * from p_uk_bc_t.top_EPID_CR;
+select * from p_uk_bc_t.top_EPID_nonCRSR;
