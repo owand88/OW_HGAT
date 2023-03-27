@@ -3,9 +3,8 @@ Jira: UKPLAN-216
 
 Title: Pro Trader Alumni Weekly Report 
 Author: Tugrul Ates
-Date: 2023-03-20
+Date: 2023-03-27
 */
-
 create view P_InventoryPlanning_T.vw_protrader_alumni_weekly_report_data as 
 
 --GMV and CBT
@@ -13,6 +12,7 @@ with seller_gmv_cbt as
 (
 select 
 t1.slr_id as seller_id
+,t2.seller_name
 ,t3.retail_week
 ,t3.retail_year
 --GMV
@@ -54,7 +54,7 @@ and t1.ck_wacko_yn = 'N'
 and t1.iscore = 1
 and t3.retail_year >= 2023
 --and t1.slr_id = 306693225
-group by 1,2,3
+group by 1,2,3,4
 )
 
 
