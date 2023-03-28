@@ -3,9 +3,8 @@ Jira: UKPLAN-216
 
 Title: Pro Trader Alumni Weekly Report 
 Author: Tugrul Ates
-Date: 2023-03-20
+Date: 2023-03-27
 */
-
 create view P_InventoryPlanning_T.vw_protrader_alumni_weekly_report_data as 
 
 --GMV and CBT
@@ -13,10 +12,20 @@ with seller_gmv_cbt as
 (
 select 
 t1.slr_id as seller_id
+,t2.seller_name
 ,t3.retail_week
 ,t3.retail_year
 --GMV
 ,sum(t1.gmv20_plan) as gmv_plan
+-- ,sum(
+-- 	case when t1.gmv_dt >= date(t2.run_date) then t1.gmv20_plan
+-- 	else 0 
+-- 	end) as gmv_plan_during_alumni_program
+
+-- ,sum(
+-- 	case when t1.gmv_dt < date(t2.run_date) and t3.age_for_rtl_year_id = 0 then t1.gmv20_plan
+-- 	else 0 
+-- 	end) as gmv_plan_before_alumni_program_this_year
 
 --CBT/GSP
 ,sum(
@@ -24,6 +33,15 @@ t1.slr_id as seller_id
 	else 0 
 	end) as cbt_gmv_plan
 	
+-- ,sum(
+-- 	case when t1.gmv_dt >= date(t2.run_date) and t1.byr_cntry_id != t1.slr_cntry_id then t1.gmv20_plan
+-- 	else 0 
+-- 	end) as cbt_gmv_plan_during_alumni_program
+
+-- ,sum(
+-- 	case when t1.gmv_dt < date(t2.run_date) and t3.age_for_rtl_year_id = 0 and t1.byr_cntry_id != t1.slr_cntry_id then t1.gmv20_plan
+-- 	else 0 
+-- 	end) as cbt_gmv_plan_before_alumni_program_this_year
 	
 from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT as t1
 left join P_InventoryPlanning_T.protrader_alumni_weekly_report_sellers as t2
@@ -34,9 +52,9 @@ where 1=1
 and t1.slr_cntry_id = 3
 and t1.ck_wacko_yn = 'N'
 and t1.iscore = 1
-and t3.age_for_rtl_year_id = 0
+and t3.retail_year >= 2023
 --and t1.slr_id = 306693225
-group by 1,2,3
+group by 1,2,3,4
 )
 
 
@@ -50,12 +68,36 @@ distinct t1.seller_id
 --LL
 ,count(distinct t2.item_id) as Live_Listings
 
+-- ,count(distinct 
+-- 	case 
+-- 	when t2.auct_end_dt >= t1.run_date then t2.item_id 
+-- 	else null
+-- 	end) as active_live_listings_during_alumni_program
+	
+-- ,count(distinct 
+-- 	case 
+-- 	when t2.auct_end_dt < t1.run_date and t4.age_for_rtl_year_id = 0 then t2.item_id 
+-- 	else null
+-- 	end) as active_live_listings_before_alumni_program_this_year
+
 --Promoted Listings Standard
 ,count(distinct
 	case
 	when (date(t3.end_ts) BETWEEN t4.RETAIL_START_DATE and t4.RETAIL_WK_END_DATE ) or t3.end_ts is null then t2.item_id 
 	else null 
 	end) as active_promoted_listings
+	
+-- ,count(distinct 
+-- 	case 
+-- 	when date(t3.start_ts) >= t1.run_date or t3.end_ts is null then t2.item_id 
+-- 	else null
+-- 	end) as active_promoted_listings_during_quarter
+	
+-- ,count(distinct 
+-- 	case 
+-- 	when date(t3.end_ts) < t1.run_date and t4.age_for_rtl_year_id = 0 then t2.item_id 
+-- 	else null
+-- 	end) as active_promoted_listings_before_alumni_program_this_year
 
 
 from P_InventoryPlanning_T.protrader_alumni_weekly_report_sellers as t1
@@ -75,7 +117,7 @@ where 1=1
 and t2.item_site_id = 3
 and t2.wacko_yn = 'N'
 and t2.auct_type_code NOT IN (10,15)  --10: CreditPartialSale, 15: AWCredit --> This exclusion logic was taken from "GitHub/uk-planning/Home_Garden/b2c_hg_a_Large Merchant Migration Listings" scrip
-and t4.AGE_FOR_RTL_YEAR_ID = 0
+and t4.RETAIL_YEAR >= 2023
 --and t1.seller_id = 306693225
 group by 1,2,3
 )
@@ -91,7 +133,7 @@ t1.seller_id
 FROM P_DLSS_V.GMV_ON_PROMO_TXN as t1
 WHERE 1=1
 and t1.seller_id in (select distinct seller_id from P_InventoryPlanning_T.protrader_alumni_weekly_report_sellers )
-and t1.retail_year = year(current_date) 
+and t1.retail_year >= 2023
 --and t1.seller_id = 306693225
 --AND t1.B2C_IND = 1 -- Self identified B2C flag for EU
 --AND t1.CK_SLR_CNTRY_ID = 3 -- UK seller transactions
