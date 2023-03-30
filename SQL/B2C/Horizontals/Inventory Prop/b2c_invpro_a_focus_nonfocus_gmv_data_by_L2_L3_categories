@@ -109,7 +109,7 @@ t2.RETAIL_YEAR
 ,t1.EU_B2C_C2C_FLAG as b2c_c2c_flag
 ,case 
 	when t4.LEAF_CATEG_ID is not null then 'FC' 
-	when t1.item_cndtn_id in (2000,2010,2020,2030) and t1.EU_B2C_C2C_FLAG = 'B2C' then 'FC'
+	when t1.item_cndtn_id in (2000,2010,2020,2030) and t1.EU_B2C_C2C_FLAG = 'B2C' then 'FC'  -- This code groups the items with condition ids that are used for Seller and Certified Refurbished Focus Categories under "FC" category in this case statement 
 	else 'Non_FC' 
 	end as focus_category_flag
 ,nvl(t4.focused_vertical_lvl1,'') as focus_category_vertical
