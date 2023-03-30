@@ -1,4 +1,5 @@
 /*
+UKPLAN-195
 Building on the initial review of the first PTO coupon that went live on 2023-03-03 (https://github.ebay.com/uk-planning/uk-planning/blob/master/SQL/B2C/Verticals/Tech%20and%20Media/Analysis/b2c_tm_a_UKPLAN195_Tech_PTO_coupon_initial_review)
 Create a weekly report that tracks PTO performance
 */
@@ -144,6 +145,7 @@ select * from P_InventoryPlanning_T.Tech_PTO_coupon_batch_lstg
 where batch_1=1 and batch_2=0 and batch_3=1;
 */
 
+
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 --All transactions with PTO redemption info if available (Use transaction and redemption data from 2023-02-23 [Start of control period])
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -190,7 +192,7 @@ left join (select
 		   ,GMB
 		   ,qty_bght
 		   from prs_restricted_v.dw_eip_lylty_red_ref
-		   where incntv_cd='SCORE5'--5% PTO coupon
+		   where incntv_cd in ('SCORE5','CASH5')--5% PTO coupon [SCORE5 used since 2023-03-03 and CASH5 used from 2023-04-06]
 		   and refund_flag=0
 		   and redmd_date  >= '2023-03-03'--first coupon launched
 		   ) red
@@ -208,6 +210,7 @@ on coalesce(eps.prod_ref_id,epms.prod_ref_id) = epn.prod_ref_id
 where 
 ck.rprtd_wacko_yn='N'
 );
+
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 --GMV reporting datset
