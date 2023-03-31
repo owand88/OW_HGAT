@@ -63,12 +63,6 @@ when cndtn.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 Where new_vertical = 'Fashion'
 ;
 
-select retail_week
-,AGE_FOR_RTL_WEEK_ID
-,sum(ty_gmv)
-,sum(ly_gmv)
-from P_INVENTORYPLANNING_T.FASHION_WEEKLY_CAT_GMV4 group by 1,2;
-
 DROP TABLE if exists P_INVENTORYPLANNING_T.FASHION_WEEKLY_CAT_GMV4;
 
 Create table P_INVENTORYPLANNING_T.FASHION_WEEKLY_CAT_GMV4 as
