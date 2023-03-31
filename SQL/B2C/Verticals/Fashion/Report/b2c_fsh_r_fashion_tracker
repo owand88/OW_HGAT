@@ -2,8 +2,8 @@
 --------------------------------------------------------- BO Brand Tag ------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------
 
-drop table if exists p_olwand_t.BO_BRAND_TAG;
-CREATE TABLE p_olwand_t.BO_BRAND_TAG AS
+drop table if exists BO_BRAND_TAG;
+CREATE TEMPORARY TABLE BO_BRAND_TAG AS
 Select
 	item_id,
 	brand,
@@ -51,9 +51,9 @@ Select
 -----------------------------------------------------------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------ GMV ------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------
-Drop table if exists p_olwand_t.GMV_BASE;
+Drop table if exists P_INVENTORYPLANNING_T.GMV_BASE;
 
-Create table p_olwand_t.GMV_BASE as
+Create table P_INVENTORYPLANNING_T.GMV_BASE as
 
 (select
 -- ck.item_id
@@ -105,10 +105,10 @@ and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT wher
 inner join DW_USERS u ON u.user_id = ck.SELLER_ID
 left JOIN DW_CATEGORY_GROUPINGS CAT 
 		ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID = ck.SITE_ID AND CAT.SAP_CATEGORY_ID NOT IN (5,7,23,41) -- to exclude "Non-Core" categories
-left join p_olwand_t.BO_BRAND_TAG bt on bt.item_id = ck.item_id
+left join BO_BRAND_TAG bt on bt.item_id = ck.item_id
 left join (select distinct seller_id from  P_awang_ops_T.seller_ops_83 where lower(initiative_name) like '%loved%') ms on ck.SELLER_ID = ms.seller_id
--- left join p_olwand_t.uk_managed_sellers_all ms on ck.SELLER_ID = ms.seller_id and initiative_name in ('Pre Loved','FASH-50')
--- left join p_olwand_t.BO_sellers bo on bo.seller_id = ck.SELLER_ID
+-- left join P_INVENTORYPLANNING_T.uk_managed_sellers_all ms on ck.SELLER_ID = ms.seller_id and initiative_name in ('Pre Loved','FASH-50')
+-- left join P_INVENTORYPLANNING_T.BO_sellers bo on bo.seller_id = ck.SELLER_ID
 
 Where 1=1
 AND ck.SLR_CNTRY_ID = 3
@@ -129,9 +129,9 @@ group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20)
 --------------------------------------------------------------- Listings ----------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------
 
-Drop table if exists p_olwand_t.LL_BASE;
+Drop table if exists P_INVENTORYPLANNING_T.LL_BASE;
 
-Create table p_olwand_t.LL_BASE as
+Create table P_INVENTORYPLANNING_T.LL_BASE as
 select ll.*,trfc.views as views
 From
 (Select *
@@ -190,10 +190,10 @@ and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT wher
 	inner join DW_USERS u ON u.user_id = ck.SLR_ID
 	left JOIN DW_CATEGORY_GROUPINGS CAT 
 			ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID = ck.ITEM_SITE_ID AND CAT.SAP_CATEGORY_ID NOT IN (5,7,23,41) -- to exclude "Non-Core" categories
-	left join p_olwand_t.BO_BRAND_TAG bt on bt.item_id = ck.item_id
+	left join BO_BRAND_TAG bt on bt.item_id = ck.item_id
 	left join (select distinct seller_id from  P_awang_ops_T.seller_ops_83 where lower(initiative_name) like '%loved%') ms on ck.SLR_ID = ms.seller_id
--- 	left join p_olwand_t.uk_managed_sellers_all ms on ck.SLR_ID = ms.seller_id and initiative_name in ('Pre Loved','FASH-50')
--- 	left join p_olwand_t.BO_sellers bo on bo.seller_id = ck.SLR_ID
+-- 	left join P_INVENTORYPLANNING_T.uk_managed_sellers_all ms on ck.SLR_ID = ms.seller_id and initiative_name in ('Pre Loved','FASH-50')
+-- 	left join P_INVENTORYPLANNING_T.BO_sellers bo on bo.seller_id = ck.SLR_ID
 
 
 	Where 1=1
@@ -230,9 +230,9 @@ LEFT JOIN
 --------------------------------------------------------------- KPI Data ----------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------
 
-Drop table if exists p_olwand_t.GMV_KPIS;
+Drop table if exists P_INVENTORYPLANNING_T.GMV_KPIS;
 
-Create table p_olwand_t.GMV_KPIS
+Create table P_INVENTORYPLANNING_T.GMV_KPIS
 
 
 -------------------------------------------------------------Total B2C & C2C Fashion--------------------------------------------------------
@@ -253,7 +253,7 @@ Select 'Total B2C & C2C Fashion' as target
 ,0 as listers
 ,0 as views
 
-From p_olwand_t.GMV_BASE
+From P_INVENTORYPLANNING_T.GMV_BASE
 
 Where new_vertical = 'Fashion'
 
@@ -278,7 +278,7 @@ Select 'Total B2C & C2C Fashion' as target
 ,count(distinct slr_id) as listers
 ,sum(views) as views
 
-From p_olwand_t.LL_BASE
+From P_INVENTORYPLANNING_T.LL_BASE
 
 Where new_vertical = 'Fashion'
 and B2C_C2C = 'B2C'
@@ -304,7 +304,7 @@ Select 'Total B2C & C2C Fashion' as target
 ,count(distinct slr_id) as listers
 ,sum(views) as views
 
-From p_olwand_t.LL_BASE
+From P_INVENTORYPLANNING_T.LL_BASE
 
 Where new_vertical = 'Fashion'
 and B2C_C2C = 'C2C'
@@ -333,7 +333,7 @@ Select 'Total B2C Fashion' as target
 ,0 as listers
 ,0 as views
 
-From p_olwand_t.GMV_BASE
+From P_INVENTORYPLANNING_T.GMV_BASE
 
 Where lower(b2c_c2c) = 'b2c'
 and new_vertical = 'Fashion'
@@ -359,7 +359,7 @@ Select 'Total B2C Fashion' as target
 ,count(distinct slr_id) as listers
 ,sum(views) as views
 
-From p_olwand_t.LL_BASE
+From P_INVENTORYPLANNING_T.LL_BASE
 
 Where lower(b2c_c2c) = 'b2c'
 and new_vertical = 'Fashion'
@@ -387,7 +387,7 @@ Select 'Total B2C Preloved Fashion' as target
 ,0 as listers
 ,0 as views
 
-From p_olwand_t.GMV_BASE
+From P_INVENTORYPLANNING_T.GMV_BASE
 
 Where lower(b2c_c2c) = 'b2c'
 and new_vertical = 'Fashion'
@@ -414,7 +414,7 @@ Select 'Total B2C Preloved Fashion' as target
 ,count(distinct slr_id) as listers
 ,sum(views) as views
 
-From p_olwand_t.LL_BASE
+From P_INVENTORYPLANNING_T.LL_BASE
 
 Where lower(b2c_c2c) = 'b2c'
 and new_vertical = 'Fashion'
@@ -442,7 +442,7 @@ Select 'Total Preloved FS & PT' as target
 ,0 as listers
 ,0 as views
 
-From p_olwand_t.GMV_BASE
+From P_INVENTORYPLANNING_T.GMV_BASE
 
 Where 1=1
 and new_vertical = 'Fashion'
@@ -470,7 +470,7 @@ Select 'Total Preloved FS & PT' as target
 ,count(distinct slr_id) as listers
 ,sum(views) as views
 
-From p_olwand_t.LL_BASE
+From P_INVENTORYPLANNING_T.LL_BASE
 
 Where 1=1
 and new_vertical = 'Fashion'
@@ -481,55 +481,7 @@ Group by 1,2,3,4,5,6,7,8
 
 UNION ALL
 
--- -------------------------------------------------------------Total BO (Local Defn)--------------------------------------------------------
--- Select 'Total Brand Outlet (Local Defn)' as target
--- ,retail_year
--- ,retail_week
--- ,time_period
--- ,time_period_year
--- -- ,focused_flag
--- ,null as NORS_TYPE_DESC
--- ,sum(gmv) as gmv
--- ,sum(si) as sold_items
--- ,count(distinct buyer_id) as buyer_count
--- ,count(distinct SELLER_ID) as sellers
--- ,0 as live_listings
--- ,0 as listers
--- ,0 as views
-
--- From p_olwand_t.LI_GMV_BASE
-
--- Where 1=1
--- -- and brand_outlet_local_defn is not null
-
--- Group by 1,2,3,4,5,6
-
--- UNION ALL
-
--- Select 'Total Brand Outlet (Local Defn)' as target
--- ,retail_year
--- ,retail_week
--- ,time_period
--- ,focused_flag
--- ,null as NORL_TYPE_DESC
--- ,0 as gmv
--- ,0 as sold_items
--- ,0 as buyer_count
--- ,0 as sellers
--- ,count(distinct item_id) as live_listings
--- ,count(distinct slr_id) as listers
--- ,sum(views) as views
-
--- From p_olwand_t.LI_LL_BASE
-
--- Where 1=1
--- -- and brand_outlet_local_defn is not null
-
--- Group by 1,2,3,4,5,6
-
--- UNION ALL
-
--------------------------------------------------------------Total BO (Finance Defn)--------------------------------------------------------
+------------------------------------------------------------Total BO (Finance Defn)--------------------------------------------------------
 Select 'Total Brand Outlet (Finance Defn)' as target
 ,retail_year
 ,retail_week
@@ -588,7 +540,7 @@ Select 'Total Brand Outlet (Finance Defn)' as target
 ,count(distinct slr_id) as listers
 ,sum(views) as views
 
-From p_olwand_t.LL_BASE
+From P_INVENTORYPLANNING_T.LL_BASE
 
 Where 1=1
 and brand_outlet_finance_defn is not null
@@ -615,7 +567,7 @@ Select 'Total C2C Fashion' as target
 ,0 as listers
 ,0 as views
 
-From p_olwand_t.GMV_BASE
+From P_INVENTORYPLANNING_T.GMV_BASE
 
 Where lower(b2c_c2c) = 'c2c'
 and new_vertical = 'Fashion'
@@ -641,7 +593,7 @@ Select 'Total C2C Fashion' as target
 ,count(distinct slr_id) as listers
 ,sum(views) as views
 
-From p_olwand_t.LL_BASE
+From P_INVENTORYPLANNING_T.LL_BASE
 
 Where lower(b2c_c2c) = 'c2c'
 and new_vertical = 'Fashion'
@@ -662,9 +614,9 @@ Group by 1,2,3,4,5,6,7,8
 --------------------------------------------------------------- Top Sellers -------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------
 
-Drop table if exists p_olwand_t.LI_Top_Sellers;
+Drop table if exists P_INVENTORYPLANNING_T.LI_Top_Sellers;
 
-Create table p_olwand_t.LI_Top_Sellers as
+Create table P_INVENTORYPLANNING_T.LI_Top_Sellers as
 
 ----------------------------------------------------------Top Preloved B2C Sellers------------------------------------------------------
 
@@ -684,11 +636,11 @@ From (
 
 	From (
 		Select seller_name
-		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_post_gmv_TY
-		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_post_gmv_LY
-		,sum(case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then retail_week End) as avg_weekly_pre_gmv_TY
+		,sum(case when  time_period_year = 'TY') then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_post_gmv_TY
+		,sum(case when  time_period_year = 'LY') then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_post_gmv_LY
+		,sum(case when  time_period_year = 'TY') then gmv End)/count(distinct case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then retail_week End) as avg_weekly_pre_gmv_TY
 
-		From p_olwand_t.LI_GMV_BASE
+		From P_INVENTORYPLANNING_T.LI_GMV_BASE
 
 		Where lower(b2c_c2c) = 'b2c'
 		and current_season = 1
@@ -723,7 +675,7 @@ From (
 		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_post_gmv_LY
 		,sum(case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then retail_week End) as avg_weekly_pre_gmv_TY
 
-		From p_olwand_t.LI_GMV_BASE
+		From P_INVENTORYPLANNING_T.LI_GMV_BASE
 
 		Where lower(b2c_c2c) = 'b2c'
 		and current_season = 1
@@ -761,7 +713,7 @@ From (
 		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_post_gmv_LY
 		,sum(case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then retail_week End) as avg_weekly_pre_gmv_TY
 
-		From p_olwand_t.LI_GMV_BASE
+		From P_INVENTORYPLANNING_T.LI_GMV_BASE
 
 		Where lower(b2c_c2c) = 'b2c'
 		and current_season = 1
@@ -794,7 +746,7 @@ From (
 		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_post_gmv_LY
 		,sum(case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then retail_week End) as avg_weekly_pre_gmv_TY
 
-		From p_olwand_t.LI_GMV_BASE
+		From P_INVENTORYPLANNING_T.LI_GMV_BASE
 
 		Where lower(b2c_c2c) = 'b2c'
 		and current_season = 1
@@ -808,8 +760,8 @@ Where post_yoy_rank <= 10
 
 
 ----------------------------------------------------------Top Sellers Performance by Category------------------------------------------------------
-Drop table if exists p_olwand_t.LI_Top_sellers_performance;
-Create Table p_olwand_t.LI_Top_sellers_performance as
+Drop table if exists P_INVENTORYPLANNING_T.LI_Top_sellers_performance;
+Create Table P_INVENTORYPLANNING_T.LI_Top_sellers_performance as
 
 Select *
 ,avg_weekly_post_gmv_TY-avg_weekly_post_gmv_LY as yoy_post_gmv
@@ -837,10 +789,10 @@ FROM (
 	,0 AS avg_weekly_ll_post_launch_LY
 	,0 AS avg_weekly_ll_pre_launch_TY
 
-	From p_olwand_t.LI_GMV_BASE gmv
+	From P_INVENTORYPLANNING_T.LI_GMV_BASE gmv
 	INNER JOIN	
 		(select distinct seller_name
-		from p_olwand_t.LI_Top_Sellers) sel on gmv.seller_name = sel.seller_name
+		from P_INVENTORYPLANNING_T.LI_Top_Sellers) sel on gmv.seller_name = sel.seller_name
 	Where current_season = 1
 	Group by 1,2,3,4,5,6
 
@@ -864,11 +816,12 @@ FROM (
 	,count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then item_id End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_ll_post_launch_LY
 	,count(distinct case when ((time_period = 'Pre-Launch') and (time_period_year = 'TY')) then item_id End)/count(distinct case when ((time_period = 'Pre-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_ll_pre_launch_TY
 
-	From p_olwand_t.LI_LL_BASE gmv
+	From P_INVENTORYPLANNING_T.LI_LL_BASE gmv
 	INNER JOIN	
 		(select distinct seller_name
-		from p_olwand_t.LI_Top_Sellers) sel on gmv.seller_name = sel.seller_name
+		from P_INVENTORYPLANNING_T.LI_Top_Sellers) sel on gmv.seller_name = sel.seller_name
 	Where current_season = 1
 	Group by 1,2,3,4,5,6
 	)
 ;
+*/
