@@ -1,0 +1,874 @@
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------- BO Brand Tag ------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+
+drop table if exists p_olwand_t.BO_BRAND_TAG;
+CREATE TABLE p_olwand_t.BO_BRAND_TAG AS
+Select
+	item_id,
+	brand,
+    case when brand is null or brand like ('%unbrand%') or brand in ('unknown') then 'unbranded' else 'branded' end as brand_tag
+	from 
+				(Select
+				item_id,
+				Auct_end_dt,
+				coalesce(max(case  when lower(aspect)=lower('BRAND') then aspct_vlu_nm else NULL end ),'Unknown') as BRAND
+			FROM
+				(select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					1 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm 
+				from
+					item_aspct_clssfctn
+				where
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+				UNION ALL
+
+				select
+					item_id,
+					auct_end_dt,
+					ns_type_cd,
+					2 as priority,
+					'BRAND' as aspect,
+					cast(trim(lower(aspct_vlu_nm)) as VARCHAR(350)) as aspct_vlu_nm
+				from
+					item_aspct_clssfctn_cold
+				WHERE
+					AUCT_END_DT>='2020-06-01'
+					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
+				)SB
+			GROUP BY 1,2)
+	group by 1,2,3;
+
+
+
+;
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------ GMV ------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+Drop table if exists p_olwand_t.GMV_BASE;
+
+Create table p_olwand_t.GMV_BASE as
+
+(select
+-- ck.item_id
+ck.SELLER_ID
+,u.user_slctd_id as seller_name
+,ck.BUYER_ID
+,ck.B2C_C2C
+,case when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+      when cat.meta_categ_id in (26395) then 'Lifestyle'
+      when cat.categ_lvl3_id in (260325) then 'Lifestyle'
+      when cat.categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
+      when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+      when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
+      when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+      when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
+      when cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
+      else cat.bsns_vrtcl_name end as new_vertical
+,ck.META_CATEG_ID
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,cat.CATEG_LVL4_NAME
+,ck.CNDTN_ROLLUP_ID
+,case ck.ITEM_CNDTN_ID 
+when 1000 then 'New'
+when 1500 then 'New w/o tags'
+when 1750 then 'New with Defects' 
+else 'Used' end as CNDTN_DESC
+,bt.brand_tag
+-- ,ms.focused_flag
+,case when ms.seller_id is not null then 'Focus' end as focused_flag
+	,case when new_vertical = 'Fashion' and cat.meta_categ_id = 11450 then 'Fashion CSA' else 'Fashion Other' end as fash_type
+-- ,cal.cal_dt
+-- ,ck.GMV_DT
+,ck.LEAF_CATEG_ID
+,cal.retail_year
+,cal.retail_week
+-- ,case when ck.seller_id = bo.seller_id and ck.meta_categ_id = 11450 and cat.categ_lvl4_id not in (15709,95672) and CNDTN_ROLLUP_ID = 1 and bt.brand_tag = 'branded' then 'Brand Outlet Local' End as brand_outlet_local_defn
+,case when cal.AGE_FOR_RTL_YEAR_ID = -1 then 'LY' else 'TY' end as time_period_year
+,ck.NORS_TYPE_DESC
+,cal.AGE_FOR_RTL_WEEK_ID
+,sum(GMV20_PLAN) as gmv
+,sum(GMV20_SOLD_QUANTITY) as si
+
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck 
+inner join ACCESS_VIEWS.DW_CAL_DT cal on ck.GMV_DT = cal.CAL_DT 
+and cal.AGE_FOR_RTL_YEAR_ID >= -1
+and cal.AGE_FOR_RTL_WEEK_ID <= -1
+and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+inner join DW_USERS u ON u.user_id = ck.SELLER_ID
+left JOIN DW_CATEGORY_GROUPINGS CAT 
+		ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID = ck.SITE_ID AND CAT.SAP_CATEGORY_ID NOT IN (5,7,23,41) -- to exclude "Non-Core" categories
+left join p_olwand_t.BO_BRAND_TAG bt on bt.item_id = ck.item_id
+left join (select distinct seller_id from  P_awang_ops_T.seller_ops_83 where lower(initiative_name) like '%loved%') ms on ck.SELLER_ID = ms.seller_id
+-- left join p_olwand_t.uk_managed_sellers_all ms on ck.SELLER_ID = ms.seller_id and initiative_name in ('Pre Loved','FASH-50')
+-- left join p_olwand_t.BO_sellers bo on bo.seller_id = ck.SELLER_ID
+
+Where 1=1
+AND ck.SLR_CNTRY_ID = 3
+AND ck.SITE_ID = 3
+and ck.BYR_CNTRY_ID = 3
+AND CK.CK_WACKO_YN = 'N'
+AND CK.AUCT_END_DT >= '2018-12-25'
+and (ck.cndtn_rollup_id = 3 or ck.ITEM_CNDTN_ID  between 1000 and 1750)
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20)
+
+;
+
+
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------- Listings ----------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+
+Drop table if exists p_olwand_t.LL_BASE;
+
+Create table p_olwand_t.LL_BASE as
+select ll.*,trfc.views as views
+From
+(Select *
+From
+	(select
+	ck.item_id
+	,ck.slr_id
+	,u.user_slctd_id as seller_name
+	,ck.B2C_C2C
+,case when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+      when cat.meta_categ_id in (26395) then 'Lifestyle'
+      when cat.categ_lvl3_id in (260325) then 'Lifestyle'
+      when cat.categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
+      when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+      when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
+      when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+      when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
+      when cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
+      else cat.bsns_vrtcl_name end as new_vertical
+	,ck.META_CATEG_ID
+	,cat.CATEG_LVL2_NAME
+	,cat.CATEG_LVL3_NAME
+	,cat.CATEG_LVL4_NAME
+	,ck.CNDTN_ROLLUP_ID
+	,case ck.ITEM_CNDTN_ID 
+when 1000 then 'New'
+when 1500 then 'New w/o tags'
+when 1750 then 'New with Defects' 
+else 'Used' end as CNDTN_DESC
+	,bt.brand_tag
+	,case when ms.seller_id is not null then 'Focus' end as focused_flag
+	,case when new_vertical = 'Fashion' and cat.meta_categ_id = 11450 then 'Fashion CSA' else 'Fashion Other' end as fash_type
+-- 	,ms.focused_flag
+	-- ,cal.cal_dt
+	-- ,ck.GMV_DT
+	-- ,ck.LEAF_CATEG_ID
+,cal.retail_year
+,cal.retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+,case when cal.AGE_FOR_RTL_YEAR_ID = -1 then 'LY' else 'TY' end as time_period_year
+-- 	,case when ck.SLR_ID = bo.seller_id and ck.meta_categ_id = 11450 and cat.categ_lvl4_id not in (15709,95672) and CNDTN_ROLLUP_ID = 1 and bt.brand_tag = 'branded' then 'Brand Outlet Local' End as brand_outlet_local_defn
+	,case when FCSD_VRTCL_NAME = 'Brand Outlet' then FCSD_VRTCL_NAME End as brand_outlet_finance_defn
+	,CASE WHEN ck.RLST_IND = 0 THEN 'FGL' WHEN ck.RLST_IND = 1 THEN 'Relist' END AS Listing_Status --0 for New Listings, 1 for Relists
+	,case when ck.NORL_TYPE_CD = 1 then 'New'
+		when ck.NORL_TYPE_CD = 2 then 'Reactive'
+		when ck.NORL_TYPE_CD = 3 then 'Active'
+		End as NORL_TYPE_DESC
+	,count(distinct ck.item_id) as ll
+
+	from PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT ck 
+	inner join ACCESS_VIEWS.DW_CAL_DT cal on ck.AUCT_START_DT < cal.CAL_DT and ck.AUCT_END_DT >= cal.CAL_DT 
+and cal.AGE_FOR_RTL_YEAR_ID >= -1
+and cal.AGE_FOR_RTL_WEEK_ID <= -1
+and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+-- 	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and retail_week >= 1 and retail_week <= (Select retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
+	inner join DW_USERS u ON u.user_id = ck.SLR_ID
+	left JOIN DW_CATEGORY_GROUPINGS CAT 
+			ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID = ck.ITEM_SITE_ID AND CAT.SAP_CATEGORY_ID NOT IN (5,7,23,41) -- to exclude "Non-Core" categories
+	left join p_olwand_t.BO_BRAND_TAG bt on bt.item_id = ck.item_id
+	left join (select distinct seller_id from  P_awang_ops_T.seller_ops_83 where lower(initiative_name) like '%loved%') ms on ck.SLR_ID = ms.seller_id
+-- 	left join p_olwand_t.uk_managed_sellers_all ms on ck.SLR_ID = ms.seller_id and initiative_name in ('Pre Loved','FASH-50')
+-- 	left join p_olwand_t.BO_sellers bo on bo.seller_id = ck.SLR_ID
+
+
+	Where 1=1
+	AND ck.SLR_CNTRY_ID = 3
+	AND ck.ITEM_SITE_ID = 3
+	AND CK.AUCT_END_DT >= '2018-12-25'
+	and (ck.cndtn_rollup_id = 3 or ck.ITEM_CNDTN_ID  between 1000 and 1750)
+	group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21)
+Where (META_CATEG_ID = 11450
+or new_vertical = 'Fashion')
+
+)ll
+LEFT JOIN
+	(Select retail_year
+	,retail_week
+	,trfc.item_id
+	,sum(trfc.TTL_VI_CNT) as views
+	From PRS_RESTRICTED_V.SLNG_TRFC_SUPER_FACT trfc
+	INNER JOIN  ACCESS_VIEWS.DW_CAL_DT cal on trfc.CAL_DT = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1 and cal.AGE_FOR_RTL_WEEK_ID <= -1 and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+-- 	and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and retail_week >= 1 and retail_week <= (Select retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
+	Group by 1,2,3) trfc
+	on ll.item_id = trfc.item_id and ll.retail_year = trfc.retail_year and ll.retail_week = trfc.retail_week
+
+;
+
+
+
+
+
+
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------- KPI Data ----------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+
+Drop table if exists p_olwand_t.GMV_KPIS;
+
+Create table p_olwand_t.GMV_KPIS
+
+
+-------------------------------------------------------------Total B2C & C2C Fashion--------------------------------------------------------
+Select 'Total B2C & C2C Fashion' as target
+,retail_year
+,retail_week
+,time_period_year
+,CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,focused_flag
+,null as NORS_TYPE_DESC
+,fash_type
+,sum(gmv) as gmv
+,sum(si) as sold_items
+,count(distinct buyer_id) as buyer_count
+,count(distinct SELLER_ID) as sellers
+,0 as live_listings
+,0 as listers
+,0 as views
+
+From p_olwand_t.GMV_BASE
+
+Where new_vertical = 'Fashion'
+
+Group by 1,2,3,4,5,6,7,8
+
+UNION ALL
+
+Select 'Total B2C & C2C Fashion' as target
+,retail_year
+,retail_week
+,time_period_year
+,CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,Null as focused_flag
+,null as NORL_TYPE_DESC
+,fash_type
+,0 as gmv
+,0 as sold_items
+,0 as buyer_count
+,0 as sellers
+,count(distinct item_id) as live_listings
+,count(distinct slr_id) as listers
+,sum(views) as views
+
+From p_olwand_t.LL_BASE
+
+Where new_vertical = 'Fashion'
+and B2C_C2C = 'B2C'
+
+Group by 1,2,3,4,5,6,7,8
+
+UNION ALL
+
+Select 'Total B2C & C2C Fashion' as target
+,retail_year
+,retail_week
+,time_period_year
+,CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,Null as focused_flag
+,null as NORL_TYPE_DESC
+,fash_type
+,0 as gmv
+,0 as sold_items
+,0 as buyer_count
+,0 as sellers
+,count(distinct item_id) as live_listings
+,count(distinct slr_id) as listers
+,sum(views) as views
+
+From p_olwand_t.LL_BASE
+
+Where new_vertical = 'Fashion'
+and B2C_C2C = 'C2C'
+and Listing_Status = 'FGL'
+
+Group by 1,2,3,4,5,6,7,8
+
+
+UNION ALL
+
+-------------------------------------------------------------Total B2C Fashion--------------------------------------------------------
+Select 'Total B2C Fashion' as target
+,retail_year
+,retail_week
+,time_period_year
+,CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,focused_flag
+,null as NORS_TYPE_DESC
+,fash_type
+,sum(gmv) as gmv
+,sum(si) as sold_items
+,count(distinct buyer_id) as buyer_count
+,count(distinct SELLER_ID) as sellers
+,0 as live_listings
+,0 as listers
+,0 as views
+
+From p_olwand_t.GMV_BASE
+
+Where lower(b2c_c2c) = 'b2c'
+and new_vertical = 'Fashion'
+
+Group by 1,2,3,4,5,6,7,8
+
+UNION ALL
+
+Select 'Total B2C Fashion' as target
+,retail_year
+,retail_week
+,time_period_year
+,CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,Null as focused_flag
+,null as NORL_TYPE_DESC
+,fash_type
+,0 as gmv
+,0 as sold_items
+,0 as buyer_count
+,0 as sellers
+,count(distinct item_id) as live_listings
+,count(distinct slr_id) as listers
+,sum(views) as views
+
+From p_olwand_t.LL_BASE
+
+Where lower(b2c_c2c) = 'b2c'
+and new_vertical = 'Fashion'
+
+Group by 1,2,3,4,5,6,7,8
+
+UNION ALL
+
+
+-------------------------------------------------------------Total B2C Preloved Fashion--------------------------------------------------------
+Select 'Total B2C Preloved Fashion' as target
+,retail_year
+,retail_week
+,time_period_year
+,CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,focused_flag
+,null as NORS_TYPE_DESC
+,fash_type
+,sum(gmv) as gmv
+,sum(si) as sold_items
+,count(distinct buyer_id) as buyer_count
+,count(distinct SELLER_ID) as sellers
+,0 as live_listings
+,0 as listers
+,0 as views
+
+From p_olwand_t.GMV_BASE
+
+Where lower(b2c_c2c) = 'b2c'
+and new_vertical = 'Fashion'
+and cndtn_rollup_id = 3
+
+Group by 1,2,3,4,5,6,7,8
+
+UNION ALL
+
+Select 'Total B2C Preloved Fashion' as target
+,retail_year
+,retail_week
+,time_period_year
+,CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,Null as focused_flag
+,null as NORL_TYPE_DESC
+,fash_type
+,0 as gmv
+,0 as sold_items
+,0 as buyer_count
+,0 as sellers
+,count(distinct item_id) as live_listings
+,count(distinct slr_id) as listers
+,sum(views) as views
+
+From p_olwand_t.LL_BASE
+
+Where lower(b2c_c2c) = 'b2c'
+and new_vertical = 'Fashion'
+and cndtn_rollup_id = 3
+
+Group by 1,2,3,4,5,6,7,8
+
+UNION ALL
+
+-------------------------------------------------------------Total Preloved FSs & PTs--------------------------------------------------------
+Select 'Total Preloved FS & PT' as target
+,retail_year
+,retail_week
+,time_period_year
+,CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,focused_flag
+,null as NORS_TYPE_DESC
+,fash_type
+,sum(gmv) as gmv
+,sum(si) as sold_items
+,count(distinct buyer_id) as buyer_count
+,count(distinct SELLER_ID) as sellers
+,0 as live_listings
+,0 as listers
+,0 as views
+
+From p_olwand_t.GMV_BASE
+
+Where 1=1
+and new_vertical = 'Fashion'
+and cndtn_rollup_id = 3
+and focused_flag is not null
+
+Group by 1,2,3,4,5,6,7,8
+
+UNION ALL
+
+Select 'Total Preloved FS & PT' as target
+,retail_year
+,retail_week
+,time_period_year
+,CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,focused_flag
+,null as NORL_TYPE_DESC
+,fash_type
+,0 as gmv
+,0 as sold_items
+,0 as buyer_count
+,0 as sellers
+,count(distinct item_id) as live_listings
+,count(distinct slr_id) as listers
+,sum(views) as views
+
+From p_olwand_t.LL_BASE
+
+Where 1=1
+and new_vertical = 'Fashion'
+and cndtn_rollup_id = 3
+and focused_flag is not null
+
+Group by 1,2,3,4,5,6,7,8
+
+UNION ALL
+
+-- -------------------------------------------------------------Total BO (Local Defn)--------------------------------------------------------
+-- Select 'Total Brand Outlet (Local Defn)' as target
+-- ,retail_year
+-- ,retail_week
+-- ,time_period
+-- ,time_period_year
+-- -- ,focused_flag
+-- ,null as NORS_TYPE_DESC
+-- ,sum(gmv) as gmv
+-- ,sum(si) as sold_items
+-- ,count(distinct buyer_id) as buyer_count
+-- ,count(distinct SELLER_ID) as sellers
+-- ,0 as live_listings
+-- ,0 as listers
+-- ,0 as views
+
+-- From p_olwand_t.LI_GMV_BASE
+
+-- Where 1=1
+-- -- and brand_outlet_local_defn is not null
+
+-- Group by 1,2,3,4,5,6
+
+-- UNION ALL
+
+-- Select 'Total Brand Outlet (Local Defn)' as target
+-- ,retail_year
+-- ,retail_week
+-- ,time_period
+-- ,focused_flag
+-- ,null as NORL_TYPE_DESC
+-- ,0 as gmv
+-- ,0 as sold_items
+-- ,0 as buyer_count
+-- ,0 as sellers
+-- ,count(distinct item_id) as live_listings
+-- ,count(distinct slr_id) as listers
+-- ,sum(views) as views
+
+-- From p_olwand_t.LI_LL_BASE
+
+-- Where 1=1
+-- -- and brand_outlet_local_defn is not null
+
+-- Group by 1,2,3,4,5,6
+
+-- UNION ALL
+
+-------------------------------------------------------------Total BO (Finance Defn)--------------------------------------------------------
+Select 'Total Brand Outlet (Finance Defn)' as target
+,retail_year
+,retail_week
+,case when cal.AGE_FOR_RTL_YEAR_ID = -1 then 'LY' else 'TY' end as time_period_year
+,case ck.ITEM_CNDTN_ID 
+when 1000 then 'New'
+when 1500 then 'New w/o tags'
+when 1750 then 'New with Defects' 
+else 'Used' end as CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,null as focused_flag
+,null as NORL_TYPE_DESC
+,case when cat.BSNS_VRTCL_NAME = 'Fashion' and cat.meta_categ_id = 11450 then 'Fashion CSA' else 'Fashion Other' end as fash_type
+,sum(GMV2_PLAN) as gmv
+,sum(SI_BI_GMV2) as sold_items
+,count(distinct buyer_id) as buyer_count
+,count(distinct SELLER_ID) as sellers
+,0 as live_listings
+,0 as listers
+,0 as views
+
+From ACCESS_VIEWS.FOCUSED_VERT_TXN ck
+inner join ACCESS_VIEWS.DW_CAL_DT cal on ck.GMV_DT = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1 and cal.AGE_FOR_RTL_WEEK_ID <= -1 and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+-- and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 and retail_week >= 1 and retail_week <= (Select retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
+inner join DW_USERS u ON u.user_id = ck.SELLER_ID
+left JOIN DW_CATEGORY_GROUPINGS CAT 
+		ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID = ck.LSTG_SITE_ID AND CAT.SAP_CATEGORY_ID NOT IN (5,7,23,41) -- to exclude "Non-Core" categories
+
+Where 1=1
+AND ck.SLR_CNTRY_ID = 3
+AND ck.LSTG_SITE_ID = 3
+and ck.BYR_CNTRY_ID = 3
+AND CK.CK_WACKO_YN = 'N'
+AND CK.AUCT_END_DT >= '2018-12-25'
+and ck.FOCUSED_VERTICAL_LVL1 = 'Brand Outlet'
+and (ck.cndtn_rollup_id = 3 or ck.ITEM_CNDTN_ID  between 1000 and 1750)
+
+Group by 1,2,3,4,5,6,7,8
+
+UNION ALL
+
+Select 'Total Brand Outlet (Finance Defn)' as target
+,retail_year
+,retail_week
+,time_period_year
+,CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,focused_flag
+,null as NORL_TYPE_DESC
+,fash_type
+,0 as gmv
+,0 as sold_items
+,0 as buyer_count
+,0 as sellers
+,count(distinct item_id) as live_listings
+,count(distinct slr_id) as listers
+,sum(views) as views
+
+From p_olwand_t.LL_BASE
+
+Where 1=1
+and brand_outlet_finance_defn is not null
+
+Group by 1,2,3,4,5,6,7,8
+
+UNION ALL
+
+-------------------------------------------------------------Total C2C Fashion--------------------------------------------------------
+Select 'Total C2C Fashion' as target
+,retail_year
+,retail_week
+,time_period_year
+,CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,focused_flag
+,NORS_TYPE_DESC
+,fash_type
+,sum(gmv) as gmv
+,sum(si) as sold_items
+,count(distinct buyer_id) as buyer_count
+,count(distinct SELLER_ID) as sellers
+,0 as live_listings
+,0 as listers
+,0 as views
+
+From p_olwand_t.GMV_BASE
+
+Where lower(b2c_c2c) = 'c2c'
+and new_vertical = 'Fashion'
+
+Group by 1,2,3,4,5,6,7,8
+
+UNION ALL
+
+Select 'Total C2C Fashion' as target
+,retail_year
+,retail_week
+,time_period_year
+,CNDTN_DESC
+-- ,AGE_FOR_RTL_WEEK_ID
+,focused_flag
+,NORL_TYPE_DESC
+,fash_type
+,0 as gmv
+,0 as sold_items
+,0 as buyer_count
+,0 as sellers
+,count(distinct item_id) as live_listings
+,count(distinct slr_id) as listers
+,sum(views) as views
+
+From p_olwand_t.LL_BASE
+
+Where lower(b2c_c2c) = 'c2c'
+and new_vertical = 'Fashion'
+and Listing_Status = 'FGL'
+
+Group by 1,2,3,4,5,6,7,8
+
+
+;
+
+
+
+
+
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------- Top Sellers -------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+
+Drop table if exists p_olwand_t.LI_Top_Sellers;
+
+Create table p_olwand_t.LI_Top_Sellers as
+
+----------------------------------------------------------Top Preloved B2C Sellers------------------------------------------------------
+
+Select 'Top Preloved B2C Sellers' as target
+,*
+,case when post_v_pre_rank <= 10 then 'Top 10 vs Pre-Launch 2023' End as top_10_descr
+	
+From (
+	Select seller_name
+	,avg_weekly_post_gmv_LY
+	,avg_weekly_pre_gmv_TY
+	,avg_weekly_post_gmv_TY
+	,avg_weekly_post_gmv_TY-avg_weekly_pre_gmv_TY as post_v_pre
+	,avg_weekly_post_gmv_TY-avg_weekly_post_gmv_LY as post_yoy
+	,dense_rank() over (order by post_v_pre desc) as post_v_pre_rank
+	,dense_rank() over (order by post_yoy desc) as post_yoy_rank
+
+	From (
+		Select seller_name
+		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_post_gmv_TY
+		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_post_gmv_LY
+		,sum(case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then retail_week End) as avg_weekly_pre_gmv_TY
+
+		From p_olwand_t.LI_GMV_BASE
+
+		Where lower(b2c_c2c) = 'b2c'
+		and current_season = 1
+		and new_vertical = 'Fashion'
+		and cndtn_rollup_id = 3
+
+		Group by 1
+		)
+)
+Where post_v_pre_rank <= 10
+
+
+UNION ALL
+
+Select 'Top Preloved B2C Sellers' as target
+,*
+,case when post_yoy_rank <= 10 then 'Top 10 vs Same Time Last Year' End as top_10_descr
+	
+From (
+	Select seller_name
+	,avg_weekly_post_gmv_LY
+	,avg_weekly_pre_gmv_TY
+	,avg_weekly_post_gmv_TY
+	,avg_weekly_post_gmv_TY-avg_weekly_pre_gmv_TY as post_v_pre
+	,avg_weekly_post_gmv_TY-avg_weekly_post_gmv_LY as post_yoy
+	,dense_rank() over (order by post_v_pre desc) as post_v_pre_rank
+	,dense_rank() over (order by post_yoy desc) as post_yoy_rank
+
+	From (
+		Select seller_name
+		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_post_gmv_TY
+		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_post_gmv_LY
+		,sum(case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then retail_week End) as avg_weekly_pre_gmv_TY
+
+		From p_olwand_t.LI_GMV_BASE
+
+		Where lower(b2c_c2c) = 'b2c'
+		and current_season = 1
+		and new_vertical = 'Fashion'
+		and cndtn_rollup_id = 3
+
+		Group by 1
+		)
+)
+Where post_yoy_rank <= 10
+
+
+
+----------------------------------------------------------Top Overall B2C Sellers------------------------------------------------------
+
+UNION ALL
+
+Select 'Top Overall B2C Sellers' as target
+,*
+,case when post_v_pre_rank <= 10 then 'Top 10 vs Pre-Launch' End as top_10_descr
+	
+From (
+	Select seller_name
+	,avg_weekly_post_gmv_LY
+	,avg_weekly_pre_gmv_TY
+	,avg_weekly_post_gmv_TY
+	,avg_weekly_post_gmv_TY-avg_weekly_pre_gmv_TY as post_v_pre
+	,avg_weekly_post_gmv_TY-avg_weekly_post_gmv_LY as post_yoy
+	,dense_rank() over (order by post_v_pre desc) as post_v_pre_rank
+	,dense_rank() over (order by post_yoy desc) as post_yoy_rank
+
+	From (
+		Select seller_name
+		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_post_gmv_TY
+		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_post_gmv_LY
+		,sum(case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then retail_week End) as avg_weekly_pre_gmv_TY
+
+		From p_olwand_t.LI_GMV_BASE
+
+		Where lower(b2c_c2c) = 'b2c'
+		and current_season = 1
+		and new_vertical = 'Fashion'
+
+		Group by 1
+		)
+)
+Where post_v_pre_rank <= 10
+
+UNION ALL
+
+Select 'Top Overall B2C Sellers' as target
+,*
+,case when post_yoy_rank <= 10 then 'Top 10 vs Same Time Last Year' End as top_10_descr
+	
+From (
+	Select seller_name
+	,avg_weekly_post_gmv_LY
+	,avg_weekly_pre_gmv_TY
+	,avg_weekly_post_gmv_TY
+	,avg_weekly_post_gmv_TY-avg_weekly_pre_gmv_TY as post_v_pre
+	,avg_weekly_post_gmv_TY-avg_weekly_post_gmv_LY as post_yoy
+	,dense_rank() over (order by post_v_pre desc) as post_v_pre_rank
+	,dense_rank() over (order by post_yoy desc) as post_yoy_rank
+
+	From (
+		Select seller_name
+		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_post_gmv_TY
+		,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_post_gmv_LY
+		,sum(case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Pre-Launch') and  (time_period_year = 'TY')) then retail_week End) as avg_weekly_pre_gmv_TY
+
+		From p_olwand_t.LI_GMV_BASE
+
+		Where lower(b2c_c2c) = 'b2c'
+		and current_season = 1
+		and new_vertical = 'Fashion'
+
+		Group by 1
+		)
+)
+Where post_yoy_rank <= 10
+;
+
+
+----------------------------------------------------------Top Sellers Performance by Category------------------------------------------------------
+Drop table if exists p_olwand_t.LI_Top_sellers_performance;
+Create Table p_olwand_t.LI_Top_sellers_performance as
+
+Select *
+,avg_weekly_post_gmv_TY-avg_weekly_post_gmv_LY as yoy_post_gmv
+,avg_weekly_post_gmv_TY-avg_weekly_pre_gmv_TY as post_vs_pre_gmv
+,avg_weekly_si_post_launch_TY-avg_weekly_si_post_launch_LY as yoy_post_si
+,avg_weekly_si_post_launch_TY-avg_weekly_si_pre_launch_TY as post_vs_pre_si
+,avg_weekly_ll_post_launch_TY-avg_weekly_ll_post_launch_LY as yoy_post_ll
+,avg_weekly_ll_post_launch_TY-avg_weekly_ll_pre_launch_TY as post_vs_pre_si_ll
+FROM (
+	Select
+	gmv.retail_year
+	,gmv.time_period
+	,sel.seller_name
+	,gmv.categ_lvl2_name
+	,gmv.categ_lvl3_name
+	,gmv.categ_lvl4_name
+	,gmv.categ_lvl2_name||'>'||gmv.categ_lvl3_name||'>'||gmv.categ_lvl4_name as combined_cat
+	,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_post_gmv_TY
+	,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then gmv End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_post_gmv_LY
+	,sum(case when ((time_period = 'Pre-Launch') and (time_period_year = 'TY')) then gmv End)/count(distinct case when ((time_period = 'Pre-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_pre_gmv_TY
+	,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then si End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_si_post_launch_TY
+	,sum(case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then si End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_si_post_launch_LY
+	,sum(case when ((time_period = 'Pre-Launch') and (time_period_year = 'TY')) then si End)/count(distinct case when ((time_period = 'Pre-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_si_pre_launch_TY
+	,0 AS avg_weekly_ll_post_launch_TY
+	,0 AS avg_weekly_ll_post_launch_LY
+	,0 AS avg_weekly_ll_pre_launch_TY
+
+	From p_olwand_t.LI_GMV_BASE gmv
+	INNER JOIN	
+		(select distinct seller_name
+		from p_olwand_t.LI_Top_Sellers) sel on gmv.seller_name = sel.seller_name
+	Where current_season = 1
+	Group by 1,2,3,4,5,6
+
+	UNION ALL
+
+	Select
+	gmv.retail_year
+	,gmv.time_period
+	,sel.seller_name
+	,gmv.categ_lvl2_name
+	,gmv.categ_lvl3_name
+	,gmv.categ_lvl4_name
+	,gmv.categ_lvl2_name||'>'||gmv.categ_lvl3_name||'>'||gmv.categ_lvl4_name as combined_cat
+	,0 as avg_weekly_post_gmv_TY
+	,0 as avg_weekly_post_gmv_LY
+	,0 as avg_weekly_pre_gmv_TY
+	,0 as avg_weekly_si_post_launch_TY
+	,0 as avg_weekly_si_post_launch_LY
+	,0 as avg_weekly_si_pre_launch_TY
+	,count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then item_id End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_ll_post_launch_TY
+	,count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then item_id End)/count(distinct case when ((time_period = 'Post-Launch') and (time_period_year = 'LY')) then retail_week End) as avg_weekly_ll_post_launch_LY
+	,count(distinct case when ((time_period = 'Pre-Launch') and (time_period_year = 'TY')) then item_id End)/count(distinct case when ((time_period = 'Pre-Launch') and (time_period_year = 'TY')) then retail_week End) as avg_weekly_ll_pre_launch_TY
+
+	From p_olwand_t.LI_LL_BASE gmv
+	INNER JOIN	
+		(select distinct seller_name
+		from p_olwand_t.LI_Top_Sellers) sel on gmv.seller_name = sel.seller_name
+	Where current_season = 1
+	Group by 1,2,3,4,5,6
+	)
+;
