@@ -157,21 +157,22 @@ t2.RETAIL_YEAR
 	else 'Non_FC' 
 	end as focus_category_flag
 ,nvl(t4.focused_vertical_lvl1,'') as focus_category_vertical
-
-,CASE                      
-WHEN t1.item_cndtn_id = 1000 THEN 'New/With Tags/In Box'                      
-WHEN t1.item_cndtn_id = 1500 THEN 'New/Without Tags/Without Box'                      
-WHEN t1.item_cndtn_id = 1750 THEN 'New/With Defects'                      
-WHEN t1.item_cndtn_id = 2000 THEN 'Manufacturer Refurb'                      
-WHEN t1.item_cndtn_id = 2500 THEN 'Seller Refurb'                       
-WHEN t1.item_cndtn_id = 2750 THEN 'Like New'                      
-WHEN t1.item_cndtn_id = 3000 THEN 'Used/Like New/Pre Owned'                      
-WHEN t1.item_cndtn_id = 4000 THEN 'Very Good'                      
-WHEN t1.item_cndtn_id = 5000 THEN 'Good'                      
-WHEN t1.item_cndtn_id = 6000 THEN 'Acceptable'                      
-WHEN t1.item_cndtn_id = 7000 THEN 'For parts or not working'                                          
-ELSE 'Not Specified' 
-END as item_condition
+,case
+	when t1.item_cndtn_id = 1000 then 'New'
+	when t1.item_cndtn_id = 1500 then 'New - Other'
+	when t1.item_cndtn_id = 1750 then 'New - With defects'
+	when t1.item_cndtn_id = 2000 then 'Refurb - Certified'
+	when t1.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	when t1.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	when t1.item_cndtn_id = 2030 then 'Refurb - Good'
+	when t1.item_cndtn_id = 2500 then 'Refurb - Seller'			
+	when t1.item_cndtn_id = 3000 then 'Used'
+	when t1.item_cndtn_id = 4000 then 'Used - Very Good'
+	when t1.item_cndtn_id = 5000 then 'Used - Good'
+	when t1.item_cndtn_id = 6000 then 'Used - Acceptable'
+	when t1.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	else 'Other'
+	end as item_condition
 ,sum(t1.GMV20_PLAN) as gmv_plan_usd
 from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT as t1
 join ACCESS_VIEWS.DW_CAL_DT as t2  on t1.GMV_DT = t2.CAL_DT 
