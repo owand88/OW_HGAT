@@ -1,0 +1,28 @@
+/*
+UKPLAN-265
+
+GMV impact from Musicmagpie not participating in RW13 Payday seller coupon (4-day CATCH20 - 2023-03-27 to 2023-03-30) [4 day of RW13]
+
+Last 20% seller coupon is also  Pay day coupon SPECIAL20 (5-day SPECIAL20 - 2023-01-27 to 2023-01-31) [2 day of RW4 and 3 day of RW5]
+
+*/
+
+create table p_uk_bc_t.coupon_impact_MM as (
+select 
+a.coupon_name
+,a.inventory_prop
+,a.slr_id as seller_id
+,u.user_slctd_id as seller_name
+,sum(a.b2c_gmb_usd_plan) as TY_seller_coupon_GMV
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1 a
+left join access_views.dw_users u
+on a.slr_id=u.user_id
+where 
+retail_year=2023
+and promotion_type = 'seller coupon' 
+and coupon_name in ('SPECIAL20','CATCH20') 
+and categ_lvl2_id=9355
+group by 1,2,3,4
+); 
+
+select * from p_uk_bc_t.coupon_impact_MM;
