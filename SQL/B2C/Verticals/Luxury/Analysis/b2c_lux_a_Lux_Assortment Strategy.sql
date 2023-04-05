@@ -25,12 +25,7 @@ select brand
 From
 	(
 	Select 
-	case when (cat.CATEG_LVL2_ID = 260324) then 'Watches'
-		when (cat.CATEG_LVL3_ID = 169291) OR (cat.CATEG_LVL4_ID IN (52357,163570,169285,45258,2996,45237,169271)) then 'Handbags'
-		when cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) then 'Sneakers'
-		when (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) then 'Jewellery'
-		Else 'Other'
-		End as category
+	category
 	, case when (lower(brand) like any ('unknown','no brand','null','%unbrand%') or brand is null) then 'Unknown'
 		else brand
 		End as brand
@@ -50,6 +45,19 @@ From
 		-- 		OR cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) --Sneakers
 				OR (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) --Jewellery
 				)
+	inner join
+		(select item_id
+		,case when BIZ_PRGRM_NAME = 'PSA_SNEAKER_EBAY_UK' then 'Sneakers'
+			when BIZ_PRGRM_NAME = 'PSA_HANDBAGS_UK' then 'Handbags'
+			when BIZ_PRGRM_NAME = 'PSA_WATCHES_UK' then 'Watches'
+			Else 'Other' End as category
+		 from access_views.DW_PES_ELGBLT_HIST
+		where biz_prgrm_name in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK')
+			and ELGBL_YN_IND = 'Y'
+	-- 		and coalesce( auct_end_date, '2099-12-31') >= CURRENT_DATE-7
+		Group by 1,2
+		) PSA
+			on ck.ITEM_ID = psa.item_id
 	left join (Select
 					item_id,
 					coalesce(max(case  when lower(aspect)=lower('BRAND') then aspct_vlu_nm else NULL end ),'Unknown') as BRAND
@@ -89,12 +97,7 @@ select model
 From
 	(
 	Select 
-	case when (cat.CATEG_LVL2_ID = 260324) then 'Watches'
-		when (cat.CATEG_LVL3_ID = 169291) OR (cat.CATEG_LVL4_ID IN (52357,163570,169285,45258,2996,45237,169271)) then 'Handbags'
-		when cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) then 'Sneakers'
-		when (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) then 'Jewellery'
-		Else 'Other'
-		End as category
+	category
 	, case when (lower(model) like any ('unknown','no model','null') or model is null) then 'Unknown'
 		else model
 		End as model
@@ -114,6 +117,19 @@ From
 		-- 		OR cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) --Sneakers
 				OR (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) --Jewellery
 				)
+	inner join
+		(select item_id
+		,case when BIZ_PRGRM_NAME = 'PSA_SNEAKER_EBAY_UK' then 'Sneakers'
+			when BIZ_PRGRM_NAME = 'PSA_HANDBAGS_UK' then 'Handbags'
+			when BIZ_PRGRM_NAME = 'PSA_WATCHES_UK' then 'Watches'
+			Else 'Other' End as category
+		 from access_views.DW_PES_ELGBLT_HIST
+		where biz_prgrm_name in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK')
+			and ELGBL_YN_IND = 'Y'
+	-- 		and coalesce( auct_end_date, '2099-12-31') >= CURRENT_DATE-7
+		Group by 1,2
+		) PSA
+			on ck.ITEM_ID = psa.item_id
 left join (Select
 					item_id,
 					coalesce(max(case  when lower(aspect)=lower('MODEL') then aspct_vlu_nm else NULL end ),'Unknown') as MODEL
@@ -151,12 +167,7 @@ top_brands_models_items AS
 (
 Select 
 ck.item_id
-, case when (cat.CATEG_LVL2_ID = 260324) then 'Watches'
-		when (cat.CATEG_LVL3_ID = 169291) OR (cat.CATEG_LVL4_ID IN (52357,163570,169285,45258,2996,45237,169271)) then 'Handbags'
-	-- 	when cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) then 'Sneakers'
-		when (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) then 'Jewellery'
-		Else 'Other'
-		End as category
+, category
 , case when (ck.item_id = brand.item_id) and (lower(brand) like any ('%unbrand%','no brand','unknown')) then 'no brand'
 		when (ck.ITEM_ID = brand.item_id) then brand
 		else 'no brand'
@@ -180,6 +191,19 @@ INNER JOIN DW_CATEGORY_GROUPINGS CAT
 	-- 		OR cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) --Sneakers
 			OR (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) --Jewellery
 			)
+	inner join
+		(select item_id
+		,case when BIZ_PRGRM_NAME = 'PSA_SNEAKER_EBAY_UK' then 'Sneakers'
+			when BIZ_PRGRM_NAME = 'PSA_HANDBAGS_UK' then 'Handbags'
+			when BIZ_PRGRM_NAME = 'PSA_WATCHES_UK' then 'Watches'
+			Else 'Other' End as category
+		 from access_views.DW_PES_ELGBLT_HIST
+		where biz_prgrm_name in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK')
+			and ELGBL_YN_IND = 'Y'
+	-- 		and coalesce( auct_end_date, '2099-12-31') >= CURRENT_DATE-7
+		Group by 1,2
+		) PSA
+			on ck.ITEM_ID = psa.item_id
 left join (
 			Select a.ITEM_ID
 			,case when a.brand = tb.brand then a.brand else 'Outside Top 20 Brands' end as brand
@@ -349,5 +373,3 @@ LEFT JOIN
 		on src.category = ck.category
 		and src.brand = ck.brand
 		and src.model = ck.model
-
-
