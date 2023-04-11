@@ -1,7 +1,11 @@
+-- JIRA:            UKPLAN-183
+
 -- Author: 			Robbie Evans
+-- Date:            05/04/2023
+
 -- Stakeholder: 	Wahaaj Shabbir, Alice Bridson, Emma Hamilton, Ines Morais, Keith Metcalfe
--- Purpose: 		List new AG listings made in the past 7 days so that the Auth Centre team are able to review listings as soon after they have gone live as possible in order to pre-empt any possible PSNAD issues.
--- Date Created: 	05/04/2023
+-- Description: 	List new AG listings made in the past 7 days so that the Auth Centre team are able to review listings as soon after they have gone live as possible in order to pre-empt any possible PSNAD issues.
+
 
 
 

@@ -13,8 +13,13 @@ select
 a.LuminaReportExport_dt
 ,b.batch_no
 ,d.retail_week as coupon_start_retail_week
-,case when b.batch_no=1 then '2023-03-03' else d.cal_dt end as coupon_start_dt--Delay in lauching first coupon, only live on Friday 2023-03-03. All other coupons live Thu-Thu 
-,case when b.batch_no=1 then '2023-03-09' else cast(coupon_start_dt as date) + interval '7' day end as coupon_end_dt
+,case when b.batch_no=1 then '2023-03-03'--Delay in lauching first coupon, only live on Friday 2023-03-03. All other coupons live Thu-Thu 
+      when b.batch_no=6 then '2023-04-07'--Delay in launching, only live on Friday 2023-04-07. 	
+	  else d.cal_dt end as coupon_start_dt
+,case when b.batch_no=1 then '2023-03-09' 
+      when b.batch_no=5 then '2023-03-31'--Coupon cut short, only live till 2023-03-31 due to quarterly Finance procedure. 	 
+	  when b.batch_no=6 then '2023-04-13' 
+	  else cast(coupon_start_dt as date) + interval '7' day end as coupon_end_dt
 ,count(distinct a.item_id) as listing_vol
 
 from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO a
