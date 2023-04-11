@@ -1,5 +1,10 @@
 /*
-1. Update the parameters with the seller ids (OracleID on Hive)
+Purpose: This produces gmv, buyers, bought items (BI) at a brand level by defined seller over the last two years (to date).
+In order to avoid listing duplication, we only look at ll counts at last week vs the equivalent week last year.
+All other stats are TY vs LY YTD
+
+How to create report: 
+1. Update the parameters/ variables with the seller ids (OracleID on Hive)
 2. Once complete open this spreadsheet as a template: https://ebayinc-my.sharepoint.com/:x:/g/personal/owand_ebay_com/Ef68kgwzDddAprUySXG-ufoBN5qmfyqxfDlHuX8yRu6QSQ?e=62xec8
 3. Remember to update the seller_name or seller_id in the connection query in the Excel connections settings
 */
@@ -85,13 +90,14 @@ cal.retail_year
 ,0 as listings
 ,0 as stock
 ,0 as retail_week
-,sum(lstg.quantity) as BI
-,sum(lstg.gmv_plan_usd) as GMV
-,count(distinct lstg.buyer_id) as buyers
+,sum(ck.quantity) as BI
+,sum(ck.gmv_plan_usd) as GMV
+,count(distinct ck.buyer_id) as buyers
 
-FROM DW_CHECKOUT_TRANS lstg		
-INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lstg.LEAF_CATEG_ID AND CAT.SITE_ID = lstg.SITE_ID and cat.site_id = 3 
-INNER JOIN DW_CAL_DT CAL ON cal.cal_dt = lstg.gmv_dt and cal.AGE_FOR_RTL_YEAR_ID >= -1
+FROM DW_CHECKOUT_TRANS ck		
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID = ck.SITE_ID and cat.site_id = 3 
+INNER JOIN DW_CAL_DT CAL ON cal.cal_dt = ck.gmv_dt and cal.AGE_FOR_RTL_YEAR_ID >= -1 
+and retail_week <= (select max(RETAIL_WEEK) from ACCESS_VIEWS.DW_CAL_DT  where AGE_FOR_RTL_WEEK_ID = -1)
 and cal.AGE_FOR_RTL_WEEK_ID <= -1
 left join (Select
 				item_id,
@@ -124,17 +130,17 @@ left join (Select
 					AUCT_END_DT>='2016-06-01'
 					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
 				)SB
-			GROUP BY 1,2) bbase ON lstg.ITEM_ID = bbase.ITEM_ID AND lstg.AUCT_END_dt = bbase.AUCT_END_DT
+			GROUP BY 1,2) bbase ON ck.ITEM_ID = bbase.ITEM_ID AND ck.AUCT_END_dt = bbase.AUCT_END_DT
 INNER JOIN (select user_id
 ,USER_SLCTD_ID
-FROM DW_USERS_INFO) users on lstg.seller_id = users.user_id
-WHERE lstg.AUCT_end_dt >= '2020-01-01'   
-AND lstg.SITE_ID = 3
-and lstg.slr_cntry_id = 3
-and lstg.byr_cntry_id = 3
-and lstg.ck_wacko_yn = 'N'
-and lstg.seller_id in ($seller_ids) 
-and lstg.SALE_TYPE not in (10,12,15)
+FROM DW_USERS_INFO) users on ck.seller_id = users.user_id
+WHERE ck.AUCT_end_dt >= '2020-01-01'   
+AND ck.SITE_ID = 3
+and ck.slr_cntry_id = 3
+and ck.byr_cntry_id = 3
+and ck.ck_wacko_yn = 'N'
+and ck.seller_id in ($seller_ids) 
+and ck.SALE_TYPE not in (10,12,15)
 
 
 group by 1,2,3,4,5,6,7
