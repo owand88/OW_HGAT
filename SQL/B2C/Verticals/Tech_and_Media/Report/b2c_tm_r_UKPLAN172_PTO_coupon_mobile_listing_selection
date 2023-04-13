@@ -8,6 +8,7 @@ Code for initial discovery: https://github.ebay.com/uk-planning/uk-planning/blob
 
 •	Select competitively priced listings 
 Criteria:
+CR/SR listings
 ebay pricing <= BM pricing (scraped Check Out Price + £3.99 service fee)
 
 •	Add a new flag to indicate if the competitively-priced listings should be selected for price-override.
@@ -17,10 +18,10 @@ Criteria:
 */
 
 /*
---5769 rows
+--5787 rows
 select count(*) from P_InventoryPlanning_T.Lumina_export;
 
---3012 rows
+--3036 rows
 select * from P_InventoryPlanning_T.Lumina_export
 where eBayListingID is not null and eBayListingID <> 0;
 */
@@ -144,6 +145,8 @@ left join (
 	  			 end as item_condition
 			from access_views.lstg_item_cndtn group by 1,2,3) cndtn
 on lstg.item_id=cndtn.item_id
+
+where cndtn.item_cndtn_id in (2000,2010,2020,2030)--Include only CR/SR conditions
 )
 --Seller mobile INR and SNAD rates in the latest 90 days
 ,BBE as (
@@ -252,9 +255,9 @@ on all.item_id = incl_rank.item_id and all.MWID = incl_rank.MWID
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 select * from lumina;
 
---A total of 492 products from 62 sellers are competitively priced
---237 products from 191 unique listings by 31 sellers meet the criteria and are selected for PTO coupon
---9 more listings until the 200 cap is reached
+--A total of 487 products from 67 sellers are competitively priced
+--183 products from 146 unique listings by 31 sellers meet the criteria and are selected for PTO coupon
+--54 more listings can be added until the 200 cap is reached
 
 select 
 include_flag
@@ -291,7 +294,8 @@ order by item_id;
 --No changes for the_ioutlet_extra as the seller met all the above criteria and any competitively listings from this seller are already included in the selected listing base
 --Musicmagpie and onemoremobile SNAD rate exceeds threshold of 5% (21 listings to be added with adjustment)
 
---9 from the 16 listings will be added from Musicmagpie and onemoremobile to not exceed the 200 cap
+--24 listings will be added from Musicmagpie and onemoremobile to not exceed the 200 cap
+--200-146-24=30 more listings until the 200 cap is reached
 select 
 seller_name
 ,INR_rate_L90D
@@ -299,10 +303,11 @@ seller_name
 ,count(distinct item_id)
 from lumina
 where 
-seller_id in (1179924860,688643289) 
+(seller_id in (1179924860,688643289) and item_condition in ('Refurb - Certified','Refurb - Excellent','Refurb - Very Good','Refurb - Good'))
 or 
 (seller_id=1046392160 and item_condition in ('Refurb - Excellent','Refurb - Very Good'))
-group by 1,2,3;
+group by 1,2,3
+order by 1;
 
 --Add include_rank to Musicmagpie and onemoremobile addition
 drop table if exists adjustlumina;
@@ -379,17 +384,18 @@ left join final_rank b
 on a.MWID=b.MWID
 );
 
+--24 listings added after including competitively priced listings from musicmagpie (Excellent and Very Good) and onemoremobile (indicated by include_rank 147-170)
 select * from adjustlumina
 order by include_flag desc, include_rank;
 
---492 rows
+--487 rows
 select count(*) from adjustlumina;
 
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
---Manual Adjustment Part 2 (Available on eBay, but not on BM or Out of stock on BM) - Logic added on 2023-04-05 to start from the 6th batch of coupon (coupon starting 2023-04-06)
+--Manual Adjustment Part 2 (Available on eBay, but not on BM or Out of stock on BM, and CR/SR conditions) - Logic added on 2023-04-05 to start from the 6th batch of coupon (coupon starting 2023-04-06)
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
---A total of 1845 products from 1048 unique listings by 566 sellers that are only on eBay, and either not listed on BM or out of stock on BM (Before removing removing non-B2C sellers, and sellers with high INR/SNAD rate and rated as "Below Standard")
+--A total of 1284 products from 1049 unique listings by 586 sellers that are only on eBay, and either not listed on BM or out of stock on BM (Before removing removing non-B2C sellers, and sellers with high INR/SNAD rate and rated as "Below Standard")
 with base as (
 select * from P_InventoryPlanning_T.Lumina_export
 where MWID in (
@@ -500,6 +506,8 @@ left join (
 	  			 end as item_condition
 			from access_views.lstg_item_cndtn group by 1,2,3) cndtn
 on lstg.item_id=cndtn.item_id
+
+where cndtn.item_cndtn_id in (2000,2010,2020,2030)--Include only CR/SR conditions
 )
 --Seller mobile INR and SNAD rates in the latest 90 days
 ,BBE as (
@@ -526,6 +534,7 @@ and ck.auct_end_dt >= current_date()  - 91
 
 left join access_views.cps_embg_super_fact cps 
 on ck.item_id = cps.item_id and ck.transaction_id = cps.trxn_id
+
 )
 --Summary of eBay only products
 ,all (
@@ -594,20 +603,21 @@ on all.item_id = incl_rank.item_id and all.MWID = incl_rank.MWID
 );
 
 
---From the eBay-only bucket, after removing non-B2C sellers, and sellers with high INR/SNAD rate and "Below Standard",
---we are left with 462 products from 385 unique listings by 120 sellers 
+--From the eBay-only bucket, after removing non-CR/SR conditions, non-B2C sellers, and sellers with high INR/SNAD rate and "Below Standard",
+--we are left with 167 products from 122 unique listings by 25 sellers 
 select count(distinct MWID),count(distinct item_id), count(distinct seller_id)
 from ebay_only
 where include_flag=1;
 
+select * from ebay_only;
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 --Combine competitively priced products and those available on eBay, but not on BM or Out of stock on BM
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 drop table if exists adjustlumina_final;
 create temporary table adjustlumina_final as (
-with combine as (
 --Competitively priced products
+with comp as (
 select 
 LuminaReportExport_dt
 ,item_id
@@ -637,10 +647,9 @@ LuminaReportExport_dt
 ,include_rank
 ,include_rank as adjust_include_rank
 from adjustlumina
-
-union all
-
+)
 --Available on eBay, but not on BM or Out of stock on BM
+,ebay_only as (
 select 
 LuminaReportExport_dt
 ,item_id
@@ -671,6 +680,50 @@ LuminaReportExport_dt
 ,adjust_include_rank+1000 as adjust_include_rank
 from ebay_only
 where include_flag=1
+)
+--Consider those listings with products present only on eBay but already selected due to consisting of competitively priced products
+,both as (
+select a.*
+from
+(select distinct item_id, include_rank from comp) a
+inner join
+(select distinct item_id from ebay_only)b
+on a.item_id = b.item_id
+)
+,combine as (
+select 
+a.LuminaReportExport_dt
+,a.item_id
+,a.include_flag
+,a.item_condition
+,a.MSKU_flag
+,a.seller_id
+,a.seller_name
+,a.seller_standard
+,a.INR_rate_L90D
+,a.SNAD_rate_L90D
+,a.eB_CheckOutPrice
+,a.BM_CheckOutPrice_plus_ServiceFee
+,a.price_amt_cheaper
+,a.BM_Seller
+,a.Brand
+,a.ModelNo
+,a.ProductName
+,a.Colour
+,a.MemorySize
+,a.eb_CurrentPrice
+,a.eB_ShippingPrice
+,a.BM_CurrentPrice
+,a.BM_ShippingPrice
+,a.BM_CheckOutPrice
+,a.MWID
+,case when b.item_id is not null then b.include_rank else a.adjust_include_rank end as adjust_include_rank
+from
+	(select * from comp
+	union all 
+	select * from ebay_only) a
+left join both b
+on a.item_id=b.item_id
 )
 ,final_rank as (
 select 
@@ -711,11 +764,17 @@ left join final_rank b
 on a.MWID=b.MWID
 );
 
---492+462=954 rows
+--487+167 = 654 rows
+--To include all manual adjustment listings, the cap needs to be increase to 274 for this week
 select * from adjustlumina_final
 order by include_flag desc,include_rank;
 
---After the manual adjustment, a total of 200 listings including 252 competitively priced products from 33 sellers are selected for the PTO coupon
+--24 listings added after including competitively priced listings from musicmagpie (Excellent and Very Good) and onemoremobile (indicated by include_rank 147-170)
+--To maximise the 200 listing cap, another 30 listings from the pool of products identified to be available on eBay, but not on BackMacket or Out of Stock on Backmarket are added (these are indicated in Column B: include_rank 171 - 200)
+select * from adjustlumina
+order by include_flag desc, include_rank;
+
+--After the first manual adjustment, a total of 170 listings including 230 competitively priced products from 33 sellers are selected for the PTO coupon
 select 
 include_flag
 ,case when include_rank <=200 then 1 else 0 end as include_top200_flag
@@ -727,6 +786,7 @@ from adjustlumina--after 1st manual adjustment
 group by 1,2
 order by include_flag,include_top200_flag;
 
+--After the first and second manual adjustment, a total of 200 listings including 295 competitively priced or only-present on eBay CR/SR products from 35 sellers are selected for the PTO coupon
 select 
 include_flag
 ,case when include_rank <=200 then 1 else 0 end as include_top200_flag
@@ -829,3 +889,23 @@ where
 include_rank <=200
 and LuminaReportExport_dt = (select max(LuminaReportExport_dt) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO)
 order by include_rank;
+
+/*
+--Update dataset if further changes required after Matt's review
+
+create table P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_change as
+(select * from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+where  LuminaReportExport_dt <> '2023-04-11')
+
+select LuminaReportExport_dt,count(*) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup_LatestWeekAdd
+group by 1 order by 1 desc;
+
+select LuminaReportExport_dt,count(*) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_change
+group by 1 order by 1 desc;
+
+drop table P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO;
+
+create table P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO as
+(select * from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_change);
+
+*/
