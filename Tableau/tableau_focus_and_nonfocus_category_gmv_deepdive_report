@@ -7,7 +7,7 @@
 -- This report data will be used by managers to distribute their vertical level Non-Focus category operational target
 
 
-create view P_ukplan_report_T.focus_and_nonfocus_weekly_gmv as 
+create view P_inventoryplanning_T.focus_and_nonfocus_weekly_gmv as 
 select
 t2.RETAIL_YEAR
 ,t2.RETAIL_WEEK
@@ -58,3 +58,4 @@ and t1.ck_wacko_yn = 'N'
 and t1.iscore = 1
 and t3.sap_category_id not in (5, 7, 41,23,-999)
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+;
