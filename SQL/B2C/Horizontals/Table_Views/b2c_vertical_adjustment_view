@@ -1,6 +1,9 @@
 /*
-Task: 2023 Q2 inventory prop focus groups for Trading verticals
-Objective: Quarterly update to include focus groups in regular report tracking	
+Task: Adjustment for business verticals
+
+Purpose: This is to structure our reporting in line with how the UK business operates
+
+The view can be used instead of ACCESS_VIEWS.dw_category_groupings and already applies the sap_category_id adjustment (removing real estate, vehicles, other from the selection)
 */
 drop view P_INVENTORYPLANNING_T.dw_category_groupings_adj;
 create view P_INVENTORYPLANNING_T.dw_category_groupings_adj as
