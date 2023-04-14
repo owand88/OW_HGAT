@@ -1,0 +1,332 @@
+/*
+Jira: UKPLAN-256
+Author: Bonnie Chu
+Date: 2023-04-12
+Description: Report to show emerging searches on UK site for category managers to identify inventory opportunities.
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- All seraches on UK site in latest 4 full weeks
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop view if exists P_ukplan_report_T.searches_4week;
+create view P_ukplan_report_T.searches_4week as (
+select    
+cal.age_for_rtl_week_id
+,cal.retail_year
+,cal.retail_week
+,cal.retail_wk_end_date
+,cat.adjusted_vertical
+,cat.categ_lvl2_name
+,cat.categ_lvl2_id
+,lower(src.query) as act_srch
+
+,count(*) as src_cnt 
+
+from  access_views.srch_cnvrsn_event_fact src       
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on src.site_id=3                                                                
+and substring(src.items,1,instr(src.items,',')-1) = lstg.item_id--Assume the first item appears is the most relevant to the search input
+
+inner join (select new_vertical as adjusted_vertical,categ_lvl2_id,categ_lvl2_name,leaf_categ_id,move_to,site_id 
+			from P_INVENTORYPLANNING_T.dw_category_groupings_adj
+			group by 1,2,3,4,5,6) cat
+
+on lstg.leaf_categ_id=cat.leaf_categ_id
+and lstg.item_site_id=cat.site_id and cat.site_id=3
+and lstg.leaf_categ_id=cat.move_to
+
+inner join access_views.dw_cal_dt cal
+on src.session_start_dt = cal.cal_dt and cal.age_for_rtl_week_id between -4 and -1--observe last full 4 weeks trend
+
+group by 1,2,3,4,5,6,7,8
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- LW Top 500 Searches (Overall)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Top 500 Tech searches in latest week
+drop view if exists P_ukplan_report_T.top_searches_overall;
+create view P_ukplan_report_T.top_searches_overall as (
+with top_LW as (
+select 
+act_srch
+,adjusted_vertical
+,categ_lvl2_name
+,sum(src_cnt) as search_vol
+from P_ukplan_report_T.searches_4week
+where age_for_rtl_week_id = -1
+group by 1,2,3
+qualify (row_number() over (order by search_vol desc))<=500)
+,LW as (
+select 
+row_number() over (order by search_vol desc) as rank
+,act_srch as search_input
+,adjusted_vertical
+,categ_lvl2_name as L2
+,search_vol as search_vol_LW
+from top_LW
+)
+,LW_1 as (
+select 
+a.act_srch as search_input
+,a.adjusted_vertical
+,a.categ_lvl2_name as L2
+,sum(a.src_cnt) as search_vol_LW_1
+from P_ukplan_report_T.searches_4week a
+inner join LW 
+on a.act_srch=LW.search_input and a.adjusted_vertical=LW.adjusted_vertical and a.categ_lvl2_name=LW.L2
+where a.age_for_rtl_week_id = -2
+group by 1,2,3
+)
+,LW_2 as (
+select 
+a.act_srch as search_input
+,a.adjusted_vertical
+,a.categ_lvl2_name as L2
+,sum(a.src_cnt) as search_vol_LW_2
+from P_ukplan_report_T.searches_4week a
+inner join LW 
+on a.act_srch=LW.search_input and a.adjusted_vertical=LW.adjusted_vertical and a.categ_lvl2_name=LW.L2
+where a.age_for_rtl_week_id = -3
+group by 1,2,3
+)
+,LW_3 as (
+select 
+a.act_srch as search_input
+,a.adjusted_vertical
+,a.categ_lvl2_name as L2
+,sum(a.src_cnt) as search_vol_LW_3
+from P_ukplan_report_T.searches_4week a
+inner join LW 
+on a.act_srch=LW.search_input and a.adjusted_vertical=LW.adjusted_vertical and a.categ_lvl2_name=LW.L2
+where a.age_for_rtl_week_id = -4
+group by 1,2,3
+)
+select
+LW.rank
+,LW.search_input
+,LW.adjusted_vertical
+,LW.L2
+,LW.search_vol_LW
+,LW_1.search_vol_LW_1
+,LW_2.search_vol_LW_2
+,LW_3.search_vol_LW_3
+from LW
+left join LW_1
+on LW.search_input=LW_1.search_input and LW.adjusted_vertical=LW_1.adjusted_vertical and LW.L2=LW_1.L2
+left join LW_2
+on LW.search_input=LW_2.search_input and LW.adjusted_vertical=LW_2.adjusted_vertical and LW.L2=LW_2.L2
+left join LW_3
+on LW.search_input=LW_3.search_input and LW.adjusted_vertical=LW_3.adjusted_vertical and LW.L2=LW_3.L2
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- LW Top 500 Searches (by Vertical)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop view if exists P_ukplan_report_T.top_searches_vertical;
+create view P_ukplan_report_T.top_searches_vertical as (
+with top_LW as (
+select 
+act_srch
+,adjusted_vertical
+,categ_lvl2_name
+,sum(src_cnt) as search_vol
+from P_ukplan_report_T.searches_4week
+where age_for_rtl_week_id = -1
+group by 1,2,3
+qualify (row_number() over (partition by adjusted_vertical order by search_vol desc))<=500
+)
+,LW as (
+select 
+adjusted_vertical||' '||row_number() over (partition by adjusted_vertical order by search_vol desc) as vertical_rank
+,row_number() over (partition by adjusted_vertical order by search_vol desc) as rank
+,act_srch as search_input
+,adjusted_vertical
+,categ_lvl2_name as L2
+,search_vol as search_vol_LW
+from top_LW
+)
+,LW_1 as (
+select 
+a.act_srch as search_input
+,a.adjusted_vertical
+,a.categ_lvl2_name as L2
+,sum(a.src_cnt) as search_vol_LW_1
+from P_ukplan_report_T.searches_4week a
+inner join LW 
+on a.act_srch=LW.search_input and a.adjusted_vertical=LW.adjusted_vertical and a.categ_lvl2_name=LW.L2
+where a.age_for_rtl_week_id = -2
+group by 1,2,3
+)
+,LW_2 as (
+select 
+a.act_srch as search_input
+,a.adjusted_vertical
+,a.categ_lvl2_name as L2
+,sum(a.src_cnt) as search_vol_LW_2
+from P_ukplan_report_T.searches_4week a
+inner join LW 
+on a.act_srch=LW.search_input and a.adjusted_vertical=LW.adjusted_vertical and a.categ_lvl2_name=LW.L2
+where a.age_for_rtl_week_id = -3
+group by 1,2,3
+)
+,LW_3 as (
+select 
+a.act_srch as search_input
+,a.adjusted_vertical
+,a.categ_lvl2_name as L2
+,sum(a.src_cnt) as search_vol_LW_3
+from P_ukplan_report_T.searches_4week a
+inner join LW 
+on a.act_srch=LW.search_input and a.adjusted_vertical=LW.adjusted_vertical and a.categ_lvl2_name=LW.L2
+where a.age_for_rtl_week_id = -4
+group by 1,2,3
+)
+select
+LW.vertical_rank
+,LW.rank
+,LW.search_input
+,LW.adjusted_vertical
+,LW.L2
+,LW.search_vol_LW
+,LW_1.search_vol_LW_1
+,LW_2.search_vol_LW_2
+,LW_3.search_vol_LW_3
+from LW
+left join LW_1
+on LW.search_input=LW_1.search_input and LW.adjusted_vertical=LW_1.adjusted_vertical and LW.L2=LW_1.L2
+left join LW_2
+on LW.search_input=LW_2.search_input and LW.adjusted_vertical=LW_2.adjusted_vertical and LW.L2=LW_2.L2
+left join LW_3
+on LW.search_input=LW_3.search_input and LW.adjusted_vertical=LW_3.adjusted_vertical and LW.L2=LW_3.L2
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Emerging seaches (Overall - LW compared to LW-1)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Searches that increased in popularity in the latest week
+drop view if exists P_ukplan_report_T.emerge_searches_overall;
+create view P_ukplan_report_T.emerge_searches_overall as (
+with top as (
+select percentile(cast(src as bigint), 0.9999) as top_pc--Top 0.01% searches in latest week
+from
+(select
+act_srch
+,sum(src_cnt) as src
+from P_ukplan_report_T.searches_4week
+where age_for_rtl_week_id = -1
+group by 1)
+)
+,diff as (
+select 
+act_srch as search_input
+,adjusted_vertical
+,categ_lvl2_name as L2
+,LW
+,LW_1
+,LW_2
+,LW_3
+
+,case when LW is not null and LW_1 is not null then (LW / LW_1) - 1
+      when LW is not null and LW_1 is null then (LW / 0.00000000000000000001) - 1
+	  else 0.00000000000000000001 end as LW_LW_1_pct_diff
+
+from
+(select  
+act_srch
+,adjusted_vertical
+,categ_lvl2_name
+,sum(src_cnt) as total_search 
+,sum(case when age_for_rtl_week_id = -4 then src_cnt end) as LW_3
+,sum(case when age_for_rtl_week_id = -3 then src_cnt end) as LW_2
+,sum(case when age_for_rtl_week_id = -2 then src_cnt end) as LW_1
+,sum(case when age_for_rtl_week_id = -1 then src_cnt end) as LW
+from P_ukplan_report_T.searches_4week
+group by 1,2,3) a
+
+cross join top
+
+where a.LW>=top.top_pc
+)
+select
+row_number() over (order by search_input desc) as emerge_rank
+,search_input
+,adjusted_vertical
+,L2
+,LW as search_vol_LW
+,LW_1 as search_vol_LW_1
+,LW_2 as search_vol_LW_2
+,LW_3 as search_vol_LW_3
+,LW_LW_1_pct_diff
+from diff
+where LW_LW_1_pct_diff>0
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Emerging seaches (Vertical - LW compared to LW-1)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Searches that increased in popularity in the latest week
+drop view if exists P_ukplan_report_T.emerge_searches_vertical;
+create view P_ukplan_report_T.emerge_searches_vertical as (
+with top as (
+select 
+adjusted_vertical
+,percentile(cast(src as bigint), 0.9999) as top_pc--Top 0.01% searches in each vertical in latest week
+from
+(select
+adjusted_vertical
+,act_srch
+,sum(src_cnt) as src
+from P_ukplan_report_T.searches_4week
+where age_for_rtl_week_id = -1
+group by 1,2)
+group by 1
+)
+,diff as (
+select 
+a.act_srch as search_input
+,a.adjusted_vertical
+,a.categ_lvl2_name as L2
+,top.top_pc
+,a.LW
+,a.LW_1
+,a.LW_2
+,a.LW_3
+
+,case when LW is not null and LW_1 is not null then (LW / LW_1) - 1
+      when LW is not null and LW_1 is null then (LW / 0.00000000000000000001) - 1
+	  else 0.00000000000000000001 end as LW_LW_1_pct_diff
+
+from
+(select  
+act_srch
+,adjusted_vertical
+,categ_lvl2_name
+,sum(src_cnt) as total_search 
+,sum(case when age_for_rtl_week_id = -4 then src_cnt end) as LW_3
+,sum(case when age_for_rtl_week_id = -3 then src_cnt end) as LW_2
+,sum(case when age_for_rtl_week_id = -2 then src_cnt end) as LW_1
+,sum(case when age_for_rtl_week_id = -1 then src_cnt end) as LW
+from P_ukplan_report_T.searches_4week
+group by 1,2,3) a
+
+cross join top
+on a.adjusted_vertical=top.adjusted_vertical
+
+where a.LW>=top.top_pc
+)
+select
+adjusted_vertical||' '||row_number() over (partition by adjusted_vertical order by LW desc) as emerge_vertical_rank
+,row_number() over (partition by adjusted_vertical order by LW desc) as emerge_rank
+,search_input
+,adjusted_vertical
+,L2
+,LW as search_vol_LW
+,LW_1 as search_vol_LW_1
+,LW_2 as search_vol_LW_2
+,LW_3 as search_vol_LW_3
+,LW_LW_1_pct_diff
+from diff
+where LW_LW_1_pct_diff>0
+);
