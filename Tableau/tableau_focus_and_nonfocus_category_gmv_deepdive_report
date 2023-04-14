@@ -1,30 +1,24 @@
---JIRA: UKPLAN-244
+--JIRA: UKPLAN-244 and UKPLAN-266
 
 -- Author: Tugrul Ates
--- Date: 1st April 2023
+-- Date: 13th April 2023
 
 -- Description: The following script extracts the GMV data by Focus/Non-Focus Category, L2/L3, CBT/Domestic, B2C/C2C, Retail Year and Retail Quarter breakdowns starting from 2022
 -- This report data will be used by managers to distribute their vertical level Non-Focus category operational target
 
-create view P_INVENTORYPLANNING_T.focus_and_nonfocus_weekly_gmv as 
+
+create view P_inventoryplanning_T.focus_and_nonfocus_weekly_gmv as 
 select
 t2.RETAIL_YEAR
 ,t2.RETAIL_WEEK
 ,t2.QTR_OF_YEAR_ID
-,case 
-	when t3.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
-	when t3.meta_categ_id in (26395) then 'Lifestyle'
-	when t3.categ_lvl3_id in (260325) then 'Lifestyle'
-	when t3.categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
-	when t3.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
-	when t3.categ_lvl3_id in (3244) then 'Parts & Accessories'
-	when t3.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
-	when t3.categ_lvl2_id in (46576) then 'Parts & Accessories'
-	when t3.categ_lvl2_id in (63, 29223) then 'Collectibles'
-	else t3.bsns_vrtcl_name 
-	end as adjusted_vertical
+,t3.new_vertical as adjusted_vertical
+,t3.meta_categ_name
 ,t3.categ_lvl2_name
 ,t3.categ_lvl3_name
+-- ,t1.seller_country_group_name as seller_country
+-- ,upper(t5.cntry_code) as buyer_country
+,t1.site_group_name as site_country
 ,case when t1.slr_cntry_id != t1.byr_cntry_id then 'CBT' else 'DOM' end as dom_cbt_flag
 ,t1.EU_B2C_C2C_FLAG as b2c_c2c_flag
 ,case 
@@ -52,12 +46,15 @@ t2.RETAIL_YEAR
 ,sum(t1.GMV20_PLAN) as gmv_plan_usd
 from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT as t1
 join ACCESS_VIEWS.DW_CAL_DT as t2  on t1.GMV_DT = t2.CAL_DT 
-join ACCESS_VIEWS.DW_CATEGORY_GROUPINGS as t3 on t1.LEAF_CATEG_ID = t3.LEAF_CATEG_ID and t1.LSTG_SITE_ID = t3.SITE_ID
+join P_INVENTORYPLANNING_T.dw_category_groupings_adj as t3 on t1.LEAF_CATEG_ID = t3.LEAF_CATEG_ID and t1.LSTG_SITE_ID = t3.SITE_ID
 left join access_views.focused_vert_txn t4 on t1.ITEM_ID=t4.LSTG_ID and t1.CK_TRANS_ID=t4.CK_TRANS_ID and t1.LSTG_SITE_ID = t4.LSTG_SITE_ID and t1.LEAF_CATEG_ID = t4.LEAF_CATEG_ID
+-- left join dw_countries as t5 on t5.cntry_id = t1.byr_cntry_id
 where 1=1
 and t1.slr_cntry_id = 3
 and year(t1.gmv_dt) >= year(current_date) - 1
+and t2.AGE_FOR_RTL_WEEK_ID <= -1
 and t1.ck_wacko_yn = 'N'
 and t1.iscore = 1
 and t3.sap_category_id not in (5, 7, 41,23,-999)
-group by 1,2,3,4,5,6,7,8,9,10,11
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13
+;
