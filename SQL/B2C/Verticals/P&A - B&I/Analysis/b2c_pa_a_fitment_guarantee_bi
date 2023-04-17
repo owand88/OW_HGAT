@@ -79,9 +79,9 @@ property_value,
 ---SUM(CK.ITEM_PRICE*QUANTITY*LPR.CURNCY_PLAN_RATE) AS Total_GMV, 
      SUM(gmv_plan_usd) AS Total_GMV,
 SUM(QUANTITY) AS BI,
-count(distinct transaction_id) as txn,
-sum(case when  refund_amt > 0  then 1 else 0 end) as refund,
-sum(case when  refund_amt > 0  then QUANTITY else 0 end) as refund_bi
+count(distinct transaction_id) as txn
+--sum(case when  refund_amt > 0  then 1 else 0 end) as refund,
+--sum(case when  refund_amt > 0  then QUANTITY else 0 end) as refund_bi
 
 from DW_CHECKOUT_TRANS AS CK 
 --inner  JOIN  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR  ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
