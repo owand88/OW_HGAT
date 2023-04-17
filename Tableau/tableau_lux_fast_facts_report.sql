@@ -1,8 +1,19 @@
+-- JIRA:            UKPLAN-214
+
+-- Author: 			Robbie Evans
+-- Date:            05/04/2023
+
+-- Stakeholder: 	Wahaaj Shabbir, Alice Bridson, Emma Hamilton, Ines Morais, Keith Metcalfe
+-- Description: 	Provides facts relating to the Luxury Focus Categories surrounding highest priced items sold as well as quantity of items sold/new listings made per minute/hour/day
+
+
+
 ---------------------------------Highest Priced Items Sold-----------------------------------
 
-drop table if exists p_robevans_t.lux_facts_dashboard_top_items;
 
-Create table p_robevans_t.lux_facts_dashboard_top_items as
+drop table if exists P_ukplan_report_T.lux_facts_dashboard_top_items;
+
+Create table P_ukplan_report_T.lux_facts_dashboard_top_items as
 
 select 
 ck.*
@@ -15,12 +26,15 @@ From
 	, brand
 	, ck.AUCT_END_DT
 	, ck.ITEM_PRICE
+	, cs.CNTRY_DESC as seller_country
+	, cb.CNTRY_DESC as buyer_country
 	, case when (cat.CATEG_LVL2_ID = 260324) then 'Watches'
 	when (cat.CATEG_LVL3_ID = 169291) OR (cat.CATEG_LVL4_ID IN (52357,163570,169285,45258,2996,45237,169271)) then 'Handbags'
 	when cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) then 'Sneakers'
 	when (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) then 'Jewellery'
 	Else 'Other'
 	End as category
+	,ck.gmv_dt as purchase_dt
 	,dense_rank() over (partition by retail_year, category order by ck.item_price desc) as price_rank
 	
 	From DW_CHECKOUT_TRANS ck
@@ -51,6 +65,11 @@ From
 			Where dup_check = 1
 			GROUP BY 1) brand
 				on ck.item_id = brand.item_id
+	left join ACCESS_VIEWS.DW_COUNTRIES cb
+		on ck.BUYER_ID = cb.CNTRY_ID
+	left join ACCESS_VIEWS.DW_COUNTRIES cs
+		on ck.BUYER_ID = cs.CNTRY_ID
+	
 	Where 1=1
 	and ck.SLR_CNTRY_ID= 3
 	and (
@@ -60,7 +79,7 @@ From
 		OR (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) --Jewellery
 		)
 		
-	Group by 1,2,3,4,5,6) ck
+	Group by 1,2,3,4,5,6,7,8,9) ck
 LEFT JOIN
 	(Select lstg.item_id, lstg.auct_end_dt, lstg.AUCT_TITLE
 	From PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
@@ -78,9 +97,9 @@ Where price_rank <= 20
 ------------------------------------------------Fast Facts------------------------------------------------------------
 
 
-drop table if exists p_robevans_t.lux_facts_dashboard_kpis;
+drop table if exists P_ukplan_report_T.lux_facts_dashboard_kpis;
 
-create table p_robevans_t.lux_facts_dashboard_kpis as
+create table P_ukplan_report_T.lux_facts_dashboard_kpis as
 
 ---------------------------------------------------Identify Top Brands and Models--------------------------------------------------------
 

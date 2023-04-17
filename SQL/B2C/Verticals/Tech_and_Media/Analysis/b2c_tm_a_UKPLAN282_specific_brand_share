@@ -1,0 +1,33 @@
+/*
+UKPLAN-282
+
+Brand % share on eBay
+Mobiles: Apple, Samsung, Google, OPPO, Xiaomi, Sony, Honor (Huawei) and Motorola
+Tablets: Apple, Samsung, Lenovo, Amazon, Alcatel, Huwaei, TCL and Nokia
+Laptops: HP, Lenovo, Apple, Dell, Microsoft, Asus, Acer and Samsung
+Desktops: Dell, HP, Lenovo, Apple, Acer, Microsoft and Asus.
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Category ID (https://github.ebay.com/uk-planning/uk-planning/blob/master/SQL/B2C/Horizontals/Inventory_Prop/b2c_invpro_a_2023Q1_definition)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+•	Mobile : categ_lvl2_id=9355 [Mobile & Smart Phones(9355)]
+•	Tablet : categ_lvl2_id=171485 [Tablets & eBook Readers(171485)]
+•	Laptop : categ_lvl2_id=175672 [Laptops & Netbooks(175672)]
+•	Desktop : categ_lvl2_id=171957 [Desktops & All-in-Ones(171957)]
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- YTD GMB
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select 
+case when categ_lvl2_id in (9355,171485,175672,171957) then categ_lvl2_name else 'Other Tech Categories' end as category
+,case when lower(brand) in ('apple','samsung','google','oppo','xiaomi','sony','honor','huawei','motorola','lenovo','amazon','alcatel','tcl','nokia','hp','dell','microsoft','asus','acer') then brand else 'Other Brands' end as brand
+,sum(GMB_PLAN) as YTD_GMB
+,sum(BI) as YTD_BI
+from P_UKTrading_VDM_T.ebay_brand_data_v1--Brand of all items that were sold TY, LY and LLY from B2C/C2C UK sellers to UK/Non UK buyers
+where 
+slr_segment='B2C'
+and new_vertical='Electronics'
+and retail_year=2023
+group by 1,2;

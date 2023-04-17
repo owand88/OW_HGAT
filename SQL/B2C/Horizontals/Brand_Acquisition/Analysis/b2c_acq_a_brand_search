@@ -1,0 +1,1398 @@
+----- THIS TAKES TIME
+
+
+drop table if exists p_ndourish_t.brd_srch_input;
+create table p_ndourish_t.brd_srch_input as
+(
+select 	*
+from 	p_ndourish_t.report_inputs
+where 	upper(srch_rep) = 'Y'
+and brd = 'Specialized'
+);
+select *
+from p_ndourish_t.brd_srch_input;
+
+
+drop table if exists p_ndourish_t.srch_rep1;
+create table p_ndourish_t.srch_rep1 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -1
+where	src.site_id = 77  
+
+---AND a.brd = 'Polarn o Pyret'
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep2;
+create table p_ndourish_t.srch_rep2 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -2
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep3;
+create table p_ndourish_t.srch_rep3 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -3
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep4;
+create table p_ndourish_t.srch_rep4 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+
+--- slide for self serve
+--- overlap in sellers 
+--- YTD target include in table 
+--- conditional against 4 week to show trend
+
+
+
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -4
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep5;
+create table p_ndourish_t.srch_rep5 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -5
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep6;
+create table p_ndourish_t.srch_rep6 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -6
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep7;
+create table p_ndourish_t.srch_rep7 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -7
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep8;
+create table p_ndourish_t.srch_rep8 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -8
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep9;
+create table p_ndourish_t.srch_rep9 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -9
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep10;
+create table p_ndourish_t.srch_rep10 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -10
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep11;
+create table p_ndourish_t.srch_rep11 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -11
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep12;
+create table p_ndourish_t.srch_rep12 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -12
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep13;
+create table p_ndourish_t.srch_rep13 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -13
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep14;
+create table p_ndourish_t.srch_rep14 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -14
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep15;
+create table p_ndourish_t.srch_rep15 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -15
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep16;
+create table p_ndourish_t.srch_rep16 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -16
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep17;
+create table p_ndourish_t.srch_rep17 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -17
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep18;
+create table p_ndourish_t.srch_rep18 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -18
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep19;
+create table p_ndourish_t.srch_rep19 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -19
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep20;
+create table p_ndourish_t.srch_rep20 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -20
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep21;
+create table p_ndourish_t.srch_rep21 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -21
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep22;
+create table p_ndourish_t.srch_rep22 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -22
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep23;
+create table p_ndourish_t.srch_rep23 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -23
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep24;
+create table p_ndourish_t.srch_rep24 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -24
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep25;
+create table p_ndourish_t.srch_rep25 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -25
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep26;
+create table p_ndourish_t.srch_rep26 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -26
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep27;
+create table p_ndourish_t.srch_rep27 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -27
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep28;
+create table p_ndourish_t.srch_rep28 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -28
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep29;
+create table p_ndourish_t.srch_rep29 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -29
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep30;
+create table p_ndourish_t.srch_rep30 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -30
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep31;
+create table p_ndourish_t.srch_rep31 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -31
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep32;
+create table p_ndourish_t.srch_rep32 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -32
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep33;
+create table p_ndourish_t.srch_rep33 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -33
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep34;
+create table p_ndourish_t.srch_rep34 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -34
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep35;
+create table p_ndourish_t.srch_rep35 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -35
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+drop table if exists p_ndourish_t.srch_rep36;
+create table p_ndourish_t.srch_rep36 as
+(
+select	META_CATEG_NAME
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		CATEG_LVL4_NAME 
+,		a.brd
+,		substring(session_start_dt,1,4) as yr
+,		substring(session_start_dt,6,2) as mth
+,		lower(query) as act_srch
+,		count(*) as vol 
+
+FROM 		p_ndourish_t.brd_srch_input 	as a
+inner join 	SRCH_CNVRSN_EVENT_FACT 			as src	on lower(src.query) like concat('% ', lower(trim(a.brd))) -- End of term
+												or lower(src.query) like concat(lower(trim(a.brd)), ' %') -- Beginning of term
+												or lower(src.query) like concat('% ', lower(trim(a.brd)), ' %') -- Spaces before and after
+												or lower(src.query) = lower(trim(a.brd)) -- Whole Search	
+left join DW_LSTG_ITEM lst 					on 	substring(src.items,1,instr(src.items,',')-1) = lst.item_id
+INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on lst.leaf_categ_id  = cat.leaf_categ_id 
+													and src.site_id = cat.site_id
+													AND lst.LEAF_CATEG_ID=cat.move_to
+inner join 	ACCESS_VIEWS.DW_CAL_DT cal 	on src.session_start_dt = cal.CAL_DT
+										and AGE_FOR_MONTH_ID = -36
+where	src.site_id = 77  
+group by 1,2,3,4,5,6,7,8
+); 
+
+
+drop table if exists p_ndourish_t.srch_all;
+create table p_ndourish_t.srch_all as
+(
+select *
+from 	p_ndourish_t.srch_rep1
+UNION
+select *
+from 	p_ndourish_t.srch_rep2
+UNION
+select *
+from 	p_ndourish_t.srch_rep3
+UNION
+select *
+from 	p_ndourish_t.srch_rep4
+UNION
+select *
+from 	p_ndourish_t.srch_rep5
+UNION
+select *
+from 	p_ndourish_t.srch_rep6
+UNION
+select *
+from 	p_ndourish_t.srch_rep7
+UNION
+select *
+from 	p_ndourish_t.srch_rep8
+UNION
+select *
+from 	p_ndourish_t.srch_rep9
+UNION
+select *
+from 	p_ndourish_t.srch_rep10
+UNION
+select *
+from 	p_ndourish_t.srch_rep11
+UNION
+select *
+from 	p_ndourish_t.srch_rep12
+UNION
+select *
+from 	p_ndourish_t.srch_rep13
+UNION
+select *
+from 	p_ndourish_t.srch_rep14
+UNION
+select *
+from 	p_ndourish_t.srch_rep15
+UNION
+select *
+from 	p_ndourish_t.srch_rep16
+UNION
+select *
+from 	p_ndourish_t.srch_rep17
+UNION
+select *
+from 	p_ndourish_t.srch_rep18
+UNION
+select *
+from 	p_ndourish_t.srch_rep19
+UNION
+select *
+from 	p_ndourish_t.srch_rep20
+UNION
+select *
+from 	p_ndourish_t.srch_rep21
+UNION
+select *
+from 	p_ndourish_t.srch_rep22
+UNION
+select *
+from 	p_ndourish_t.srch_rep23
+UNION
+select *
+from 	p_ndourish_t.srch_rep24
+UNION
+select *
+from 	p_ndourish_t.srch_rep25
+UNION
+select *
+from 	p_ndourish_t.srch_rep26
+UNION
+select *
+from 	p_ndourish_t.srch_rep27
+UNION
+select *
+from 	p_ndourish_t.srch_rep28
+UNION
+select *
+from 	p_ndourish_t.srch_rep29
+UNION
+select *
+from 	p_ndourish_t.srch_rep30
+UNION
+select *
+from 	p_ndourish_t.srch_rep31
+UNION
+select *
+from 	p_ndourish_t.srch_rep32
+UNION
+select *
+from 	p_ndourish_t.srch_rep33
+UNION
+select *
+from 	p_ndourish_t.srch_rep34
+UNION
+select *
+from 	p_ndourish_t.srch_rep35
+UNION
+select *
+from 	p_ndourish_t.srch_rep36
+);
+drop table if exists p_ndourish_t.srch_rep1;
+drop table if exists p_ndourish_t.srch_rep2;
+drop table if exists p_ndourish_t.srch_rep3;
+drop table if exists p_ndourish_t.srch_rep4;
+drop table if exists p_ndourish_t.srch_rep5;
+drop table if exists p_ndourish_t.srch_rep6;
+drop table if exists p_ndourish_t.srch_rep7;
+drop table if exists p_ndourish_t.srch_rep8;
+drop table if exists p_ndourish_t.srch_rep9;
+drop table if exists p_ndourish_t.srch_rep10;
+drop table if exists p_ndourish_t.srch_rep11;
+drop table if exists p_ndourish_t.srch_rep12;
+drop table if exists p_ndourish_t.srch_rep13;
+drop table if exists p_ndourish_t.srch_rep14;
+drop table if exists p_ndourish_t.srch_rep15;
+drop table if exists p_ndourish_t.srch_rep16;
+drop table if exists p_ndourish_t.srch_rep17;
+drop table if exists p_ndourish_t.srch_rep18;
+drop table if exists p_ndourish_t.srch_rep19;
+drop table if exists p_ndourish_t.srch_rep20;
+drop table if exists p_ndourish_t.srch_rep21;
+drop table if exists p_ndourish_t.srch_rep22;
+drop table if exists p_ndourish_t.srch_rep23;
+drop table if exists p_ndourish_t.srch_rep24;
+drop table if exists p_ndourish_t.srch_rep25;
+drop table if exists p_ndourish_t.srch_rep26;
+drop table if exists p_ndourish_t.srch_rep27;
+drop table if exists p_ndourish_t.srch_rep28;
+drop table if exists p_ndourish_t.srch_rep29;
+drop table if exists p_ndourish_t.srch_rep30;
+drop table if exists p_ndourish_t.srch_rep31;
+drop table if exists p_ndourish_t.srch_rep32;
+drop table if exists p_ndourish_t.srch_rep33;
+drop table if exists p_ndourish_t.srch_rep34;
+drop table if exists p_ndourish_t.srch_rep35;
+drop table if exists p_ndourish_t.srch_rep36;
+
+drop table if exists p_ndourish_t.srch_rep2;
+create table p_ndourish_t.srch_rep2 as
+(
+	select 	brd
+	,		row_number() over (partition by brd order by srp desc) as brd_rnk
+	,		meta_categ_name
+	,		srp
+	FROM	(
+			select 	brd
+			,		meta_categ_name
+			,		sum(vol) as srp
+			from p_ndourish_t.srch_all
+			group by 1,2
+			)
+);
+
+drop table if exists p_ndourish_t.srch_rep3;
+create table p_ndourish_t.srch_rep3 as
+(
+select 	brd
+,		CASE when brd_rnk > 5 then 99 else brd_rnk end as brd_rnk
+,		CASE when brd_rnk > 5 then 'Other' else meta_categ_name end as meta_category
+,		sum(srp) as srp
+from 	p_ndourish_t.srch_rep2
+group by 1,2,3
+);
+
+drop table if exists p_ndourish_t.srch_rep4;
+create table p_ndourish_t.srch_rep4 as
+(
+select 	a.*
+,		case when b.meta_category is null then 'Other' else b.meta_category end as meta_category
+,		case when b.meta_category is null then 99 else b.brd_rnk end as brd_rnk
+FROM	(
+			select 	brd
+			,		meta_categ_name
+			,		yr
+			,		mth
+			,		sum(vol) as srp
+			FROM	p_ndourish_t.srch_all
+			group by 1,2,3,4
+		) a
+left join p_ndourish_t.srch_rep3 b 	on a.brd = b.brd 
+								and a.meta_categ_name = b.meta_category 
+);
+
+drop table if exists p_ndourish_t.srch_vol_out;
+create table p_ndourish_t.srch_vol_out as
+(
+select 	rep_nm
+,		a.brd
+,		a.brd || '_' || brd_rnk as brd_rnk
+,		meta_category
+,		yr
+,		mth
+,		sum(srp) as search_vol
+from p_ndourish_t.brd_srch_input a
+left join p_ndourish_t.srch_rep4 b on upper(a.brd) = upper(b.brd)
+where cast(yr as int) between year(current_date())-2 and year(current_date())
+group by 1,2,3,4,5,6
+);
+
+select *
+from p_ndourish_t.srch_vol_out;
+
+
+-- Identify to 50 search terms
+drop table if exists p_ndourish_t.srch_top_out;
+create table p_ndourish_t.srch_top_out as
+(
+SELECT	rep_nm
+,		meta_categ_name
+,		a.brd
+,		meta_categ_name|| '_' || a.brd as cat_brd
+,		max(case when term_rnk = 1 then act_srch else null end) 	as srch1_desc
+,		max(case when term_rnk = 1 then srp_cnt else null end) 		as srch1_vol
+,		max(case when term_rnk = 2 then act_srch else null end) 	as srch2_desc
+,		max(case when term_rnk = 2 then srp_cnt else null end) 		as srch2_vol
+,		max(case when term_rnk = 3 then act_srch else null end) 	as srch3_desc
+,		max(case when term_rnk = 3 then srp_cnt else null end) 		as srch3_vol
+,		max(case when term_rnk = 4 then act_srch else null end) 	as srch4_desc
+,		max(case when term_rnk = 4 then srp_cnt else null end) 		as srch4_vol
+,		max(case when term_rnk = 5 then act_srch else null end) 	as srch5_desc
+,		max(case when term_rnk = 5 then srp_cnt else null end) 		as srch5_vol
+,		max(case when term_rnk = 6 then act_srch else null end) 	as srch6_desc
+,		max(case when term_rnk = 6 then srp_cnt else null end) 		as srch6_vol
+,		max(case when term_rnk = 7 then act_srch else null end) 	as srch7_desc
+,		max(case when term_rnk = 7 then srp_cnt else null end) 		as srch7_vol
+,		max(case when term_rnk = 8 then act_srch else null end) 	as srch8_desc
+,		max(case when term_rnk = 8 then srp_cnt else null end) 		as srch8_vol
+,		max(case when term_rnk = 9 then act_srch else null end) 	as srch9_desc
+,		max(case when term_rnk = 9 then srp_cnt else null end) 		as srch9_vol
+,		max(case when term_rnk = 10 then act_srch else null end) 	as srch10_desc
+,		max(case when term_rnk = 10 then srp_cnt else null end) 	as srch10_vol
+,		max(case when term_rnk = 11 then act_srch else null end) 	as srch11_desc
+,		max(case when term_rnk = 11 then srp_cnt else null end) 	as srch11_vol
+,		max(case when term_rnk = 12 then act_srch else null end) 	as srch12_desc
+,		max(case when term_rnk = 12 then srp_cnt else null end) 	as srch12_vol
+,		max(case when term_rnk = 13 then act_srch else null end) 	as srch13_desc
+,		max(case when term_rnk = 13 then srp_cnt else null end) 	as srch13_vol
+,		max(case when term_rnk = 14 then act_srch else null end) 	as srch14_desc
+,		max(case when term_rnk = 14 then srp_cnt else null end) 	as srch14_vol
+,		max(case when term_rnk = 15 then act_srch else null end) 	as srch15_desc
+,		max(case when term_rnk = 15 then srp_cnt else null end) 	as srch15_vol
+,		max(case when term_rnk = 16 then act_srch else null end) 	as srch16_desc
+,		max(case when term_rnk = 16 then srp_cnt else null end) 	as srch16_vol
+,		max(case when term_rnk = 17 then act_srch else null end) 	as srch17_desc
+,		max(case when term_rnk = 17 then srp_cnt else null end) 	as srch17_vol
+,		max(case when term_rnk = 18 then act_srch else null end) 	as srch18_desc
+,		max(case when term_rnk = 18 then srp_cnt else null end) 	as srch18_vol
+,		max(case when term_rnk = 19 then act_srch else null end) 	as srch19_desc
+,		max(case when term_rnk = 19 then srp_cnt else null end) 	as srch19_vol
+,		max(case when term_rnk = 20 then act_srch else null end) 	as srch20_desc
+,		max(case when term_rnk = 20 then srp_cnt else null end) 	as srch20_vol
+,		max(case when term_rnk = 21 then act_srch else null end) 	as srch21_desc
+,		max(case when term_rnk = 21 then srp_cnt else null end) 	as srch21_vol
+,		max(case when term_rnk = 22 then act_srch else null end) 	as srch22_desc
+,		max(case when term_rnk = 22 then srp_cnt else null end) 	as srch22_vol
+,		max(case when term_rnk = 23 then act_srch else null end) 	as srch23_desc
+,		max(case when term_rnk = 23 then srp_cnt else null end) 	as srch23_vol
+,		max(case when term_rnk = 24 then act_srch else null end) 	as srch24_desc
+,		max(case when term_rnk = 24 then srp_cnt else null end) 	as srch24_vol
+,		max(case when term_rnk = 25 then act_srch else null end) 	as srch25_desc
+,		max(case when term_rnk = 25 then srp_cnt else null end) 	as srch25_vol
+,		max(case when term_rnk = 26 then act_srch else null end) 	as srch26_desc
+,		max(case when term_rnk = 26 then srp_cnt else null end) 	as srch26_vol
+,		max(case when term_rnk = 27 then act_srch else null end) 	as srch27_desc
+,		max(case when term_rnk = 27 then srp_cnt else null end) 	as srch27_vol
+,		max(case when term_rnk = 28 then act_srch else null end) 	as srch28_desc
+,		max(case when term_rnk = 28 then srp_cnt else null end) 	as srch28_vol
+,		max(case when term_rnk = 29 then act_srch else null end) 	as srch29_desc
+,		max(case when term_rnk = 29 then srp_cnt else null end) 	as srch29_vol
+,		max(case when term_rnk = 30 then act_srch else null end) 	as srch30_desc
+,		max(case when term_rnk = 30 then srp_cnt else null end) 	as srch30_vol
+,		max(case when term_rnk = 31 then act_srch else null end) 	as srch31_desc
+,		max(case when term_rnk = 31 then srp_cnt else null end) 	as srch31_vol
+,		max(case when term_rnk = 32 then act_srch else null end) 	as srch32_desc
+,		max(case when term_rnk = 32 then srp_cnt else null end) 	as srch32_vol
+,		max(case when term_rnk = 33 then act_srch else null end) 	as srch33_desc
+,		max(case when term_rnk = 33 then srp_cnt else null end) 	as srch33_vol
+,		max(case when term_rnk = 34 then act_srch else null end) 	as srch34_desc
+,		max(case when term_rnk = 34 then srp_cnt else null end) 	as srch34_vol
+,		max(case when term_rnk = 35 then act_srch else null end) 	as srch35_desc
+,		max(case when term_rnk = 35 then srp_cnt else null end) 	as srch35_vol
+,		max(case when term_rnk = 36 then act_srch else null end) 	as srch36_desc
+,		max(case when term_rnk = 36 then srp_cnt else null end) 	as srch36_vol
+,		max(case when term_rnk = 37 then act_srch else null end) 	as srch37_desc
+,		max(case when term_rnk = 37 then srp_cnt else null end) 	as srch37_vol
+,		max(case when term_rnk = 38 then act_srch else null end) 	as srch38_desc
+,		max(case when term_rnk = 38 then srp_cnt else null end) 	as srch38_vol
+,		max(case when term_rnk = 39 then act_srch else null end) 	as srch39_desc
+,		max(case when term_rnk = 39 then srp_cnt else null end) 	as srch39_vol
+,		max(case when term_rnk = 40 then act_srch else null end) 	as srch40_desc
+,		max(case when term_rnk = 40 then srp_cnt else null end) 	as srch40_vol
+,		max(case when term_rnk = 41 then act_srch else null end) 	as srch41_desc
+,		max(case when term_rnk = 41 then srp_cnt else null end) 	as srch41_vol
+,		max(case when term_rnk = 42 then act_srch else null end) 	as srch42_desc
+,		max(case when term_rnk = 42 then srp_cnt else null end) 	as srch42_vol
+,		max(case when term_rnk = 43 then act_srch else null end) 	as srch43_desc
+,		max(case when term_rnk = 43 then srp_cnt else null end) 	as srch43_vol
+,		max(case when term_rnk = 44 then act_srch else null end) 	as srch44_desc
+,		max(case when term_rnk = 44 then srp_cnt else null end) 	as srch44_vol
+,		max(case when term_rnk = 45 then act_srch else null end) 	as srch45_desc
+,		max(case when term_rnk = 45 then srp_cnt else null end) 	as srch45_vol
+,		max(case when term_rnk = 46 then act_srch else null end) 	as srch46_desc
+,		max(case when term_rnk = 46 then srp_cnt else null end) 	as srch46_vol
+,		max(case when term_rnk = 47 then act_srch else null end) 	as srch47_desc
+,		max(case when term_rnk = 47 then srp_cnt else null end) 	as srch47_vol
+,		max(case when term_rnk = 48 then act_srch else null end) 	as srch48_desc
+,		max(case when term_rnk = 48 then srp_cnt else null end) 	as srch48_vol
+,		max(case when term_rnk = 49 then act_srch else null end) 	as srch49_desc
+,		max(case when term_rnk = 49 then srp_cnt else null end) 	as srch49_vol
+,		max(case when term_rnk = 50 then act_srch else null end) 	as srch50_desc
+,		max(case when term_rnk = 50 then srp_cnt else null end) 	as srch50_vol
+
+from p_ndourish_t.brd_srch_input a
+left join 
+	(
+	select 	meta_categ_name
+	,		brd 
+	,		act_srch
+	,		srp_cnt	
+	,		row_number() over (partition by meta_categ_name, brd  order by srp_cnt desc) as term_rnk	
+	
+	from	(
+			select 	meta_categ_name
+			,		brd 
+			,		act_srch
+			,		sum(vol) as srp_cnt	
+			FROM	p_ndourish_t.srch_all
+			where 	( cast(yr as int) = year(current_date()) - 1 and cast(mth as int) >= month(CURRENT_DATE()))
+			or		( cast(yr as int) = year(current_date()) and cast(mth as int) < month(CURRENT_DATE()))
+			group by 1,2,3
+			union ALL
+			select 	'All' as meta_categ_name
+			,		brd
+			,		act_srch
+			,		sum(vol) as srp_cnt	
+			FROM	p_ndourish_t.srch_all
+			where 	( cast(yr as int) = year(current_date()) - 1 and cast(mth as int) >= month(CURRENT_DATE()))
+			or		( cast(yr as int) = year(current_date()) and cast(mth as int) < month(CURRENT_DATE()))
+			group by 1,2,3
+			)
+	) b on upper(a.brd) = upper(b.brd)
+group by 1,2,3,4
+);
+
+-- drop table if exists p_ndourish_t.srch_all;
+-- drop table if exists p_ndourish_t.srch_rep1;
+-- drop table if exists p_ndourish_t.srch_rep2;
+-- drop table if exists p_ndourish_t.srch_rep3;
+-- drop table if exists p_ndourish_t.srch_rep4;
+
+SELECT * FROM p_ndourish_t.srch_top_out limit 100
+
+
