@@ -25,7 +25,7 @@ t2.RETAIL_YEAR
 ,t1.EU_B2C_C2C_FLAG as b2c_c2c_flag
 ,case 
 	when t4.LEAF_CATEG_ID is not null and t4.focused_vertical_lvl1 not in ('Brand Outlet', 'Open Box') then 'FC' 
-	when t4.LEAF_CATEG_ID is not null and t4.focused_vertical_lvl1 in ('Brand Outlet', 'Open Box') then 'Non_FC' 
+	when t4.LEAF_CATEG_ID is not null and t4.focused_vertical_lvl1 in ('Brand Outlet', 'Open Box') then 'Non_FC'  -- This exclusion is needed as Brand Outlet and Open Box categories are tracked, but not part of the Global Focus Categories for UK. Please see https://wiki.corp.ebay.com/pages/viewpage.action?pageId=960434499 for further details
 	when t1.item_cndtn_id in (2000,2010,2020,2030) and t1.EU_B2C_C2C_FLAG = 'B2C' then 'FC'
 	else 'Non_FC' 
 	end as focus_category_flag
