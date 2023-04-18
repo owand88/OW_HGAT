@@ -1,0 +1,71 @@
+--Objective: Identify new live listings by fashion focus sellers
+
+-- STEP 1 Pull all fashion focus sellers (last updated to 2023Q1)
+
+drop table if exists fashion_sellers;
+create TEMPORARY table fashion_sellers as
+select distinct inv.*
+,user.USER_SLCTD_ID as SELLER_NAME
+from (
+select seller_id
+,case when lower(initiative_name) like '%loved%' then 'Pre Loved' else initiative_name end as SELLER_FLAG
+
+from  P_awang_ops_T.seller_ops_83
+
+where seller_vertical = 'Fashion'
+
+UNION ALL
+SELECT USER_ID as seller_id
+,'Large Re-sellers' as inventory_prop
+FROM  ACCESS_VIEWS.DW_USERS
+WHERE USER_ID in (2070816433,2142158797,2505572595,1120101811,2412694854)) inv
+inner join ACCESS_VIEWS.DW_USERS user on inv.seller_id = user.USER_ID
+
+;
+
+-- STEP 2 Join focus sellers to live listings
+-- join with auction start date to identify new listings
+
+drop table if exists P_INVENTORYPLANNING_T.FSH_NEW_LL;
+create table P_INVENTORYPLANNING_T.FSH_NEW_LL as
+select 
+cal.RETAIL_YEAR
+,cal.RETAIL_WEEK
+,user.SELLER_ID
+,user.SELLER_NAME
+,user.SELLER_FLAG
+,cat.CATEG_LVL2_ID
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_ID
+,cat.CATEG_LVL3_NAME
+,CASE  WHEN item_cndtn_id = 1000 THEN 'New'  WHEN item_cndtn_id = 1500 THEN 'New Other (see details)' WHEN item_cndtn_id = 1750 THEN 'New With Defects' 
+WHEN item_cndtn_id = 2000 THEN 'Manufacturer Refurb' 
+WHEN item_cndtn_id = 2500 THEN 'Seller Refurb' 
+WHEN item_cndtn_id = 2750 THEN 'Like New' 
+WHEN item_cndtn_id = 3000 THEN 'Used' 
+WHEN item_cndtn_id = 4000 THEN 'Very Good' 
+WHEN item_cndtn_id = 5000 THEN 'Good' 
+WHEN item_cndtn_id = 6000 THEN 'Acceptable' 
+WHEN item_cndtn_id = 7000 THEN 'For parts or not working' 
+ELSE 'Not specified' 
+END AS Item_Condition_Type
+
+,count(distinct lstg.item_id) as ll
+
+from PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+	INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+			ON CAT.LEAF_CATEG_ID = lstg.LEAF_CATEG_ID 
+			and cat.site_id = 3
+	INNER JOIN DW_CAL_DT CAL ON lstg.AUCT_START_DT = CAL.CAL_DT
+
+inner join fashion_sellers user on lstg.SLR_ID = user.seller_id
+
+where 1=1
+and lstg.ITEM_SITE_ID = 3
+and lstg.SLR_CNTRY_ID = 3
+and lstg.META_CATEG_ID = 11450
+and cal.AGE_FOR_RTL_YEAR_ID >= -1
+and cal.AGE_FOR_RTL_WEEK_ID <= -1
+
+group by 1,2,3,4,5,6,7,8,9,10
+;

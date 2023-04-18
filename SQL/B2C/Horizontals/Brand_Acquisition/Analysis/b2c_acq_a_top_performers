@@ -1,0 +1,208 @@
+----- THIS RUNS RELATIVELY QUICKLY
+
+
+drop table if exists p_ndourish_t.brd_top_perf;
+create table p_ndourish_t.brd_top_perf as
+(
+select 	*
+from 	p_ndourish_t.report_inputs
+where 	upper(top_perf_rep) = 'Y'
+and brd = 'Specialized'
+);
+select *
+from p_ndourish_t.brd_top_perf;
+
+-- Top Items
+-- Top Sellers B2C/C2C - Authorised vs Non-Authorised
+
+
+
+drop table if exists p_ndourish_t.brd_top_perf1;
+create table p_ndourish_t.brd_top_perf1 as
+(
+	select 	 brand
+	,      	case when usr.user_dsgntn_id = 2 then 'B2C' else 'C2C' end as SLR_SEGMENT
+	,		ck.seller_id
+	,		usr.USER_SLCTD_ID
+	,		ck.item_id
+	,		SUM(CK.ITEM_PRICE * QUANTITY * LPR.CURNCY_PLAN_RATE ) AS gmv
+	,		SUM(ck.Quantity ) AS qty 
+	FROM 		DW_CHECKOUT_TRANS_V2 AS CK
+	INNER JOIN 	ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID
+	INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT CAL 					ON CAL.CAL_DT = CK.CREATED_DT 
+	inner join 	(
+				select distinct item_id
+				,DF_BRAND_TXT as brand
+				from PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+				where 1=1
+				and lstg.ITEM_SITE_id = 15
+				and lstg.SLR_CNTRY_id = 15
+				and lower(DF_BRAND_TXT) in (select distinct lower(trim(brd)) from p_ndourish_t.brd_top_perf)
+				) brd 										on ck.item_id = brd.item_id
+	INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on ck.leaf_categ_id = cat.leaf_categ_id 
+													and ck.site_id = cat.SITE_ID
+													AND ck.leaf_categ_id=cat.move_to
+	left join 	prs_secure_v.dw_users usr					on ck.seller_id = usr.user_id
+	WHERE	cal.AGE_FOR_MONTH_ID between -12 and -1
+	AND 	CK.CK_WACKO_YN  =  'N'
+	AND 	CK.SALE_TYPE NOT IN (10,15)
+	AND 	CK.SLR_CNTRY_id = 15
+	AND 	ck.Byr_CNTRY_id = 15
+	and 	ck.site_id = 15
+	AND 	CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+
+	group by 1,2,3,4,5
+);
+
+drop table if exists p_ndourish_t.brd_top_perf2;
+create table p_ndourish_t.brd_top_perf2 as
+(
+	select *
+	from 	(
+			select 	*
+			,		row_number() over (partition by brand order by gmv desc) as slr_rnk	
+			FROM	(
+					select 	brand
+					,		slr_segment
+					,		seller_id
+					,		USER_SLCTD_ID
+					,		sum(gmv) as gmv
+					,		sum(qty) as qty
+					from 	p_ndourish_t.brd_top_perf1
+					group by 1,2,3,4
+					)
+			)
+	where slr_rnk <= 100
+);
+
+drop table if exists p_ndourish_t.brd_top_perf3;
+create table p_ndourish_t.brd_top_perf3 as
+(
+	select 	a.brand 
+	,		a.slr_rnk
+	,		a.seller_id
+	,		a.user_slctd_id as seller_name
+	,		a.slr_segment
+	,		a.gmv as brd_gmv
+	,		a.qty as brd_qty
+	,		SUM(CK.ITEM_PRICE * QUANTITY * LPR.CURNCY_PLAN_RATE ) AS slr_gmv
+	,		SUM(ck.Quantity ) AS slr_qty 
+	FROM 		p_ndourish_t.brd_top_perf2 a
+	inner join DW_CHECKOUT_TRANS_V2 AS CK	 on a.seller_id = ck.seller_id
+	INNER JOIN 	ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID
+	INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT CAL 					ON CAL.CAL_DT = CK.CREATED_DT 
+	INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on ck.leaf_categ_id = cat.leaf_categ_id 
+													and ck.site_id = cat.SITE_ID
+													AND ck.leaf_categ_id=cat.move_to
+	WHERE	cal.AGE_FOR_MONTH_ID between -12 and -1
+	AND 	CK.CK_WACKO_YN  =  'N'
+	AND 	CK.SALE_TYPE NOT IN (10,15)
+	AND 	CK.SLR_CNTRY_id = 15
+	AND 	ck.Byr_CNTRY_id = 15
+	and 	ck.site_id = 15
+	AND 	CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+
+	group by 1,2,3,4,5,6,7
+);
+
+-- Produce Summary Seller Info
+drop table if exists p_ndourish_t.brd_top_perf4;
+create table p_ndourish_t.brd_top_perf4 as
+(
+	select 	brand
+	,		slr_segment
+	,		count(distinct seller_id) as slrs
+	,		sum(gmv) as tot_gmv
+	,		sum(qty) as tot_qty
+	
+	from 	p_ndourish_t.brd_top_perf1
+	group by 1,2
+);
+
+-- Top Items
+drop table if exists p_ndourish_t.brd_top_perf5;
+create table p_ndourish_t.brd_top_perf5 as
+(
+select *
+FROM	
+	(
+	select 	brand
+	,		a.item_id
+	,		auct_titl
+	,		gmv
+	,		qty
+	,		row_number() over (partition by brand order by gmv desc) as itm_rnk
+	FROM	(
+			select 	brand
+			,		item_id
+			,		sum(gmv) as gmv
+			,		sum(qty) as qty
+			FROM	p_ndourish_t.brd_top_perf1
+			group by 1,2
+			) a
+	LEFT JOIN ACCESS_VIEWS.DW_LSTG_ITEM AS b ON a.item_id=b.item_id 
+	)
+where itm_rnk <= 100
+);
+
+
+-- Outputs
+drop table if exists p_ndourish_t.brd_top_perf3_out;
+create table p_ndourish_t.brd_top_perf3_out as
+(
+select 	eml_addr
+,		fst_nm
+,		rep_nm
+,		brand
+,		brand || '_' || slr_rnk as brd_rnk
+,		seller_id
+,		seller_name
+,		slr_segment
+,		brd_gmv
+,		brd_qty
+,		slr_gmv
+,		slr_qty 
+from p_ndourish_t.brd_top_perf a
+left join p_ndourish_t.brd_top_perf3 b on upper(trim(a.brd)) = upper(trim(b.brand))
+);
+
+drop table if exists p_ndourish_t.brd_top_perf4_out;
+create table p_ndourish_t.brd_top_perf4_out as
+(
+select 	rep_nm
+,		brand
+,		slr_segment
+,		slrs
+,		tot_gmv
+,		tot_qty
+from p_ndourish_t.brd_top_perf a
+left join p_ndourish_t.brd_top_perf4 b on upper(trim(a.brd)) = upper(trim(b.brand))
+);
+
+drop table if exists p_ndourish_t.brd_top_perf5_out;
+create table p_ndourish_t.brd_top_perf5_out as
+(
+select 	rep_nm
+,		brand || '_' || itm_rnk as brd_rnk
+,		item_id
+,		auct_titl
+,		gmv
+,		qty
+from p_ndourish_t.brd_top_perf a
+left join p_ndourish_t.brd_top_perf5 b on upper(trim(a.brd)) = upper(trim(b.brand))
+);
+
+-- drop table if exists p_ndourish_t.brd_top_perf1;
+-- drop table if exists p_ndourish_t.brd_top_perf2;
+-- drop table if exists p_ndourish_t.brd_top_perf3;
+-- drop table if exists p_ndourish_t.brd_top_perf4;
+-- drop table if exists p_ndourish_t.brd_top_perf5;
+
+select *
+from p_ndourish_t.brd_top_perf5_out
+
+LIMIT 100
+;
+
+
+

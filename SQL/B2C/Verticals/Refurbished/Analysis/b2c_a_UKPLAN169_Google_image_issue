@@ -1,0 +1,156 @@
+/*
+UKPLAN-169
+
+Utilize the logic used by Google that flags non-compliant images to identify listings within the Refurb program (CR +SR) which have logos on the main images. 
+Refurb CMs have to manually trawl through the site to flag these currently.
+
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Explore dataset
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--A daily batch of eBay listings is sent to Google. These are then rinsed through Google’s QA processes. The listing becomes eligible for Shopping ad only when it is approved.
+--mrkt_feed_v.google_merchant_issues_snapshot gives a daily snapshot of issues as reported by Google
+
+select distinct site_name from mrkt_feed_v.google_merchant_issues_snapshot;
+
+--A lot less listings in the dataset for current date
+--Use current date-1
+select 
+batch_dt 
+,count(*)
+from mrkt_feed_v.google_merchant_issues_snapshot
+where to_date(batch_dt, 'yyyyMMdd') >= '2023-04-01'
+group by 1
+order by 1;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Issues reported by Google for Refurb listings (UK sellers on UK site)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_InventoryPlanning_T.refurb_lstg_to_google;
+create table P_InventoryPlanning_T.refurb_lstg_to_google as (
+with base as (
+select
+distinct
+batch_dt           --Google shopping feed Batch_dt in YYYYMMDD
+,site_name         --Google shopping site: us, de, uk, etc
+,item_id   
+,seller_id         --Oracle seller_id
+,issue_num
+,code              --Issue_code
+,attribute_name    --Issue detail
+,short_description    
+,detailed_description
+,servability       --Indicates if the issue effects the servability of the Google shopping ad (disapproved, demoted, unaffected)
+from mrkt_feed_v.google_merchant_issues_snapshot
+where
+to_date(batch_dt, 'yyyyMMdd') = current_date-1  --Filter for the listing feed batch by date
+and site_name = 'uk'   --Filter for specific sites
+)
+,refurb as (
+select 
+lstg.item_id
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+,lstg.slr_id as seller_id
+,u.user_slctd_id as seller_name	  
+,lstg.auct_titl as listing_title
+,lstg.auct_start_dt as listing_start_dt
+,lstg.auct_end_dt as listing_end_dt
+,cat.original_vertical
+,cat.new_vertical
+,cat.categ_lvl2_name
+
+from access_views.dw_lstg_item lstg
+
+inner join (select bsns_vrtcl_name as original_vertical, categ_lvl2_id, categ_lvl2_name, leaf_categ_id, site_id,
+			case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+     		 when meta_categ_id in (26395) then 'Lifestyle'
+     		 when categ_lvl3_id in (260325) then 'Lifestyle'
+     		 when categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
+     		 when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+     		 when categ_lvl3_id in (3244) then 'Parts & Accessories'
+     		 when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+     		 when categ_lvl2_id in (46576) then 'Parts & Accessories'
+     		 when categ_lvl2_id in (63, 29223) then 'Collectibles'
+            else bsns_vrtcl_name end as new_vertical 
+			from access_views.dw_category_groupings
+			where sap_category_id not in (5,7,23,41,-999)
+			group by 1,2,3,4,5,6) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and lstg.item_site_id = cat.site_id 
+
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+where 
+lstg.slr_cntry_id=3
+and lstg.item_site_id=3
+and lstg.auct_end_dt>current_date
+and item_cndtn_id in (2000,2010,2020,2030)
+)
+select
+refurb.item_id
+,refurb.item_cndtn_id
+,refurb.item_condition
+,refurb.seller_id
+,refurb.seller_name	  
+,refurb.listing_title
+,refurb.listing_start_dt
+,refurb.listing_end_dt
+,refurb.original_vertical
+,refurb.new_vertical
+,refurb.categ_lvl2_name
+,base.batch_dt    
+,base.issue_num
+,base.attribute_name    
+,base.code  
+,base.short_description    
+,base.detailed_description
+,base.servability 
+from base
+inner join refurb
+on base.item_id=refurb.item_id
+);
+
+--Data check
+--1298 refurb listings with issues
+select count(distinct item_id) from P_InventoryPlanning_T.refurb_lstg_to_google;
+
+select short_description,count(distinct item_id) from P_InventoryPlanning_T.refurb_lstg_to_google
+group by 1 order by 2 desc;
+
+--158 listings with more than 1 issue
+select item_id,count(*) from P_InventoryPlanning_T.refurb_lstg_to_google
+group by 1
+having count(*)>1;
+
+--Example - Items with multiple issues
+select * from mrkt_feed_v.google_merchant_issues_snapshot
+where item_id=285219639880 and to_date(batch_dt, 'yyyyMMdd') = '2023-04-05';
+
+--Image issue of interest
+select count(distinct item_id) from P_InventoryPlanning_T.refurb_lstg_to_google
+where detailed_Description="Don't use an image with elements that distract from the product, like watermarks or dark background colors";
+
+select * from P_InventoryPlanning_T.refurb_lstg_to_google
+where item_id=204293877567;

@@ -1,0 +1,682 @@
+----- THIS RUNS RELATIVELY QUICKLY
+
+
+drop table if exists p_ndourish_t.brd_cat_input;
+create table p_ndourish_t.brd_cat_input as
+(
+select 	*
+from 	p_ndourish_t.report_inputs
+where 	upper(cat_rep) = 'Y'
+and brd = 'Specialized'
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf1;
+create table p_ndourish_t.brd_cat_perf1 as
+(
+	select 	meta_categ_name
+	,		CATEG_LVL2_NAME
+	,		CATEG_LVL3_NAME
+	,		CATEG_LVL4_NAME
+	,		cal.YEAR_ID
+	,		cal.MONTH_OF_YEAR_ID
+	,		brand
+	,		SUM(CK.ITEM_PRICE * QUANTITY * LPR.CURNCY_PLAN_RATE ) AS gmv
+	,		SUM(ck.Quantity ) AS qty
+	,		SUM(case when brd.item_id is not null then CK.ITEM_PRICE * QUANTITY * LPR.CURNCY_PLAN_RATE else 0 end) AS brd_gmv
+	,		SUM(case when brd.item_id is not null then CK.Quantity else 0 end) AS brd_qty
+	-- GMV - Item Condition - B2C
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID =  1 and usr.user_dsgntn_id = 2  then CK.ITEM_PRICE * QUANTITY * LPR.CURNCY_PLAN_RATE else 0 end) as gmv_b2c_new
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID =  2 and usr.user_dsgntn_id = 2  then CK.ITEM_PRICE * QUANTITY * LPR.CURNCY_PLAN_RATE else 0 end) as gmv_b2c_refurb
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID =  3 and usr.user_dsgntn_id = 2  then CK.ITEM_PRICE * QUANTITY * LPR.CURNCY_PLAN_RATE else 0 end) as gmv_b2c_used
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID ! in(1,2,3) and usr.user_dsgntn_id = 2  then CK.ITEM_PRICE * QUANTITY * LPR.CURNCY_PLAN_RATE else 0 end) as gmv_b2c_other
+	-- GMV - Item Condition - C2C
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID =  1 and usr.user_dsgntn_id <> 2  then CK.ITEM_PRICE * QUANTITY * LPR.CURNCY_PLAN_RATE else 0 end) as gmv_c2c_new
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID =  2 and usr.user_dsgntn_id <> 2  then CK.ITEM_PRICE * QUANTITY * LPR.CURNCY_PLAN_RATE else 0 end) as gmv_c2c_refurb
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID =  3 and usr.user_dsgntn_id <> 2  then CK.ITEM_PRICE * QUANTITY * LPR.CURNCY_PLAN_RATE else 0 end) as gmv_c2c_used
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID ! in(1,2,3) and usr.user_dsgntn_id <> 2  then CK.ITEM_PRICE * QUANTITY * LPR.CURNCY_PLAN_RATE else 0 end) as gmv_c2c_other
+	-- Quantity - Item Condition - B2C
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID =  1 and usr.user_dsgntn_id = 2  then QUANTITY else 0 end) as bi_b2c_new
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID =  2 and usr.user_dsgntn_id = 2  then QUANTITY else 0 end) as bi_b2c_refurb
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID =  3 and usr.user_dsgntn_id = 2  then QUANTITY else 0 end) as bi_b2c_used
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID ! in(1,2,3) and usr.user_dsgntn_id = 2  then QUANTITY else 0 end) as bi_b2c_other
+	-- Quantity - Item Condition - C2C
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID =  1 and usr.user_dsgntn_id <> 2  then QUANTITY else 0 end) as bi_c2c_new
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID =  2 and usr.user_dsgntn_id <> 2  then QUANTITY else 0 end) as bi_c2c_refurb
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID =  3 and usr.user_dsgntn_id <> 2  then QUANTITY else 0 end) as bi_c2c_used
+	,		sum(case when brd.item_id is not null and cond.CNDTN_ROLLUP_ID ! in(1,2,3) and usr.user_dsgntn_id <> 2  then QUANTITY else 0 end) as bi_c2c_other
+	-- Buyers
+	,		count(case when brd.item_id is not null then buyer_id else null end) as no_buyers
+	FROM 		DW_CHECKOUT_TRANS_V2 AS CK
+	INNER JOIN 	ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID
+	INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT CAL 					ON CAL.CAL_DT = CK.CREATED_DT 
+	inner join 	(
+				select distinct item_id
+				,DF_BRAND_TXT as brand
+				from PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+				where 1=1
+				and lstg.ITEM_SITE_id = 15
+				and lstg.SLR_CNTRY_id = 15
+				and lower(DF_BRAND_TXT) in (select distinct lower(trim(brd)) from p_ndourish_t.brd_cat_input)
+				) brd 										on ck.item_id = brd.item_id
+	INNER JOIN 	ACCESS_VIEWS.DW_CATEGORY_GROUPINGS cat 	on ck.leaf_categ_id = cat.leaf_categ_id 
+													and ck.site_id = cat.SITE_ID
+													AND ck.leaf_categ_id=cat.move_to
+	LEFT JOIN 	lstg_item_cndtn cond						ON ck.item_id = cond.item_id
+-- 																AND ck.AUCT_END_DT = cond.AUCT_END_DT 
+	left join 	prs_secure_v.dw_users usr					on ck.seller_id = usr.user_id
+	WHERE	cal.AGE_FOR_MONTH_ID between -12 and -1
+	AND 	CK.CK_WACKO_YN  =  'N'
+	AND 	CK.SALE_TYPE NOT IN (10,15)
+	AND 	CK.SLR_CNTRY_id = 15
+	AND 	ck.Byr_CNTRY_id = 15
+	and 	ck.site_id = 15
+	AND 	CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+
+	group by 1,2,3,4,5,6,7
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf2;
+create table p_ndourish_t.brd_cat_perf2 as
+(
+	select 	meta_categ_name
+	,		CATEG_LVL2_NAME
+	,		CATEG_LVL3_NAME
+	,		CATEG_LVL4_NAME
+	,		brand
+	,		SUM(brd_gmv) AS brd_gmv
+	FROM 	p_ndourish_t.brd_cat_perf1
+	group by 1,2,3,4,5
+);
+
+-- **********   SELECT THE TOP CATEGORIES THE BRAND PERFORMS IN  **********
+drop table if exists p_ndourish_t.brd_cat_perf3a;
+create table p_ndourish_t.brd_cat_perf3a as
+select 	brand
+,		case 
+			when gmv_prop > 0.02 then meta_categ_name
+			when cat_rnk > 4 then 'Other'
+			else 'Other'
+		end as meta_categ_name
+,		sum(cat_gmv) as gmv
+
+from (
+	select 	*
+	,		SUM (gmv_prop) OVER (partition by brand ORDER BY cat_rnk) AS cum_prop
+	from (
+			select 	a.brand
+			, 		a.meta_categ_name
+			,		cat_gmv
+			,		cat_gmv / tot_brd as gmv_prop
+			,		row_number() over (partition by a.brand order by cat_gmv desc) as cat_rnk	
+			from 	(
+					select 	brand, meta_categ_name
+					,		sum(brd_gmv) as cat_gmv
+					from p_ndourish_t.brd_cat_perf2
+					group by 1,2
+					)  a
+			left join (
+					select brand, sum(brd_gmv)as tot_brd
+					from p_ndourish_t.brd_cat_perf2
+					group by 1
+					) b on a.brand = b.brand
+-- 			order by 5
+		)
+	)
+where brand is not null
+group by 1,2
+;
+
+drop table if exists p_ndourish_t.brd_cat_perf3a_2;
+create table p_ndourish_t.brd_cat_perf3a_2 as
+(
+select 	brand
+,		meta_categ_name
+,		row_number() over (partition by brand order by gmv desc) as meta_categ_rnk
+,		gmv
+from 	p_ndourish_t.brd_cat_perf3a
+where 	meta_categ_name != 'Other'
+
+union
+
+select 	a.brand
+,		meta_categ_name
+,		mx_rnk + 1 as meta_categ_rnk
+,		gmv
+from 	p_ndourish_t.brd_cat_perf3a a
+left join (
+			select 	brand
+			,		max(meta_categ_rnk) as mx_rnk
+			from 	(
+					select 	brand
+					,		meta_categ_name
+					,		row_number() over (partition by brand order by gmv desc) as meta_categ_rnk
+					,		gmv
+					from 	p_ndourish_t.brd_cat_perf3a
+					where 	meta_categ_name != 'Other'
+					)
+			group by 1
+		) b on a.brand = b.brand
+where meta_categ_name = 'Other'
+);
+
+
+drop table if exists p_ndourish_t.brd_cat_perf3b;
+create table p_ndourish_t.brd_cat_perf3b as
+(
+select 	brand
+,		meta_categ_name
+,		case 
+			when gmv_prop > 0.02 then CATEG_LVL2_NAME
+			when cat_rnk > 4 then 'Other'
+			else 'Other'
+		end as CATEG_LVL2_NAME
+,		sum(gmv) as gmv
+FROM	(
+	select 	*
+	,		SUM (gmv_prop) OVER (partition by brand, meta_categ_name ORDER BY cat_rnk) AS cum_prop
+	from 	(
+			select 	a.*
+			,		b.gmv as meta_gmv
+			,		a.gmv / b.gmv as gmv_prop
+			,		row_number() over (partition by a.brand, a.meta_categ_name order by a.gmv desc) as cat_rnk	
+			from 	(
+					select 	a.brand
+					,		a.meta_categ_name
+					,		a.CATEG_LVL2_NAME
+					,		sum(brd_gmv) as gmv
+					from	p_ndourish_t.brd_cat_perf2 a
+					inner join p_ndourish_t.brd_cat_perf3a b on a.meta_categ_name = b.meta_categ_name and a.brand = b.brand					
+					group by 1,2,3
+					) a
+			left join p_ndourish_t.brd_cat_perf3a b on a.meta_categ_name = b.meta_categ_name and a.brand = b.brand
+			)
+	)
+where brand is not null
+group by 1,2,3
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf3b_2;
+create table p_ndourish_t.brd_cat_perf3b_2 as
+(
+select 	brand
+,		meta_categ_name
+,		categ_lvl2_name
+,		row_number() over (partition by brand, meta_categ_name order by gmv desc) as categ_lvl2_rnk
+,		gmv
+from 	p_ndourish_t.brd_cat_perf3b
+where 	categ_lvl2_name != 'Other'
+
+union
+
+select 	a.brand
+,		a.meta_categ_name
+,		a.categ_lvl2_name
+,		mx_rnk + 1 as categ_lvl2_rnk
+,		gmv
+from 	p_ndourish_t.brd_cat_perf3b a
+left join (
+			select 	brand
+			,		meta_categ_name
+			,		max(categ_lvl2_rnk) as mx_rnk
+			from 	(
+					select 	brand
+					,		meta_categ_name
+					,		categ_lvl2_name
+					,		row_number() over (partition by brand, meta_categ_name order by gmv desc) as categ_lvl2_rnk
+					,		gmv
+					from 	p_ndourish_t.brd_cat_perf3b
+					where 	categ_lvl2_name != 'Other'
+					)
+			group by 1,2
+		) b on a.brand = b.brand 
+			and a.meta_categ_name = b.meta_categ_name
+where 	a.categ_lvl2_name = 'Other'
+order by 1,2,4
+);
+
+
+drop table if exists p_ndourish_t.brd_cat_perf3c;
+create table p_ndourish_t.brd_cat_perf3c as
+(
+select 	brand
+,		meta_categ_name
+,		CATEG_LVL2_NAME
+,		case 
+			when gmv_prop > 0.02 then CATEG_LVL3_NAME
+			when cat_rnk > 4 then 'Other'
+			else 'Other'
+		end as CATEG_LVL3_NAME
+,		sum(gmv) as gmv
+FROM	(
+		select 	*
+		,		SUM (gmv_prop) OVER (partition by brand, meta_categ_name, CATEG_LVL2_NAME ORDER BY cat_rnk) AS cum_prop
+		from 	(
+				select 	a.*
+				,		b.gmv as lvl2_gmv
+				,		a.gmv / b.gmv as gmv_prop
+				,		row_number() over (partition by a.brand, a.meta_categ_name, a.CATEG_LVL2_NAME order by a.gmv desc) as cat_rnk	
+				from 	(
+						select 	a.brand
+						,		a.meta_categ_name
+						,		a.CATEG_LVL2_NAME
+						,		CATEG_LVL3_NAME
+						,		sum(brd_gmv) as gmv
+						from	p_ndourish_t.brd_cat_perf2 a
+					inner join p_ndourish_t.brd_cat_perf3b b on a.meta_categ_name = b.meta_categ_name 
+															and a.categ_lvl2_name = b.categ_lvl2_name
+															and a.brand = b.brand		
+						group by 1,2,3,4
+						) a
+				left join p_ndourish_t.brd_cat_perf3b b on 	a.meta_categ_name = b.meta_categ_name
+													and a.categ_lvl2_name = b.categ_lvl2_name
+													and a.brand = b.brand
+				)
+		)
+where brand is not null
+group by 1,2,3,4
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf3c_2;
+create table p_ndourish_t.brd_cat_perf3c_2 as
+(
+select 	brand
+,		meta_categ_name
+,		categ_lvl2_name
+,		categ_lvl3_name
+,		row_number() over (partition by brand, meta_categ_name, categ_lvl2_name order by gmv desc) as categ_lvl3_rnk
+,		gmv
+from 	p_ndourish_t.brd_cat_perf3c
+where 	categ_lvl3_name != 'Other'
+
+union
+
+select 	a.brand
+,		a.meta_categ_name
+,		a.categ_lvl2_name
+,		a.categ_lvl3_name
+,		mx_rnk + 1 as categ_lvl3_rnk
+,		gmv
+from 	p_ndourish_t.brd_cat_perf3c a
+left join (
+			select 	brand
+			,		meta_categ_name
+			,		categ_lvl2_name
+			,		max(categ_lvl3_rnk) as mx_rnk
+			from 	(
+					select 	brand
+					,		meta_categ_name
+					,		categ_lvl2_name
+					,		categ_lvl3_name
+					,		row_number() over (partition by brand, meta_categ_name, categ_lvl2_name order by gmv desc) as categ_lvl3_rnk
+					,		gmv
+					from 	p_ndourish_t.brd_cat_perf3c
+					where 	categ_lvl3_name != 'Other'
+					)
+			group by 1,2,3
+		) b on a.brand = b.brand 
+			and a.meta_categ_name = b.meta_categ_name
+			and a.categ_lvl2_name = b.categ_lvl2_name
+where 	a.categ_lvl3_name = 'Other'
+order by 1,2,3,5
+);
+
+
+drop table if exists p_ndourish_t.brd_cat_perf3d;
+create table p_ndourish_t.brd_cat_perf3d as
+(
+select 	brand
+,		meta_categ_name
+,		CATEG_LVL2_NAME
+,		CATEG_LVL3_NAME
+,		case 
+			when gmv_prop > 0.02 then CATEG_LVL4_NAME
+			when cat_rnk > 4 then 'Other'
+			else 'Other'
+		end as CATEG_LVL4_NAME
+,		sum(gmv) as gmv
+FROM	(
+		select 	*
+		,		SUM (gmv_prop) OVER (partition by brand, meta_categ_name, CATEG_LVL2_NAME, CATEG_LVL3_NAME ORDER BY cat_rnk) AS cum_prop
+		from 	(
+				select 	a.*
+				,		b.gmv as lvl2_gmv
+				,		a.gmv / b.gmv as gmv_prop
+				,		row_number() over (partition by a.brand, a.meta_categ_name, a.CATEG_LVL2_NAME, a.CATEG_LVL3_NAME order by a.gmv desc) as cat_rnk	
+				from 	(
+						select 	a.brand
+						,		a.meta_categ_name
+						,		a.CATEG_LVL2_NAME
+						,		a.CATEG_LVL3_NAME
+						,		CATEG_LVL4_NAME
+						,		sum(brd_gmv) as gmv
+						from	p_ndourish_t.brd_cat_perf2 a
+						inner join p_ndourish_t.brd_cat_perf3c b on a.meta_categ_name = b.meta_categ_name 
+																and a.categ_lvl2_name = b.categ_lvl2_name
+																and a.categ_lvl3_name = b.categ_lvl3_name
+																and a.brand = b.brand	
+						group by 1,2,3,4,5
+						) a
+				left join p_ndourish_t.brd_cat_perf3c b on 	a.meta_categ_name = b.meta_categ_name
+														and a.categ_lvl2_name = b.categ_lvl2_name
+														and a.categ_lvl3_name = b.categ_lvl3_name
+														and a.brand = b.brand
+				)
+		)
+where brand is not null
+group by 1,2,3,4,5
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf3d_2;
+create table p_ndourish_t.brd_cat_perf3d_2 as
+(
+select 	brand
+,		meta_categ_name
+,		categ_lvl2_name
+,		categ_lvl3_name
+,		categ_lvl4_name
+,		row_number() over (partition by brand, meta_categ_name, categ_lvl2_name, categ_lvl3_name order by gmv desc) as categ_lvl4_rnk
+,		gmv
+from 	p_ndourish_t.brd_cat_perf3d
+where 	categ_lvl4_name != 'Other'
+
+union
+
+select 	a.brand
+,		a.meta_categ_name
+,		a.categ_lvl2_name
+,		a.categ_lvl3_name
+,		a.categ_lvl4_name
+,		mx_rnk + 1 as categ_lvl4_rnk
+,		gmv
+from 	p_ndourish_t.brd_cat_perf3d a
+left join (
+			select 	brand
+			,		meta_categ_name
+			,		categ_lvl2_name
+			,		categ_lvl3_name
+			,		max(categ_lvl4_rnk) as mx_rnk
+			from 	(
+					select 	brand
+					,		meta_categ_name
+					,		categ_lvl2_name
+					,		categ_lvl3_name
+					,		categ_lvl4_name
+					,		row_number() over (partition by brand, meta_categ_name, categ_lvl2_name, categ_lvl3_name order by gmv desc) as categ_lvl4_rnk
+					,		gmv
+					from 	p_ndourish_t.brd_cat_perf3d
+					where 	categ_lvl4_name != 'Other'
+					)
+			group by 1,2,3,4
+		) b on a.brand = b.brand 
+			and a.meta_categ_name = b.meta_categ_name
+			and a.categ_lvl2_name = b.categ_lvl2_name
+			and a.categ_lvl3_name = b.categ_lvl3_name
+where 	a.categ_lvl4_name = 'Other'
+order by 1,2,3,4,6
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf4a;
+create table p_ndourish_t.brd_cat_perf4a as
+(
+select 	a.brand
+,		a.meta_categ_name
+,		b.meta_categ_rnk
+,		a.categ_lvl2_name
+,		c.categ_lvl2_rnk
+,		a.categ_lvl3_name
+,		d.categ_lvl3_rnk
+,		a.categ_lvl4_name
+,		a.categ_lvl4_rnk
+,		a.gmv
+FROM		p_ndourish_t.brd_cat_perf3d_2 a
+left join 	p_ndourish_t.brd_cat_perf3a_2 b 	on 	a.brand = b.brand
+												and a.meta_categ_name = b.meta_categ_name
+left join  	p_ndourish_t.brd_cat_perf3b_2 c 	on 	a.brand = c.brand
+												and a.meta_categ_name = c.meta_categ_name
+												and a.categ_lvl2_name = c.categ_lvl2_name
+left join  	p_ndourish_t.brd_cat_perf3c_2 d 	on 	a.brand = d.brand
+												and a.meta_categ_name = d.meta_categ_name
+												and a.categ_lvl2_name = d.categ_lvl2_name
+												and a.categ_lvl3_name = d.categ_lvl3_name
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf4b;
+create table p_ndourish_t.brd_cat_perf4b as
+(
+select 	a.brand
+,		a.meta_categ_name
+,		b.meta_categ_rnk
+,		a.categ_lvl2_name
+,		c.categ_lvl2_rnk
+,		a.categ_lvl3_name
+,		a.categ_lvl3_rnk
+,		'' as categ_lvl4_name
+,		999 as categ_lvl4_rnk
+,		a.gmv
+FROM		p_ndourish_t.brd_cat_perf3c_2 a
+left join 	p_ndourish_t.brd_cat_perf3a_2 b 	on 	a.brand = b.brand
+												and a.meta_categ_name = b.meta_categ_name
+left join  	p_ndourish_t.brd_cat_perf3b_2 c 	on 	a.brand = c.brand
+												and a.meta_categ_name = c.meta_categ_name
+												and a.categ_lvl2_name = c.categ_lvl2_name
+where a.categ_lvl3_name = 'Other'
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf4c;
+create table p_ndourish_t.brd_cat_perf4c as
+(
+select 	a.brand
+,		a.meta_categ_name
+,		b.meta_categ_rnk
+,		a.categ_lvl2_name
+,		a.categ_lvl2_rnk
+,		'' as categ_lvl3_name
+,		999 as categ_lvl3_rnk
+,		'' as categ_lvl4_name
+,		999 as categ_lvl4_rnk
+,		a.gmv
+FROM		p_ndourish_t.brd_cat_perf3b_2 a
+left join 	p_ndourish_t.brd_cat_perf3a_2 b 	on 	a.brand = b.brand
+												and a.meta_categ_name = b.meta_categ_name
+where a.categ_lvl2_name = 'Other'
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf4d;
+create table p_ndourish_t.brd_cat_perf4d as
+(
+select 	a.brand
+,		a.meta_categ_name
+,		a.meta_categ_rnk
+,		'' as categ_lvl2_name
+,		999 as categ_lvl2_rnk
+,		'' as categ_lvl3_name
+,		999 as categ_lvl3_rnk
+,		'' as categ_lvl4_name
+,		999 as categ_lvl4_rnk
+,		a.gmv
+FROM		p_ndourish_t.brd_cat_perf3a_2 a
+where a.meta_categ_name = 'Other'
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf4;
+create table p_ndourish_t.brd_cat_perf4 as
+(
+select *
+from p_ndourish_t.brd_cat_perf4a
+UNION
+select *
+from p_ndourish_t.brd_cat_perf4b
+UNION
+select *
+from p_ndourish_t.brd_cat_perf4c
+UNION
+select *
+from p_ndourish_t.brd_cat_perf4d
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf5;
+create table p_ndourish_t.brd_cat_perf5 as
+(
+select	a.brand
+,		case when b.meta_categ_name is not null then a.meta_categ_name else 'Other' end as meta_categ_name
+,		case when c.categ_lvl2_name is not null then a.categ_lvl2_name else 'Other' end as categ_lvl2_name
+,		case when d.categ_lvl3_name is not null then a.categ_lvl3_name else 'Other' end as categ_lvl3_name
+,		case when e.categ_lvl4_name is not null then a.categ_lvl4_name else 'Other' end as categ_lvl4_name
+,		YEAR_ID
+,		MONTH_OF_YEAR_ID
+,		sum(brd_gmv) as gmv
+,		SUM(qty ) AS qty
+-- Item Condition - GMV
+,		sum(gmv_b2c_new) as gmv_b2c_new
+,		sum(gmv_b2c_refurb) as gmv_b2c_refurb
+,		sum(gmv_b2c_used) as gmv_b2c_used
+,		sum(gmv_b2c_other) as gmv_b2c_other
+,		sum(gmv_c2c_new) as gmv_c2c_new
+,		sum(gmv_c2c_refurb) as gmv_c2c_refurb
+,		sum(gmv_c2c_used) as gmv_c2c_used
+,		sum(gmv_c2c_other) as gmv_c2c_other
+-- Item Condition - Quantity
+,		sum(bi_b2c_new) as bi_b2c_new
+,		sum(bi_b2c_refurb) as bi_b2c_refurb
+,		sum(bi_b2c_used) as bi_b2c_used
+,		sum(bi_b2c_other) as bi_b2c_other
+,		sum(bi_c2c_new) as bi_c2c_new
+,		sum(bi_c2c_refurb) as bi_c2c_refurb
+,		sum(bi_c2c_used) as bi_c2c_used
+,		sum(bi_c2c_other) as bi_c2c_other
+
+from 	p_ndourish_t.brd_cat_perf1 a
+left join	(
+			select distinct brand, meta_categ_name
+			FROM	p_ndourish_t.brd_cat_perf4
+			where meta_categ_name != 'Other'
+			) b on a.brand = b.brand and a.meta_categ_name = b.meta_categ_name
+left join	(
+			select distinct brand, meta_categ_name, categ_lvl2_name
+			FROM	p_ndourish_t.brd_cat_perf4
+			where categ_lvl2_name != 'Other'
+			) c on a.brand = c.brand and a.meta_categ_name = c.meta_categ_name and a.categ_lvl2_name = c.categ_lvl2_name
+left join	(
+			select distinct brand, meta_categ_name, categ_lvl2_name, categ_lvl3_name
+			FROM	p_ndourish_t.brd_cat_perf4
+			where categ_lvl3_name != 'Other'
+			) d on a.brand = d.brand and a.meta_categ_name = d.meta_categ_name and a.categ_lvl2_name = d.categ_lvl2_name and a.categ_lvl3_name = d.categ_lvl3_name
+left join	(
+			select distinct brand, meta_categ_name, categ_lvl2_name, categ_lvl3_name, categ_lvl4_name
+			FROM	p_ndourish_t.brd_cat_perf4
+			where categ_lvl4_name != 'Other'
+			) e on a.brand = e.brand and a.meta_categ_name = e.meta_categ_name and a.categ_lvl2_name = e.categ_lvl2_name and a.categ_lvl3_name = e.categ_lvl3_name and a.categ_lvl4_name = e.categ_lvl4_name
+
+group by 1,2,3,4,5,6,7
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf6;
+create table p_ndourish_t.brd_cat_perf6 as
+(
+select 	a.brand
+,		a.meta_categ_name
+,		meta_categ_rnk
+,		a.categ_lvl2_name
+,		categ_lvl2_rnk
+,		a.categ_lvl3_name
+,		categ_lvl3_rnk
+,		a.categ_lvl4_name
+,		categ_lvl4_rnk
+,		YEAR_ID || right('00'|| MONTH_OF_YEAR_ID, 2) as period
+,		a.gmv
+,		qty
+,		gmv_b2c_new
+,		gmv_b2c_refurb
+,		gmv_b2c_used
+,		gmv_b2c_other
+,		gmv_c2c_new
+,		gmv_c2c_refurb
+,		gmv_c2c_used
+,		gmv_c2c_other
+,		bi_b2c_new
+,		bi_b2c_refurb
+,		bi_b2c_used
+,		bi_b2c_other
+,		bi_c2c_new
+,		bi_c2c_refurb
+,		bi_c2c_used
+,		bi_c2c_other
+from 	p_ndourish_t.brd_cat_perf5 a
+left join (
+		select distinct brand, meta_categ_name, meta_categ_rnk 
+		from p_ndourish_t.brd_cat_perf4 
+		) b 	on 	a.brand = b.brand 
+				and	a.meta_categ_name = b.meta_categ_name
+left join (
+		select distinct brand, meta_categ_name, categ_lvl2_name, categ_lvl2_rnk
+		from p_ndourish_t.brd_cat_perf4 
+		) c 	on 	a.brand = c.brand 
+				and	a.meta_categ_name = c.meta_categ_name
+				and a.categ_lvl2_name = c.categ_lvl2_name
+left join (
+		select distinct brand, meta_categ_name, categ_lvl2_name, categ_lvl3_name, categ_lvl3_rnk
+		from p_ndourish_t.brd_cat_perf4 
+		) d 	on 	a.brand =d.brand 
+				and	a.meta_categ_name = d.meta_categ_name
+				and a.categ_lvl2_name = d.categ_lvl2_name
+				and a.categ_lvl3_name = d.categ_lvl3_name
+left join (
+		select distinct brand, meta_categ_name, categ_lvl2_name, categ_lvl3_name, categ_lvl4_name, categ_lvl4_rnk
+		from p_ndourish_t.brd_cat_perf4 
+		) e 	on 	a.brand = e.brand 
+				and	a.meta_categ_name = e.meta_categ_name
+				and a.categ_lvl2_name = e.categ_lvl2_name
+				and a.categ_lvl3_name = e.categ_lvl3_name
+				and a.categ_lvl4_name = e.categ_lvl4_name
+);
+
+drop table if exists p_ndourish_t.brd_perf_out;
+create table p_ndourish_t.brd_perf_out as
+(
+select 	eml_addr
+,		fst_nm
+,		rep_nm
+,		b.brand
+,		b.meta_categ_name
+,		b.meta_categ_rnk
+,		b.categ_lvl2_name
+,		b.categ_lvl2_rnk
+,		b.categ_lvl3_name
+,		b.categ_lvl3_rnk
+,		b.categ_lvl4_name
+,		b.categ_lvl4_rnk
+,		cast(b.period as int) as period
+,		b.gmv
+,		qty
+,		gmv_b2c_new
+,		gmv_b2c_refurb
+,		gmv_b2c_used
+,		gmv_b2c_other
+,		gmv_c2c_new
+,		gmv_c2c_refurb
+,		gmv_c2c_used
+,		gmv_c2c_other
+,		bi_b2c_new
+,		bi_b2c_refurb
+,		bi_b2c_used
+,		bi_b2c_other
+,		bi_c2c_new
+,		bi_c2c_refurb
+,		bi_c2c_used
+,		bi_c2c_other
+from p_ndourish_t.brd_cat_input a
+left join p_ndourish_t.brd_cat_perf6 b on upper(trim(a.brd)) = upper(trim(b.brand))
+);
+
+drop table if exists p_ndourish_t.brd_cat_perf1;
+drop table if exists p_ndourish_t.brd_cat_perf2;
+drop table if exists p_ndourish_t.brd_cat_perf3;
+drop table if exists p_ndourish_t.brd_cat_perf4;
+drop table if exists p_ndourish_t.brd_cat_perf5;
+drop table if exists p_ndourish_t.brd_cat_perf6;
+
+select *
+from p_ndourish_t.brd_perf_out
+
+LIMIT 100
+;

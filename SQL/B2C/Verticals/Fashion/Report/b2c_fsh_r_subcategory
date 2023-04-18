@@ -1,6 +1,6 @@
-DROP TABLE IF EXISTS P_OLWAND_T.FASHION_WEEKLY_DATA;
+DROP TABLE IF EXISTS P_INVENTORYPLANNING_T.FASHION_WEEKLY_DATA;
 
-CREATE TABLE P_OLWAND_T.FASHION_WEEKLY_DATA as
+CREATE TABLE P_INVENTORYPLANNING_T.FASHION_WEEKLY_DATA as
 
 Select *
 From
@@ -11,7 +11,11 @@ From
 	,u.user_slctd_id as seller_name
 	,lstg.B2C_C2C as Business_flag
 	,FOCUS_FLAG
-	,cndtn_descr
+	,case when cndtn.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when cndtn.cndtn_rollup_id = 1 then 'New'
+when cndtn.cndtn_rollup_id = 2 then 'Refurbished'
+when cndtn.cndtn_rollup_id = 3 then 'Used'
+when cndtn.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 	,INVENTORY_PROP
 	,META_CATEG_NAME
 	,CATEG_LVL2_NAME
@@ -30,9 +34,13 @@ From
 			FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg 
 			INNER JOIN DW_CAL_DT CAL
 				ON lstg.AUCT_START_DT < cal.cal_dt and lstg.AUCT_END_DT >= cal.CAL_DT
-				and (RETAIL_YEAR in (2021,2022)) and
-				(RETAIL_WEEK between 1
-				and (select RETAIL_WEEK from DW_CAL_DT CAL where AGE_FOR_RTL_WEEK_ID = -1 Group by 1))
+-- 				and (AGE_FOR_RTL_YEAR_ID >= -1) and
+-- 				(RETAIL_WEEK between 1
+-- 				and (select RETAIL_WEEK from DW_CAL_DT CAL where AGE_FOR_RTL_WEEK_ID = -1 Group by 1))
+-- 			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+-- 			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
+-- 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
 			INNER JOIN DW_CATEGORY_GROUPINGS CAT
 					ON lstg.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
 					AND cat.site_id = 3
@@ -55,9 +63,9 @@ From
 Where new_vertical = 'Fashion'
 ;
 
-DROP TABLE if exists P_OLWAND_T.FASHION_WEEKLY_CAT_GMV4;
+DROP TABLE if exists P_INVENTORYPLANNING_T.FASHION_WEEKLY_CAT_GMV4;
 
-Create table P_OLWAND_T.FASHION_WEEKLY_CAT_GMV4 as
+Create table P_INVENTORYPLANNING_T.FASHION_WEEKLY_CAT_GMV4 as
 
 SELECT
 'GMV' as target
@@ -66,11 +74,10 @@ SELECT
 -- ,raw.seller_name
 ,case when HIST.USEGM_ID = 206 then 'B2C' end as Business_flag
 ,raw.FOCUS_FLAG
-,case lstg.cndtn_rollup_id 
-WHEN 1 then 'New'
-WHEN 2 then 'Refurbished'
-WHEN 3 then 'Used'
-WHEN 4 then 'Unknown' else 'NA' end as cndtn_descr
+,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 ,raw.INVENTORY_PROP
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
@@ -88,8 +95,10 @@ WHEN 4 then 'Unknown' else 'NA' end as cndtn_descr
 FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS ck 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
 			ON ck.gmv_dt = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0
+			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
 			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+-- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
 
 INNER JOIN P_awang_ops_t.item_invent_lstg raw on ck.ITEM_ID = raw.item_id and raw.new_vertical = 'Fashion'
 INNER JOIN ( select *
@@ -133,11 +142,11 @@ SELECT
 -- ,raw.seller_name
 ,lstg.EU_B2C_C2C_FLAG as Business_flag
 ,raw.FOCUS_FLAG
-,case lstg.cndtn_rollup_id 
-WHEN 1 then 'New'
-WHEN 2 then 'Refurbished'
-WHEN 3 then 'Used'
-WHEN 4 then 'Unknown' else 'NA' end as cndtn_descr
+,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 ,raw.INVENTORY_PROP
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
@@ -155,8 +164,10 @@ WHEN 4 then 'Unknown' else 'NA' end as cndtn_descr
 FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
 			ON lstg.AUCT_START_DT < cal.cal_dt and lstg.AUCT_END_DT >= cal.CAL_DT
-			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
+-- 			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+-- 			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+-- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
 
 INNER JOIN P_awang_ops_t.item_invent_lstg raw on lstg.ITEM_ID = raw.item_id and raw.new_vertical = 'Fashion'
 INNER JOIN ( select *
@@ -191,11 +202,11 @@ SELECT
 -- ,raw.seller_name
 ,lstg.EU_B2C_C2C_FLAG as Business_flag
 ,raw.FOCUS_FLAG
-,case lstg.cndtn_rollup_id 
-WHEN 1 then 'New'
-WHEN 2 then 'Refurbished'
-WHEN 3 then 'Used'
-WHEN 4 then 'Unknown' else 'NA' end  as cndtn_descr
+,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 ,raw.INVENTORY_PROP
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
@@ -212,9 +223,10 @@ WHEN 4 then 'Unknown' else 'NA' end  as cndtn_descr
 
 FROM PRS_RESTRICTED_V.SLNG_TRFC_SUPER_FACT trfc 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL on trfc.CAL_DT = cal.cal_dt
-					and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
-					and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
-					and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
+			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+-- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
 
 INNER JOIN P_awang_ops_t.item_invent_lstg raw on trfc.ITEM_ID = raw.item_id and raw.new_vertical = 'Fashion'
 INNER JOIN ( select *
@@ -231,6 +243,7 @@ from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS) cat on trfc.LEAF_CATEG_ID = cat.LEAF_CA
 INNER JOIN 
 (select 
 ITEM_ID
+,ITEM_CNDTN_ID
 ,cndtn_rollup_id
 ,EU_B2C_C2C_FLAG
 FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT
@@ -249,9 +262,9 @@ GROUP BY 1,2,3,4,5,6,7,8,9,10,11
 
 
 ----------------------------------------------------------------Seller Level--------------------------------------------------------
-DROP TABLE if exists P_OLWAND_T.FASHION_WEEKLY_TOP_SELLERS;
+DROP TABLE if exists P_INVENTORYPLANNING_T.FASHION_WEEKLY_TOP_SELLERS;
 
-Create table P_OLWAND_T.FASHION_WEEKLY_TOP_SELLERS as
+Create table P_INVENTORYPLANNING_T.FASHION_WEEKLY_TOP_SELLERS as
 select *
 from (
 select *
@@ -311,9 +324,9 @@ group by 1,2,3
 where inventory_prop != 'Other' or GMV_RNK <= 300
 ;
 ----------------------------------------------------------------Seller Level--------------------------------------------------------
-DROP TABLE if exists P_OLWAND_T.FASHION_WEEKLY_SELLER_GMV4;
+DROP TABLE if exists P_INVENTORYPLANNING_T.FASHION_WEEKLY_SELLER_GMV4;
 
-Create table P_OLWAND_T.FASHION_WEEKLY_SELLER_GMV4 as
+Create table P_INVENTORYPLANNING_T.FASHION_WEEKLY_SELLER_GMV4 as
 
 SELECT
 'GMV' as target
@@ -321,7 +334,11 @@ SELECT
 ,cal.AGE_FOR_RTL_WEEK_ID
 ,raw.seller_name
 ,case when hist.USEGM_ID = 206 then 'B2C' else 'C2C' end as Business_flag
-,cd.cndtn_descr
+,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 ,raw.INVENTORY_PROP
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
@@ -339,8 +356,10 @@ SELECT
 FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS ck 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
 			ON ck.gmv_dt = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
 			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+-- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
 
 INNER JOIN (
 select *
@@ -363,7 +382,7 @@ from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS) cat on ck.LEAF_CATEG_ID = cat.LEAF_CATE
 INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN LSTG on ck.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3		
 
 
-INNER JOIN P_OLWAND_T.FASHION_WEEKLY_TOP_SELLERS raw on ck.SELLER_ID = raw.seller_id
+INNER JOIN P_INVENTORYPLANNING_T.FASHION_WEEKLY_TOP_SELLERS raw on ck.SELLER_ID = raw.seller_id
 Left join P_ROBEVANS_T.item_cndtn_descr cd on cd.cndtn_rollup_id = lstg.CNDTN_ROLLUP_ID
 
 			
@@ -389,7 +408,11 @@ SELECT
 ,cal.AGE_FOR_RTL_WEEK_ID
 ,raw.seller_name
 ,lstg.eu_b2c_c2c_flag as Business_flag
-,cd.cndtn_descr
+,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 ,raw.INVENTORY_PROP
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
@@ -409,7 +432,8 @@ INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
 			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
 			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
-INNER JOIN P_OLWAND_T.FASHION_WEEKLY_TOP_SELLERS raw on lstg.slr_id = raw.seller_id
+-- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
+INNER JOIN P_INVENTORYPLANNING_T.FASHION_WEEKLY_TOP_SELLERS raw on lstg.slr_id = raw.seller_id
 INNER JOIN (
 select *
 ,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
@@ -443,7 +467,11 @@ SELECT
 ,cal.AGE_FOR_RTL_WEEK_ID
 ,raw.seller_name
 ,'B2C' as Business_flag
-,cd.cndtn_descr
+,case when cndtn.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when cndtn.cndtn_rollup_id = 1 then 'New'
+when cndtn.cndtn_rollup_id = 2 then 'Refurbished'
+when cndtn.cndtn_rollup_id = 3 then 'Used'
+when cndtn.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 ,raw.INVENTORY_PROP
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
@@ -464,7 +492,8 @@ INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
 			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
 			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
-INNER JOIN P_OLWAND_T.FASHION_WEEKLY_TOP_SELLERS raw on trfc.SELLER_ID = raw.seller_id
+-- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
+INNER JOIN P_INVENTORYPLANNING_T.FASHION_WEEKLY_TOP_SELLERS raw on trfc.SELLER_ID = raw.seller_id
 INNER JOIN (
 select *
 ,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
@@ -479,7 +508,6 @@ select *
 from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS) cat on trfc.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
 INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN CNDTN on trfc.ITEM_ID = cndtn.ITEM_ID
 Left join P_ROBEVANS_T.item_cndtn_descr cd on cd.cndtn_rollup_id = cndtn.CNDTN_ROLLUP_ID					
-			
 WHERE 1=1
 and trfc.SITE_ID = 3
 AND cat.new_vertical = 'Fashion'

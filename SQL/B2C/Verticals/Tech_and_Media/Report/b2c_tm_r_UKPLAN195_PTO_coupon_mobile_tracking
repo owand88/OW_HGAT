@@ -1,0 +1,525 @@
+/*
+UKPLAN-195
+Building on the initial review of the first PTO coupon that went live on 2023-03-03 (https://github.ebay.com/uk-planning/uk-planning/blob/master/SQL/B2C/Verticals/Tech%20and%20Media/Analysis/b2c_tm_a_UKPLAN195_Tech_PTO_coupon_initial_review)
+Create a weekly report that tracks PTO performance
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--No of listings participated in each batch of PTO coupon
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_InventoryPlanning_T.Tech_PTO_coupon_period; 
+create table P_InventoryPlanning_T.Tech_PTO_coupon_period as (
+select 
+a.LuminaReportExport_dt
+,b.batch_no
+,d.retail_week as coupon_start_retail_week
+,case when b.batch_no=1 then '2023-03-03'--Delay in lauching first coupon, only live on Friday 2023-03-03. All other coupons live Thu-Thu 
+      when b.batch_no=6 then '2023-04-07'--Delay in launching, only live on Friday 2023-04-07. 	
+	  else d.cal_dt end as coupon_start_dt
+,case when b.batch_no=1 then '2023-03-09' 
+      when b.batch_no=5 then '2023-03-31'--Coupon cut short, only live till 2023-03-31 due to quarterly Finance procedure. 	 
+	  when b.batch_no=6 then '2023-04-13' 
+	  else cast(coupon_start_dt as date) + interval '7' day end as coupon_end_dt
+,count(distinct a.item_id) as listing_vol
+
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO a
+
+left join (
+		   select 
+		   LuminaReportExport_dt
+		   ,row_number() over (order by LuminaReportExport_dt) as batch_no
+		   from 
+		   (select distinct LuminaReportExport_dt from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO)
+		   ) b
+on a.LuminaReportExport_dt = b.LuminaReportExport_dt		 
+
+inner join (select distinct cal_dt, week_beg_dt from access_views.dw_cal_dt) c
+on a.LuminaReportExport_dt=c.cal_dt
+
+inner join (
+			select 
+			week_beg_dt
+			,cal_dt
+			,retail_week
+			from access_views.dw_cal_dt
+			where cal_dt >='2023-02-28' 
+			and day_of_week_id=5--Thursday
+			) d
+on c.week_beg_dt = d. week_beg_dt
+
+where a.include_rank <=200
+group by 1,2,3,4,5
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Seller standard stats in each batch of PTO coupon
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_InventoryPlanning_T.Tech_PTO_coupon_batch_slr; 
+create table P_InventoryPlanning_T.Tech_PTO_coupon_batch_slr as (
+with base as (
+select 
+a.seller_id
+,a.seller_name
+,b.batch_no
+,b.coupon_start_retail_week
+,b.coupon_start_dt
+,b.coupon_end_dt
+
+,max(a.seller_standard) as batch_seller_standard
+,max(a.INR_rate_L90D) as batch_INR_rate_L90D
+,max(a.SNAD_rate_L90D) as batch_SNAD_rate_L90D
+
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO a
+
+left join P_InventoryPlanning_T.Tech_PTO_coupon_period b
+on a.LuminaReportExport_dt = b.LuminaReportExport_dt	
+
+where a.include_rank <=200
+group by 1,2,3,4,5,6
+)
+select 
+base.seller_id
+,base.seller_name
+,base.batch_no
+,base.coupon_start_retail_week
+,base.coupon_start_dt
+,base.coupon_end_dt
+,base.batch_seller_standard as seller_standard
+,base.batch_INR_rate_L90D as INR_rate_L90D
+,base.batch_SNAD_rate_L90D as SNAD_rate_L90D
+,case when base.batch_SNAD_rate_L90D between 0.00 and 0.009 then '<1%'
+	  when base.batch_SNAD_rate_L90D <= 0.03 then '1% - 3%'
+	  when base.batch_SNAD_rate_L90D <= 0.05 then '3% - 5%'
+	  when base.batch_SNAD_rate_L90D <= 0.07 then '5% - 7%'
+	  when base.batch_SNAD_rate_L90D > 0.07 then '> 7%'
+	  else 'N/A' end as SNAD_rate_bucket
+from base
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Listings participated in each batch of PTO coupon
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*
+--item_id 165896979399, 224579816970 in more than 1 Tech PTO coupon
+select 
+distinct 
+LuminaReportExport_dt
+,item_id
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+where include_rank <=200
+order by 2,1;
+*/
+
+drop table if exists P_InventoryPlanning_T.Tech_PTO_coupon_batch_lstg; 
+create table P_InventoryPlanning_T.Tech_PTO_coupon_batch_lstg as (
+select 
+a.item_id
+,a.seller_id
+,a.seller_name
+,b.auct_titl as listing_title
+,b.auct_start_dt as listing_start_dt
+,b.auct_end_dt as listing_end_dt
+,a.item_condition
+,a.MSKU_flag
+,max(case when c.batch_no = 1 then 1 else 0 end) as batch_1
+,max(case when c.batch_no = 2 then 1 else 0 end) as batch_2
+,max(case when c.batch_no = 3 then 1 else 0 end) as batch_3
+,max(case when c.batch_no = 4 then 1 else 0 end) as batch_4
+,max(case when c.batch_no = 5 then 1 else 0 end) as batch_5
+,max(case when c.batch_no = 6 then 1 else 0 end) as batch_6
+,max(case when c.batch_no = 7 then 1 else 0 end) as batch_7
+,max(case when c.batch_no = 8 then 1 else 0 end) as batch_8
+,max(case when c.batch_no = 9 then 1 else 0 end) as batch_9
+,max(case when c.batch_no = 10 then 1 else 0 end) as batch_10
+
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO a
+
+inner join access_views.dw_lstg_item b
+on a.item_id=b.item_id
+
+left join P_InventoryPlanning_T.Tech_PTO_coupon_period c 
+on a.LuminaReportExport_dt = c.LuminaReportExport_dt
+
+where a.include_rank <=200
+group by 1,2,3,4,5,6,7,8
+);
+
+/*
+--Item 284842757918 in Batch 1 and Batch 3 but not Batch 2
+select * from P_InventoryPlanning_T.Tech_PTO_coupon_batch_lstg
+where batch_1=1 and batch_2=0 and batch_3=1;
+*/
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--All transactions with PTO redemption info if available (Use transaction and redemption data from 2023-02-23 [Start of control period])
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Use 2023-02-23 to 2023-03-02 as control period
+
+drop table if exists P_InventoryPlanning_T.Tech_PTO_red;
+create table P_InventoryPlanning_T.Tech_PTO_red as (
+select
+lstg.item_id
+,lstg.listing_title
+,lstg.MSKU_flag
+,lstg.item_condition
+,ck.item_vrtn_id
+,coalesce(eps.prod_ref_id,epms.prod_ref_id) as EPID
+,epn.prod_title as EPID_name
+,lstg.seller_name
+,lstg.seller_id
+,ck.buyer_id
+,case when byr_cntry_id = 3 then 'UK Buyer' else 'Non-UK Buyer' end as buyer_country
+,ck.GMV_dt
+,ck.transaction_id
+,case when red.user_id is not null then 1 else 0 end as redeem_flag
+,red.redmd_date
+,red.redmd_amt
+,red.GMB-red.redmd_amt as GMB_GBP_after_redemption
+,ck.GMV_lc_amt as GMV_GBP
+,ck.GMV_plan_usd as GMV_USD
+,ck.quantity as SI
+
+from access_views.dw_checkout_trans ck 
+
+inner join P_InventoryPlanning_T.Tech_PTO_coupon_batch_lstg lstg--All listings selected to be in the Tech PTO coupon
+on ck.item_id = lstg.item_id
+        
+inner join access_views.dw_cal_dt as cal
+on ck.GMV_dt = cal.cal_dt and cal.cal_dt >= '2023-02-23'
+
+left join (select 
+		   user_id
+		   ,transaction_id
+		   ,item_id
+		   ,redmd_amt
+		   ,redmd_date
+		   ,GMB
+		   ,qty_bght
+		   from prs_restricted_v.dw_eip_lylty_red_ref
+		   where incntv_cd in ('SCORE5','CASH5')--5% PTO coupon [SCORE5 used since 2023-03-03 and CASH5 used from 2023-04-06]
+		   and refund_flag=0
+		   and redmd_date  >= '2023-03-03'--first coupon launched
+		   ) red
+on ck.transaction_id = red.transaction_id and ck.item_id = red.item_id and ck.buyer_id = red.user_id
+
+left join access_views.ctlg_item_fact eps
+on lstg.item_id = eps.item_id
+
+left join access_views.ctlg_vrtn_fact epms
+on lstg.item_id = epms.item_id and ck.item_vrtn_id = epms.item_vrtn_id
+
+left join access_views.ctlg_prod_fact epn
+on coalesce(eps.prod_ref_id,epms.prod_ref_id) = epn.prod_ref_id
+
+where 
+ck.rprtd_wacko_yn='N'
+);
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--GMV reporting datset
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_InventoryPlanning_T.Tech_PTO_GMV;
+create table P_InventoryPlanning_T.Tech_PTO_GMV as (
+with base as (
+select 
+distinct 
+a.LuminaReportExport_dt
+,b.batch_no
+,b.coupon_start_retail_week
+,b.coupon_start_dt
+,b.coupon_end_dt
+,a.item_id
+,a.item_condition
+,a.MSKU_flag
+,a.seller_id
+,a.seller_name
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO a
+left join P_InventoryPlanning_T.Tech_PTO_coupon_period b
+on a.LuminaReportExport_dt=b.LuminaReportExport_dt
+where a.include_rank <=200
+)
+select 
+base.LuminaReportExport_dt
+,base.batch_no
+,base.coupon_start_retail_week
+,base.coupon_start_dt
+,base.coupon_end_dt
+,base.item_id
+,txn.listing_title
+,base.item_condition
+,base.MSKU_flag
+,base.seller_id
+,base.seller_name
+
+--Seller standard at the time of listing selection
+,slr.seller_standard
+,slr.INR_rate_L90D
+,slr.SNAD_rate_L90D
+,slr.SNAD_rate_bucket
+
+,txn.item_vrtn_id
+,txn.EPID
+,txn.EPID_name
+
+,sum(case when (GMV_dt between base.coupon_start_dt and base.coupon_end_dt) then txn.GMV_USD end) as tot_GMV_USD
+,sum(case when (GMV_dt between base.coupon_start_dt and base.coupon_end_dt) then txn.SI end) as tot_SI
+,count(distinct (case when (GMV_dt between base.coupon_start_dt and base.coupon_end_dt) then txn.transaction_id end)) as tot_trans_vol
+,sum(case when (GMV_dt between base.coupon_start_dt and base.coupon_end_dt) and redeem_flag=1 then txn.GMV_USD end) as GMV_with_redemption_USD
+,sum(case when (GMV_dt between base.coupon_start_dt and base.coupon_end_dt) and redeem_flag=0 then txn.GMV_USD end) as GMV_without_redemption_USD
+,count(distinct (case when (GMV_dt between base.coupon_start_dt and base.coupon_end_dt) and txn.redeem_flag=1 then txn.transaction_id end)) as trans_vol_with_redemption
+,count(distinct (case when (GMV_dt between base.coupon_start_dt and base.coupon_end_dt) and txn.redeem_flag=0 then txn.transaction_id end)) as trans_vol_without_redemption
+
+from base
+
+inner join P_InventoryPlanning_T.Tech_PTO_red txn
+on base.item_id=txn.item_id
+
+left join P_InventoryPlanning_T.Tech_PTO_coupon_batch_slr slr
+on base.seller_id=slr.seller_id and base.batch_no=slr.batch_no
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18
+having tot_GMV_USD>0
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Buyer count
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_InventoryPlanning_T.Tech_PTO_buyer;
+create table P_InventoryPlanning_T.Tech_PTO_buyer as (
+with base as (
+select 
+distinct 
+a.LuminaReportExport_dt
+,b.batch_no
+,b.coupon_start_retail_week
+,b.coupon_start_dt
+,b.coupon_end_dt
+,a.item_id
+,a.item_condition
+,a.MSKU_flag
+,a.seller_id
+,a.seller_name
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO a
+left join P_InventoryPlanning_T.Tech_PTO_coupon_period b
+on a.LuminaReportExport_dt=b.LuminaReportExport_dt
+where a.include_rank <=200
+)
+select 
+base.LuminaReportExport_dt
+,base.batch_no
+,base.coupon_start_retail_week
+,base.coupon_start_dt
+,base.coupon_end_dt
+,sum(case when (GMV_dt between base.coupon_start_dt and base.coupon_end_dt) then txn.GMV_USD end) as tot_GMV_USD
+,count(distinct (case when (GMV_dt between base.coupon_start_dt and base.coupon_end_dt) then txn.buyer_id end)) as tot_unique_buyer_count
+,count(distinct (case when (GMV_dt between base.coupon_start_dt and base.coupon_end_dt)and redeem_flag=1 then txn.buyer_id end)) as unique_buyer_count_with_redemption
+,count(distinct (case when (GMV_dt between base.coupon_start_dt and base.coupon_end_dt)and redeem_flag=0 then txn.buyer_id end)) as unique_buyer_count_without_redemption
+
+from base
+
+inner join P_InventoryPlanning_T.Tech_PTO_red txn
+on base.item_id=txn.item_id
+
+left join P_InventoryPlanning_T.Tech_PTO_coupon_batch_slr slr
+on base.seller_id=slr.seller_id and base.batch_no=slr.batch_no
+
+group by 1,2,3,4,5
+having tot_GMV_USD>0
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Incremental GMV Uplift (Control period: 2023-02-23 to 2023-03-02)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*
+Restrict to:
+- Coupon batch that ended most recently
+- Listings only been selected in the latest coupon batch to prevent halo effect from PTO coupon in previous weeks
+- Listings that started <= '2023-02-23' [Start of control period] and ended after the latest coupon batch's end date
+*/
+drop table if exists P_InventoryPlanning_T.Tech_PTO_iGMV;
+create table P_InventoryPlanning_T.Tech_PTO_iGMV as (
+with batch as (
+select 
+batch_no
+,coupon_start_retail_week
+,coupon_start_dt
+,coupon_end_dt
+from P_InventoryPlanning_T.Tech_PTO_coupon_period
+where current_date>coupon_end_dt
+qualify (row_number() over (order by batch_no desc))=1
+)
+,base as (
+select 
+distinct 
+b.batch_no
+,a.item_id
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO a
+left join P_InventoryPlanning_T.Tech_PTO_coupon_period b
+on a.LuminaReportExport_dt=b.LuminaReportExport_dt
+where a.include_rank <=200
+)
+,lsg as (
+select 
+batch.*
+,base.item_id
+,lstg.seller_id
+,lstg.seller_name
+,lstg.listing_title
+,lstg.listing_start_dt
+,lstg.listing_end_dt
+,lstg.item_condition
+,lstg.MSKU_flag
+from base
+inner join batch
+on base.batch_no=batch.batch_no
+left join P_InventoryPlanning_T.Tech_PTO_coupon_batch_lstg lstg
+on base.item_id=lstg.item_id
+where lstg.listing_start_dt <= '2023-02-23' and lstg.listing_end_dt >= batch.coupon_end_dt
+)
+select 
+lsg.batch_no
+,lsg.coupon_start_retail_week
+,lsg.coupon_start_dt
+,lsg.coupon_end_dt
+,lsg.item_id
+,lsg.listing_title
+,lsg.item_condition
+,lsg.MSKU_flag
+,lsg.seller_id
+,lsg.seller_name
+
+--Seller standard at the time of listing selection
+,slr.seller_standard
+,slr.INR_rate_L90D
+,slr.SNAD_rate_L90D
+,slr.SNAD_rate_bucket
+
+,txn.item_vrtn_id
+,txn.EPID
+,txn.EPID_name
+
+,sum(case when (GMV_dt between '2023-02-23' and '2023-03-02') then txn.GMV_USD end) as tot_GMV_pre_coupon
+,sum(case when (GMV_dt between lsg.coupon_start_dt and lsg.coupon_end_dt) then txn.GMV_USD end) as tot_GMV_coupon_period
+
+,sum(case when (GMV_dt between '2023-02-23' and '2023-03-02') then txn.SI end) as tot_SI_pre_coupon
+,sum(case when (GMV_dt between lsg.coupon_start_dt and lsg.coupon_end_dt) then txn.SI end) as tot_SI_coupon_period
+
+from lsg
+
+left join P_InventoryPlanning_T.Tech_PTO_coupon_batch_slr slr
+on lsg.seller_id=slr.seller_id and lsg.batch_no=slr.batch_no
+
+inner join P_InventoryPlanning_T.Tech_PTO_red txn
+on lsg.item_id=txn.item_id
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+);
+
+/*
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---Excel data connection
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--No of listings participated in each batch of PTO coupon
+select * from P_InventoryPlanning_T.Tech_PTO_coupon_period
+order by LuminaReportExport_dt;
+
+--Seller standard metrics calculated when each batch of PTO coupon was selected
+select * from P_InventoryPlanning_T.Tech_PTO_coupon_batch_slr
+order by seller_id,batch_no;
+
+--Listings participated in each batch of the PTO coupon
+select * from P_InventoryPlanning_T.Tech_PTO_coupon_batch_lstg
+order by seller_id,item_condition,item_id,listing_end_dt desc;
+
+--GMV
+select * from P_InventoryPlanning_T.Tech_PTO_GMV
+order by batch_no,seller_id,tot_GMV_USD desc;
+
+--Buyer Count
+select * from P_InventoryPlanning_T.Tech_PTO_buyer
+order by batch_no;
+
+--Uplift
+select 
+batch_no
+,coupon_start_retail_week
+,coupon_start_dt
+,coupon_end_dt
+,item_id
+,listing_title
+,item_condition
+,MSKU_flag
+,seller_id
+,seller_name
+,seller_standard
+,INR_rate_L90D
+,SNAD_rate_L90D
+,SNAD_rate_bucket
+,item_vrtn_id
+,EPID
+,EPID_name
+,coalesce(tot_GMV_pre_coupon,0) as tot_GMV_pre_coupon
+,coalesce(tot_GMV_coupon_period,0) as tot_GMV_coupon_period
+,coalesce(tot_SI_pre_coupon,0) as tot_SI_pre_coupon
+,coalesce(tot_SI_coupon_period,0) as tot_SI_coupon_period
+from P_InventoryPlanning_T.Tech_PTO_iGMV
+order by tot_GMV_coupon_period desc;
+
+--All transaction
+select * from P_InventoryPlanning_T.Tech_PTO_red
+order by GMV_dt,GMV_USD desc;
+
+--Max GMV date
+select max(GMV_dt) from P_InventoryPlanning_T.Tech_PTO_red;
+*/
+
+/*
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Ad-hoc analysis done on 2023-03-21 (impact for removing sellers with SNAD rate bucket at 5% - 7% after the first coupon batch)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_UK_BC_T.EPID_batch1_2;
+create table P_UK_BC_T.EPID_batch1_2 as (
+with base as (
+select 
+EPID
+,EPID_name
+,item_condition
+,case when count(distinct batch_no)=2 then 1 else 0 end as exist_in_both_batch_flag
+from 
+	(select
+	EPID
+	,EPID_name
+	,batch_no
+	,item_condition
+	,sum(tot_GMV_USD) as tot_GMV
+	from P_InventoryPlanning_T.Tech_PTO_GMV b
+	where batch_no in (1,2) and EPID is not null
+	group by 1,2,3,4
+	)
+group by 1,2,3
+having exist_in_both_batch_flag=1
+)
+select a.* from P_InventoryPlanning_T.Tech_PTO_GMV a
+inner join base b
+on a.EPID=b.EPID and a.item_condition=b.item_condition
+where a.batch_no in (1,2)
+);
+
+--56 EPID + Condition that generated GMV in both Batch 1 and Batch 2 coupon period
+select count(distinct EPID||item_condition) from P_UK_BC_T.EPID_batch1_2;
+
+--128 transactions
+select count(*) from P_UK_BC_T.EPID_batch1_2;
+
+--Add to Excel data connection
+select * from P_UK_BC_T.EPID_batch1_2;
+
+--28 EPID + Condition that generated GMV in both Batch 1 and Batch 2 coupon period, and from sellers with high SNAD rate in Batch 1
+select a.* from P_UK_BC_T.EPID_batch1_2 a
+inner join 
+(select distinct EPID, item_condition from P_UK_BC_T.EPID_batch1_2
+where batch_no=1 and SNAD_rate_bucket='5% - 7%') b--28 EPID + Condition that generated GMV in both Batch 1 and Batch 2 coupon period, and from sellers with high SNAD rate in Batch 1
+on a.EPID=b.EPID and a.item_condition=b.item_condition;
+*/

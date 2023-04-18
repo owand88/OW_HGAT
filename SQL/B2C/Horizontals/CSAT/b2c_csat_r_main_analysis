@@ -90,6 +90,8 @@ WHERE 1=1
 group by 1,2,3,4,5,6,7,8,9,10,11
 );
 
+select max (USER_SRVY_CMPLTD_DT)
+from P_SANSEN_T.CSAT_RAW;
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Sneakers (B2C & C2C)
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -758,32 +760,38 @@ where age_for_month_id=-1;
 -- Brand Outlet (Brand outlet sellers - supplied by Robbie on 2022-07-25)
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 drop table if exists P_SANSEN_T.csat_bo;
-create table P_SANSEN_T.csat_bo as(
+create table P_SANSEN_T.csat_bo as 
 
-SELECT 
-	user_id,
-	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
-	cal.MONTH_OF_YEAR_ID,
-	cal.AGE_FOR_MONTH_ID,
-	listing,
-	bo.user_slctd_id as seller_name,
-	raw.Satisfied_with_eBay,
-	verbatim
+SELECT distinct
+	raw.user_id
+	,LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date
+	,cal.MONTH_OF_YEAR_ID
+	,cal.AGE_FOR_MONTH_ID
+	,listing
+	,u.user_slctd_id as seller_name
+	,raw.Satisfied_with_eBay
+	,verbatim
+	,case when fs.seller_id is not null then "Focus Seller" else "Not Focus Seller" end as focus_seller
 
 FROM P_SANSEN_T.CSAT_RAW raw
 
 --INNER JOIN P_awang_ops_T.seller_ops_83 bo 
-inner join p_robevans_t.bo_sellers bo--Use BO seller list provided by Robbie on 2022-07-25
-on raw.slr_id=bo.seller_id 
+left join p_robevans_t.bo_sellers bo--Use BO seller list provided by Robbie on 2022-07-25
+on raw.slr_id=bo.seller_id
+
+left join P_awang_ops_t.seller_ops_83 fs
+on raw.slr_id = fs.seller_id and fs.seller_vertical ='Fashion'
 
 inner join access_views.dw_cal_dt cal 
     on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10)
 	AND AGE_FOR_MONTH_ID <0
 	
+inner join access_views.dw_users u
+on raw.slr_id=u.user_id	
+	
 where raw.TCHPNT_DESC = 'Brand Outlet'
 --AND bo.seller_vertical = 'Fashion'
-group by 1,2,3,4,5,6,7,8
-);
+;
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Home Interiors (B2C Sellers - supplied by Mansie on 2022-07-29)
@@ -812,10 +820,43 @@ on hi.seller_id=u.user_id
 inner join access_views.dw_cal_dt cal 
     on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10)
 	AND AGE_FOR_MONTH_ID <0
-where raw.TCHPNT_DESC in ('Home Interiors', 'Furniture') -- technically these two should be separated out, included Furniture based on feedback from Chris Gardner to Sanjutka
+-- where raw.TCHPNT_DESC in ('Home Interiors', 'Furniture') -- technically these two should be separated out, included Furniture based on feedback from Chris Gardner to Sanjutka
+where raw.TCHPNT_DESC in ('Home Interiors', 'Furniture','Home DIY', 'Home Gardening')
 group by 1,2,3,4,5,6,7,8
 ); 
 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Gardening & DIY (updated 6/2/23)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*
+DROP TABLE IF EXISTS P_SANSEN_T.homdiy_csat ;
+CREATE TABLE P_SANSEN_T.homdiy_csat AS (
+SELECT 
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	listing,
+	u.user_slctd_id as seller_name,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_RAW raw
+
+--INNER JOIN select * from P_UK_BC_T.HomeInterior hi
+inner join P_macheung_T.csat_home_interiors hi--Use seller list provided by Mansie on 2022-07-29
+on raw.slr_id=hi.seller_id 
+	
+inner join access_views.dw_users u
+on hi.seller_id=u.user_id
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10)
+	AND AGE_FOR_MONTH_ID <0
+where raw.TCHPNT_DESC in ('Home DIY', 'Home Gardening') -- technically these two should be separated out, included Furniture based on feedback from Chris Gardner to Sanjutka
+group by 1,2,3,4,5,6,7,8
+); 
+*/
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Refurb (B2C CR & SR Listers)
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1041,3 +1082,49 @@ inner join access_views.dw_cal_dt cal
 	
 group by 1,2,3,4,5, 6, 7,8,9);
 */
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Fashion Prelove (B2C Fashion sellers cndtn_rollup_id = 3)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP TABLE IF EXISTS P_SANSEN_T.CSAT_Fashion_PL;
+CREATE TABLE P_SANSEN_T.CSAT_Fashion_PL AS
+(
+SELECT distinct
+	raw.b2c_c2c_flag,
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	raw.bsns_vrtcl_name as vertical,
+	listing,
+	cat.categ_lvl2_name,
+	cat.categ_lvl3_name,
+	cat.categ_lvl4_name,
+	u.user_slctd_id as seller_name,
+	case when fs.seller_id is not null then "Focus Seller" else "Not Focus Seller" end as focus_seller,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_SANSEN_T.CSAT_MAIN_VERT raw
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on raw.lstg_id=lstg.item_id
+
+inner join (select distinct META_CATEG_ID, categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id
+			from access_views.dw_category_groupings ) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10)
+	AND AGE_FOR_MONTH_ID <0
+	
+left join access_views.dw_users u
+on raw.slr_id = u.user_id
+
+left join P_awang_ops_t.seller_ops_83 fs
+on raw.slr_id = fs.seller_id and fs.seller_vertical ='Fashion'
+
+where raw.bsns_vrtcl_name = 'Fashion'
+and cat.meta_categ_id = 11450 -- Clothes shoes and accessories
+and lstg.CNDTN_ROLLUP_ID = 3
+-- GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13
+);
