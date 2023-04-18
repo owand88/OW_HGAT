@@ -1,28 +1,31 @@
 --JIRA: UKPLAN-244 and UKPLAN-266
 
 -- Author: Tugrul Ates
--- Date: 13th April 2023
+-- Date: 17th April 2023
 
 -- Description: The following script extracts the GMV data by Focus/Non-Focus Category, L2/L3, CBT/Domestic, B2C/C2C, Retail Year and Retail Quarter breakdowns starting from 2022
 -- This report data will be used by managers to distribute their vertical level Non-Focus category operational target
-
 
 create view P_inventoryplanning_T.focus_and_nonfocus_weekly_gmv as 
 select
 t2.RETAIL_YEAR
 ,t2.RETAIL_WEEK
+,t2.WEEK_BEG_DT as week_start_date
+,t2.WEEK_END_DT as week_end_date
 ,t2.QTR_OF_YEAR_ID
 ,t3.new_vertical as adjusted_vertical
 ,t3.meta_categ_name
 ,t3.categ_lvl2_name
 ,t3.categ_lvl3_name
+-- ,t3.categ_lvl4_name
 -- ,t1.seller_country_group_name as seller_country
 -- ,upper(t5.cntry_code) as buyer_country
 ,t1.site_group_name as site_country
 ,case when t1.slr_cntry_id != t1.byr_cntry_id then 'CBT' else 'DOM' end as dom_cbt_flag
 ,t1.EU_B2C_C2C_FLAG as b2c_c2c_flag
 ,case 
-	when t4.LEAF_CATEG_ID is not null then 'FC' 
+	when t4.LEAF_CATEG_ID is not null and t4.focused_vertical_lvl1 not in ('Brand Outlet', 'Open Box') then 'FC' 
+	when t4.LEAF_CATEG_ID is not null and t4.focused_vertical_lvl1 in ('Brand Outlet', 'Open Box') then 'Non_FC'  -- This exclusion is needed as Brand Outlet and Open Box categories are tracked, but not part of the Global Focus Categories for UK. Please see https://wiki.corp.ebay.com/pages/viewpage.action?pageId=960434499 for further details
 	when t1.item_cndtn_id in (2000,2010,2020,2030) and t1.EU_B2C_C2C_FLAG = 'B2C' then 'FC'
 	else 'Non_FC' 
 	end as focus_category_flag
@@ -56,5 +59,5 @@ and t2.AGE_FOR_RTL_WEEK_ID <= -1
 and t1.ck_wacko_yn = 'N'
 and t1.iscore = 1
 and t3.sap_category_id not in (5, 7, 41,23,-999)
-group by 1,2,3,4,5,6,7,8,9,10,11,12,13
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
 ;
