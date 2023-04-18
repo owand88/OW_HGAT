@@ -97,14 +97,13 @@ Where price_rank <= 20
 ------------------------------------------------Fast Facts------------------------------------------------------------
 
 
-drop table if exists P_ukplan_report_T.lux_facts_dashboard_kpis;
 
-create table P_ukplan_report_T.lux_facts_dashboard_kpis as
 
 ---------------------------------------------------Identify Top Brands and Models--------------------------------------------------------
+drop table if exists P_ukplan_report_T.lux_facts_dashboard_kpis_top_brands;
 
-With top_brands as 
-(
+Create table P_ukplan_report_T.lux_facts_dashboard_kpis_top_brands as
+
 select brand
 From
 	(
@@ -161,12 +160,15 @@ From
 where price_rank <= 20
 
 Group by 1
-)
+;
 
-,
 
-top_models as 
-(
+
+
+drop table if exists P_ukplan_report_T.lux_facts_dashboard_kpis_top_models;
+
+Create table P_ukplan_report_T.lux_facts_dashboard_kpis_top_models as
+
 select model
 From
 	(
@@ -223,13 +225,14 @@ From
 where price_rank <= 20
 
 Group by 1
-)
-
+;
 
 
 
 ------------------------------------------------------GMV Data--------------------------------------------------------
+drop table if exists P_ukplan_report_T.lux_facts_dashboard_kpis;
 
+create table P_ukplan_report_T.lux_facts_dashboard_kpis as
 	
 Select 
 cal.retail_year
@@ -241,6 +244,8 @@ cal.retail_year
 	End as category
 , brand
 , model
+, days_in_ty
+, days_in_ly
 , sum(ck.gmv_plan_usd) as gmv
 , sum(ck.QUANTITY) as sold_items
 , 0 as ll
@@ -253,6 +258,15 @@ INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT
 		ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
 		AND CAT.SITE_ID = 3
 		AND CAT.SAP_CATEGORY_ID NOT in (5,7,41,23,-999) 
+left JOIN
+	(select count(distinct cal_dt) as days_in_ty
+	from ACCESS_VIEWS.DW_CAL_DT 
+	Where AGE_FOR_RTL_WEEK_ID <= -1
+	and AGE_FOR_RTL_YEAR_ID = 0) ty
+left JOIN
+	(select count(distinct cal_dt) as days_in_ly
+	from ACCESS_VIEWS.DW_CAL_DT 
+	Where AGE_FOR_RTL_YEAR_ID = -1) ly
 left join (
 			Select a.ITEM_ID
 			,case when a.brand = tb.brand then a.brand else 'Outside Top 20 Brands' end as brand
@@ -284,7 +298,7 @@ left join (
 						GROUP BY 1
 						)
 					) a 
-				LEFT JOIN top_brands tb	
+				LEFT JOIN P_ukplan_report_T.lux_facts_dashboard_kpis_top_brands tb	
 						on a.brand = tb.brand
 				)
 				brand
@@ -320,7 +334,7 @@ left join (
 						GROUP BY 1
 						)
 					) a 
-				LEFT JOIN top_models tb	
+				LEFT JOIN P_ukplan_report_T.lux_facts_dashboard_kpis_top_models tb	
 						on a.model = tb.model
 				)
 				model
@@ -329,7 +343,7 @@ left join (
 Where 1=1
 and ck.SLR_CNTRY_ID = 3
 
-Group by 1,2,3,4
+Group by 1,2,3,4,5,6
 
 
 
@@ -347,6 +361,8 @@ cal.retail_year
 	End as category
 , brand
 , model
+, days_in_ty
+, days_in_ly
 , 0 as gmv
 , 0 as sold_items
 , count(distinct ck.ITEM_ID) as ll
@@ -360,6 +376,15 @@ INNER JOIN ACCESS_VIEWS.DW_CATEGORY_GROUPINGS CAT
 		ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID 
 		AND CAT.SITE_ID = 3
 		AND CAT.SAP_CATEGORY_ID NOT in (5,7,41,23,-999) 
+left JOIN
+	(select count(distinct cal_dt) as days_in_ty
+	from ACCESS_VIEWS.DW_CAL_DT 
+	Where AGE_FOR_RTL_WEEK_ID <= -1
+	and AGE_FOR_RTL_YEAR_ID = 0) ty
+left JOIN
+	(select count(distinct cal_dt) as days_in_ly
+	from ACCESS_VIEWS.DW_CAL_DT 
+	Where AGE_FOR_RTL_YEAR_ID = -1) ly
 left join (
 			Select a.ITEM_ID
 			,case when a.brand = tb.brand then a.brand else 'Outside Top 20 Brands' end as brand
@@ -391,7 +416,7 @@ left join (
 						GROUP BY 1
 						)
 					) a 
-				LEFT JOIN top_brands tb	
+				LEFT JOIN P_ukplan_report_T.lux_facts_dashboard_kpis_top_brands tb	
 						on a.brand = tb.brand
 				)
 				brand
@@ -427,7 +452,7 @@ left join (
 						GROUP BY 1
 						)
 					) a 
-				LEFT JOIN top_models tb	
+				LEFT JOIN P_ukplan_report_T.lux_facts_dashboard_kpis_top_models tb	
 						on a.model = tb.model
 				)
 				model
@@ -436,4 +461,4 @@ left join (
 Where 1=1
 and ck.SLR_CNTRY_ID = 3
 
-Group by 1,2,3,4
+Group by 1,2,3,4,5,6
