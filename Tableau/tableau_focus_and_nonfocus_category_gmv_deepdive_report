@@ -54,8 +54,8 @@ left join access_views.focused_vert_txn t4 on t1.ITEM_ID=t4.LSTG_ID and t1.CK_TR
 -- left join dw_countries as t5 on t5.cntry_id = t1.byr_cntry_id
 where 1=1
 and t1.slr_cntry_id = 3
-and year(t1.gmv_dt) >= year(current_date) - 1
-and t2.AGE_FOR_RTL_WEEK_ID <= -1
+and year(t1.gmv_dt) >= year(current_date) - 1  --This is to return the results for This year and Last Year
+and t2.AGE_FOR_RTL_WEEK_ID <= -1  -- This is to extract the results up to the previous completed week
 and t1.ck_wacko_yn = 'N'
 and t1.iscore = 1
 and t3.sap_category_id not in (5, 7, 41,23,-999)

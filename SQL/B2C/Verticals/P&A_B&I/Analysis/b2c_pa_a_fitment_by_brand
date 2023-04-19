@@ -1,0 +1,87 @@
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+-- Request: Are you able to share the fitment gaps (LLs & %) by categories (L4) by brands for vehicle parts and accessories please?
+-- UKPLAN-239
+-- Request by:Goenka, Manish <mgoenka@ebay.com>
+-- Purpose: important for Partly discussions
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+drop table  if exists   P_ICHAN_T.b2c_pa_a_top_brands_l4 ; 
+create table  P_ICHAN_T.b2c_pa_a_top_brands_l4 as  (Select * from (
+SELECT 
+  RANK() OVER ( ORDER BY GMB_PLAN DESC) AS brand_rank ,*
+FROM (
+select 
+      RETAIL_YEAR ,
+      new_vertical ,
+      SLR_SEGMENT,
+      BYR_SEGMENT ,
+    --  META_CATEG_NAME ,
+   --  META_CATEG_ID ,
+    --  CATEG_LVL2_NAME ,
+  --  CATEG_LVL2_ID ,
+    --  CATEG_LVL3_NAME ,
+    --  CATEG_LVL3_ID ,
+     -- CATEG_LVL4_NAME ,
+    -- CATEG_LVL4_ID ,
+      BRAND ,
+	  sum(GMB_PLAN) as GMB_PLAN ,
+      sum(BI) as BI
+from p_csi_tbs_t.pa_brand_gmv_1 --- select * from  p_csi_tbs_t.pa_brand_gmv_1 limit 100 ; 
+where retail_year =2023  and retail_week >=11
+and byr_segment ='DOMESTIC'
+and slr_segment='B2C'
+and BRAND NOT IN ( 'AFTERMARKET PRODUCTS','AFTERMARKET','N/A','DOES NOT APPLY','NA','UNBRANDED/GENERIC','OE+','OEM','UNBRANDED')
+group by 1,2,3,4,5
+--,6,7,8,9,10,11,12,13
+))where brand_rank <=200);
+
+select * from  P_ICHAN_T.b2c_pa_a_top_brands_l4 ;
+
+DROP TABLE IF EXISTS   P_ICHAN_T.b2c_pa_a_top_brands_l4_item  ; 
+CREATE TABLE P_ICHAN_T.b2c_pa_a_top_brands_l4_item as 
+SELECT DISTINCT ITEM_ID, BRAND  FROM  p_csi_tbs_t.pa_brand_gmv_1 WHERE BRAND IN ( SELECT DISTINCT BRAND FROM  P_ICHAN_T.b2c_pa_a_top_brands_l4 ); 
+
+
+Drop table if exists P_ICHAN_T.b2c_pa_a_fitment_brand_l4;
+CREATE TABLE  P_ICHAN_T.b2c_pa_a_fitment_brand_l4 as 
+      SELECT 
+	  	BRAND,
+        CATEG_LVL2_NAME, 
+        CATEG_LVL3_NAME,
+		CATEG_LVL4_NAME,
+        SUM(case when FA = 'Y' THEN LL ELSE 0 END)/7 AS FA_LL_RW,
+        SUM(LL)/7 AS FE_LL_RW
+      FROM (
+            SELECT 
+				BRAND,
+                CATEG_LVL2_NAME, 
+                CATEG_LVL3_NAME,
+				CATEG_LVL4_NAME,
+                I.AUCT_START_DT,
+                I.AUCT_END_DT
+       ,CASE WHEN(CAST (CASE WHEN CAST (I.flags10 as INT) < 0  THEN
+CAST (I.flags10 as INT) + 2147483648 
+ELSE CAST (I.flags10 AS INT  )  END AS   INT  ) & 64 )  >= 1 THEN 'Y' ELSE 'N' END 
+AS FA    ,
+                COUNT(DISTINCT I.ITEM_ID) AS LL
+            FROM DW_LSTG_ITEM I
+                INNER JOIN      p_csi_tbs_t.SH_UKDE_FITMENT_CATEG_new  AS F ON I.ITEM_SITE_ID = F.SITE_ID AND I.LEAF_CATEG_ID=F.LEAF_CATEG_ID AND fmt_enabled = 'Y'
+                 INNER JOIN P_ICHAN_T.b2c_pa_a_top_brands_l4_item  AS COLD ON I.ITEM_ID = COLD.ITEM_ID 
+                                              AND I.AUCT_END_DT >= (SELECT RTL_WEEK_BEG_DT FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID = -1 GROUP BY 1)
+                INNER JOIN (SELECT LEAF_CATEG_ID, CATEG_LVL2_NAME, CATEG_LVL3_NAME, CATEG_LVL4_NAME, SITE_ID
+                            FROM DW_CATEGORY_GROUPINGS 
+                            WHERE LEAF_CATEG_ID = MOVE_TO AND SAP_CATEGORY_ID = 8 AND SITE_ID IN ( 3)
+                            ) CAT ON CAT.LEAF_CATEG_ID = I.LEAF_CATEG_ID AND CAT.SITE_ID = I.ITEM_SITE_ID                                               
+            WHERE I.AUCT_END_DT >= (SELECT RTL_WEEK_BEG_DT FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID = -1 GROUP BY 1)
+              AND I.AUCT_TYPE_CODE NOT IN (10,12,15)
+              AND I.wacko_yn = 'N'
+              AND (I.slr_cntry_id = 3 or I.item_site_id = 3)
+            GROUP BY 1,2,3,4,5,6,7
+            ) A
+      INNER JOIN DW_CAL_DT CAL ON A.AUCT_START_DT < CAL.CAL_DT AND A.AUCT_END_DT >= CAL.CAL_DT AND AGE_FOR_RTL_WEEK_ID = -1
+      GROUP BY 1,2,3,4
+;
+SELECT SUM(FA_LL_RW) FA, SUM(FE_LL_RW) FE,  SUM(FA_LL_RW)/SUM(FE_LL_RW) AD FROM P_ICHAN_T.b2c_pa_a_fitment_brand_l4 WHERE BRAND ='BMW' LIMIT 1000; --1971467.4285714272
