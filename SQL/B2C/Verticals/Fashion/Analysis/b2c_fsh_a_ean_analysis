@@ -68,7 +68,7 @@ from (
 		left join PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck on lstg.ITEM_ID = ck.ITEM_ID and ck.SITE_ID = 3 and ck.RPRTD_WACKO_YN = 'N'
 
 		where 1=1
-		and lstg.DF_BRAND_TXT in ('Jigsaw','Vineyard Vines','GAP','American Eagle','Boohoo','Hollister','Mango')
+		and lstg.DF_BRAND_TXT in ('Jigsaw','Vineyard Vines','Gap','American Eagle','Boohoo','Hollister','Mango')
 		and cat.NEW_VERTICAL = 'Fashion'
 		and cat.META_CATEG_ID = 11450 -- Clothes, Shoes and Accs
 		and lstg.LSTG_SITE_ID = 3
