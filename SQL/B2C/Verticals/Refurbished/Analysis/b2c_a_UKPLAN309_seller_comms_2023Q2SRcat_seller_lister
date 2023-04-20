@@ -1,0 +1,105 @@
+/*
+UKPLAN-309
+
+Create a list of seller comms target list to warn sellers of the changes made to the 2023 Q2 SR category expansion (Total of 187 leaf categories).
+
+Base:.
+Anyone who has listed or sold in these leaf categories in the old SR item condition over the L12M including C2C sellers.
+*/
+
+--187 new leaf categories launched in the UK SR program (Provided in Angie's Excel file on 2023-04-19)
+select * from P_UK_BC_T.SR_2023Q2_cat_launch;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- UK Sellers who have sold old SR in categories of interest on UK site in L12M
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_UK_BC_T.old_SR_2023Q2cat_sold;
+create table P_UK_BC_T.old_SR_2023Q2cat_sold as
+(
+select
+cat.leaf_categ_id
+,cat.leaf_categ_name
+,u.user_slctd_id as seller_name
+,ck.seller_id
+,min(ck.EU_B2C_C2C_flag) as B2C_C2C
+,sum(ck.GMV20_plan) as tot_GMV
+,sum(ck.GMV20_sold_quantity) AS tot_SI
+,count(distinct ck.item_id) as converted_lstg
+
+from prs_restricted_v.slng_trans_super_fact ck 
+
+inner join (select leaf_categ_id, leaf_categ_name, site_id
+			from access_views.dw_category_groupings group by 1,2,3) as cat
+on ck.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join P_UK_BC_T.SR_2023Q2_cat_launch sr
+on ck.leaf_categ_id = sr.leaf_categ_id
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt
+and cal.age_for_rtl_month_id between -11 and -1--2022May to 2023Apr
+    
+inner join access_views.dw_users u 
+on ck.seller_id = u.user_id
+
+where 
+ck.item_cndtn_id = 2500
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.lstg_site_id = 3 
+and ck.ck_wacko_yn = 'N'
+group by 1,2,3,4
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- UK Listers who have listed old SR in categories of interest on UK site in L12M
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_UK_BC_T.old_SR_2023Q2cat_listed;
+create table P_UK_BC_T.old_SR_2023Q2cat_listed as
+(
+select
+cat.leaf_categ_id
+,cat.leaf_categ_name
+,u.user_slctd_id as seller_name
+,lstg.slr_id as seller_id
+,min(lstg.EU_B2C_C2C_flag) as B2C_C2C
+,count(distinct(lstg.item_id)) as LL
+
+from prs_restricted_v.slng_lstg_super_fact lstg
+
+inner join (select leaf_categ_id, leaf_categ_name, site_id
+			from access_views.dw_category_groupings group by 1,2,3) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join P_UK_BC_T.SR_2023Q2_cat_launch sr
+on lstg.leaf_categ_id = sr.leaf_categ_id
+        
+inner join dw_cal_dt cal
+on lstg.auct_start_dt < cal.cal_dt and lstg.auct_end_dt >= cal.cal_dt
+and cal.age_for_rtl_month_id between -11 and -1--2022May to 2023Apr
+    
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+where 
+lstg.item_cndtn_id = 2500
+and lstg.slr_cntry_id=3    
+and lstg.item_site_id = 3
+and lstg.auct_type_code not in (10,15)
+group by 1,2,3,4
+);
+
+
+--Data check
+--15075 rows
+select count(*) from P_UK_BC_T.old_SR_2023Q2cat_sold;
+--187 leaf categ
+select count(distinct leaf_categ_id)  from P_UK_BC_T.old_SR_2023Q2cat_sold;
+
+--23551 rows
+select count(*) from P_UK_BC_T.old_SR_2023Q2cat_listed;
+--187 leaf categ
+select count(distinct leaf_categ_id)  from P_UK_BC_T.old_SR_2023Q2cat_listed;
+
+--Add to Excel data connection
+select * from P_UK_BC_T.old_SR_2023Q2cat_sold;
+select * from P_UK_BC_T.old_SR_2023Q2cat_listed;
