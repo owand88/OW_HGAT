@@ -1,0 +1,39 @@
+
+
+drop table  P_InventoryPlanning_T.tyre_listing_msku_id ;
+create table   P_InventoryPlanning_T.tyre_listing_msku_id as 
+
+select
+distinct 
+lst.item_id as item_id,
+m.item_id  as MSKU_item_id,
+lst.Slr_ID,
+U.USER_SLCTD_ID,
+COND.CNDTN_ROLLUP_ID ,
+CAT.CATEG_LVL4_ID, 
+CAT.categ_lvl4_name
+
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+	inner join ( select distinct item_id from  access_views.lstg_item_vrtn ) m on lst.item_id=m.item_id
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+inner join ( select distinct SELLER_ID from    p_InventoryPlanning_t.tyres_install_active) act on lst.slr_id=act.seller_id
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  -----AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+--INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+ --       	ON CAL.CAL_DT =lst.AUCT_START_DT AND retail_year >=2023 and age_for_rtl_week_id <= -1 and lst.AUCT_START_DT >= '2021-03-01'--  and  age_for_rtl_week_id >= -10
+--INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+--INNER JOIN  ACCESS_VIEWS.DW_CAL_DT CAL ON  CAL.CAL_DT = lst.CREATED_DT AND 				RETAIL_YEAR >= 2017
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 
+				ON lst.AUCT_START_DT < CAL.CAL_DT AND lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2019  
+-- INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID and retail_year >=  2020
+--INNER JOIN dw_lstg_item_cold lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+--WHERE lst.AUCT_end_dt >= date -- limiit on live listings
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and lst.AUCT_end_dt >= CURRENT_DATE
+--and slr_id =1040434542
+and  categ_lvl4_id  =179680;
+
+drop table  P_InventoryPlanning_T.tyre_listing_msku_id  ; 
+select * from  P_InventoryPlanning_T.tyre_listing_msku_id  limit 1000;
