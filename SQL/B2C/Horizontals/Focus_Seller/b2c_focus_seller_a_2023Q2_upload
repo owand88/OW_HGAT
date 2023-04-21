@@ -1,0 +1,69 @@
+-- FOCUS Sellers
+-- 2023 Q2
+-- update on 2023-4-14
+
+-- 1. Create backup file
+
+drop table  P_awang_ops_t.seller_ops_83_2023Q2bk ;
+create table P_awang_ops_t.seller_ops_83_2023Q2bk as (Select * from  P_awang_ops_t.seller_ops_83 ) ;-- 977 
+;
+-- 2. Upload excel records into  P_awang_ops_t.seller_ops_83 using DataMove
+
+
+-- 3. Run below query
+--select * from p_hroon_t.BO_sellers
+--select * from  p_macheung_t.UK_CR_SELLERS
+
+-- 3a. To attach vertical platform ie, Brand Outlet (BO) and Certified Refurbished (CR)
+drop table  p_ichan_t.seller_ops_83_verticalp  ;
+create table p_ichan_t.seller_ops_83_verticalp  as (
+Select a.* ,
+case when a.seller_id=b.seller_id then 'BO' 
+	when  a.seller_id=c.seller_id then 'CR' else '' end as Vertical_platform
+from  (Select distinct * from  P_awang_ops_t.seller_ops_83 ) a
+left join (select distinct seller_id from p_hroon_t.BO_sellers )  b on a.seller_id=b.seller_id
+left join (select distinct seller_id from p_macheung_t.UK_CR_SELLERS )  c on a.seller_id=c.seller_id);
+-- 960
+select * from   p_ichan_t.seller_ops_83_verticalp;
+select * from p_hroon_t.BO_sellers ;
+
+-- 3b. Final update
+Drop table P_awang_ops_t.seller_ops_83;
+create table P_awang_ops_t.seller_ops_83  as ( select distinct * from p_ichan_t.seller_ops_83_verticalp) ;
+
+Select * from  P_awang_ops_t.seller_ops_83;
+
+-- 4. -- inputting extra sellers after deadline
+/*select * from  P_ICHAN_T.focus_extra
+create table p_ichan_t.seller_ops_83_verticalp_extra  as (
+Select a.* ,
+case when a.seller_id=b.seller_id then 'BO' 
+	when  a.seller_id=c.seller_id then 'CR' else '' end as Vertical_platform
+from  (Select distinct * from  P_ICHAN_T.focus_extra ) a
+left join (select distinct seller_id from p_hroon_t.BO_sellers )  b on a.seller_id=b.seller_id
+left join (select distinct seller_id from p_macheung_t.UK_CR_SELLERS )  c on a.seller_id=c.seller_id);
+
+create table p_ichan_t.seller_ops_83_extra  as (
+select * from p_ichan_t.seller_ops_83_verticalp_extra 
+union all 
+Select distinct * from  P_awang_ops_t.seller_ops_83);
+-- 732 
+
+select count(*) from   P_awang_ops_t.seller_ops_83 -- 797
+*/
+-- 5. Pro Trader
+--Drop table  P_awang_opt_T.protrader_2021_Q2_bk ;
+--create   table P_awang_opt_T.protrader_2021_Q2_bk as Select * from P_awang_opt_T.protrader_2021_Q2; -- 886  
+
+--6. Master table including Pro trader
+--drop table  P_awang_ops_t.uk_managed_sellers_all_bk ;
+-- create table P_awang_ops_t.uk_managed_sellers_all_bk as select * from P_awang_ops_t.uk_managed_sellers_all; -- 1603 -- 1646 
+ 
+ 
+ drop table  P_awang_ops_t.uk_managed_sellers_all  ; 
+create table  P_awang_ops_t.uk_managed_sellers_all  AS ( select seller_id, seller_name, initiative_name, focused_flag from P_awang_ops_t.seller_ops_83 group by 1,2,3,4 
+union all 
+select user_id, user_slctd_id, pt_category, 'protrader' as focused_flag from P_awang_opt_T.protrader_2021_Q2 where user_id is not null );
+-- 1768  -- 1909 -- 1885 
+
+select * from  P_awang_ops_t.uk_managed_sellers_all ;
