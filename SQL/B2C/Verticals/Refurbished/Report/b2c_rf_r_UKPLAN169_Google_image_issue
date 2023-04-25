@@ -89,7 +89,7 @@ refurb.item_id
 ,refurb.original_vertical
 ,refurb.new_vertical
 ,refurb.categ_lvl2_name
-,base.batch_dt    
+,base.batch_dt as Google_batch_date   
 ,base.issue_num
 ,base.attribute_name    
 ,base.code  
