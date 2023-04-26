@@ -1,0 +1,216 @@
+/*
+UKPLAN-308
+Following data provision on 2023-03-10, PT team discovered the file does not fit their purpose and requested for a new file for their Q2 Tech Protrader seller selection 
+
+New & Open Box Appliance
+New & Open Box Tech
+Refurb Tech based on the selected L2’s and L3’s
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Verify category selection provided by Alex Hiatt / Christine on 2023-04-17
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*****Pro Trader Technology - New & Open Box - Appliances*****/
+--L3s provided by PT team (1 duplication: 42231)
+38250,43563,260307,71258,45733,20667,42231,42231,11071,112529,14990,14970,48647,111694,175711,81741,22610,96954,73839,4787,14971,72406,56169,14981,175708,48626,48655,48645,11725,22635,15053,163769,71583,15054,163829,4786,3271,15056,71584,260318,184618,109256
+
+--41 L3s
+select distinct categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name
+from access_views.dw_category_groupings
+where 
+site_id=3 
+and categ_lvl3_id in (38250,43563,260307,71258,45733,20667,42231,42231,11071,112529,14990,14970,48647,111694,175711,81741,22610,96954,73839,4787,14971,72406,56169,14981,175708,48626,48655,48645,11725,22635,15053,163769,71583,15054,163829,4786,3271,15056,71584,260318,184618, 109256)
+order by 1,3;
+
+/*****Pro Trader Technology - New & Open Box - Hard Tech*****/
+--L2s provided by PT team (1 duplication: 139971)
+175673,171957,175672,9355,162497,171961,178893,139971,139971,139973
+
+--9 L2s
+select distinct categ_lvl2_id,categ_lvl2_name
+from access_views.dw_category_groupings
+where 
+site_id=3 
+and categ_lvl2_id in (175673,171957,175672,9355,162497,171961,178893,139971,139973)
+order by 1;
+
+/*****Pro Trader Refurb Tech*****/
+--L2s provided by PT team (1 duplication: 171961)
+182094,175673,171957,3676,31530,175672,162497,171961,171961,171485,9355,178893
+
+--11 L2s
+select distinct categ_lvl2_id,categ_lvl2_name
+from access_views.dw_category_groupings
+where 
+site_id=3 
+and categ_lvl2_id in (182094,175673,171957,3676,31530,175672,162497,171961,171485,9355,178893)
+order by 1;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Pull top sellers for each cohort (UK B2C sellers on UK site)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*****Pro Trader Technology - New & Open Box - Appliances*****/
+create temporary table PT_Appliances_all as (
+select 
+ck.seller_id
+,u.user_slctd_id as seller_name
+,cat.categ_lvl3_id
+,cat.categ_lvl3_name
+,ck.item_cndtn_id as item_condition_id	  
+,sum(ck.GMV20_PLAN) as L12W_GMV
+,sum(ck.GMV20_sold_quantity) as L12W_SI  
+
+from prs_restricted_v.slng_trans_super_fact ck 
+
+inner join (select distinct categ_lvl2_id,categ_lvl3_id,categ_lvl2_name,categ_lvl3_name,leaf_categ_id,site_id
+	        from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,41,23,-999))  as cat
+on ck.leaf_categ_id=cat.leaf_categ_id 
+and ck.lstg_site_id = cat.site_id
+and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt and cal.age_for_rtl_week_id between -12 and -1--2023 RW5-RW16
+	
+inner join access_views.dw_users u 
+on ck.seller_id = u.user_id
+
+left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where seller_id is not null) focus
+on ck.seller_id=focus.seller_id
+
+where 
+cat.categ_lvl3_id in (38250,43563,260307,71258,45733,20667,42231,42231,11071,112529,14990,14970,48647,111694,175711,81741,22610,96954,73839,4787,14971,72406,56169,14981,175708,48626,48655,48645,11725,22635,15053,163769,71583,15054,163829,4786,3271,15056,71584,260318,184618, 109256)
+and ck.item_cndtn_id in (1000,1500)
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.EU_B2C_C2C_FLAG = 'B2C'
+and ck.ck_wacko_yn = 'N'
+and focus.seller_id is null
+group by 1,2,3,4,5);
+
+create table p_uk_bc_t.PT_Appliances_all as (
+with top as (
+select
+seller_id
+,seller_name
+,sum(L12W_GMV) as tot_L12W_GMV
+from PT_Appliances_all
+group by 1,2
+qualify (row_number() over (order by tot_L12W_GMV desc))<=500)
+select * from PT_Appliances_all
+where seller_id in (select distinct seller_id from top)
+);
+
+/*****Pro Trader Technology - New & Open Box - Hard Tech*****/
+create temporary table PT_HardTech_all as (
+select 
+ck.seller_id
+,u.user_slctd_id as seller_name
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,ck.item_cndtn_id as item_condition_id	  
+,sum(ck.GMV20_PLAN) as L12W_GMV
+,sum(ck.GMV20_sold_quantity) as L12W_SI  
+
+from prs_restricted_v.slng_trans_super_fact ck 
+
+inner join (select distinct categ_lvl2_id,categ_lvl2_name,leaf_categ_id,site_id
+	        from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,41,23,-999))  as cat
+on ck.leaf_categ_id=cat.leaf_categ_id 
+and ck.lstg_site_id = cat.site_id
+and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt and cal.age_for_rtl_week_id between -12 and -1--2023 RW5-RW16
+	
+inner join access_views.dw_users u 
+on ck.seller_id = u.user_id
+
+left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where seller_id is not null) focus
+on ck.seller_id=focus.seller_id
+
+where 
+cat.categ_lvl2_id in (175673,171957,175672,9355,162497,171961,178893,139971,139973)
+and ck.item_cndtn_id in (1000,1500)
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.EU_B2C_C2C_FLAG = 'B2C'
+and ck.ck_wacko_yn = 'N'
+and focus.seller_id is null
+group by 1,2,3,4,5);
+
+create table p_uk_bc_t.PT_HardTech_all as (
+with top as (
+select
+seller_id
+,seller_name
+,sum(L12W_GMV) as tot_L12W_GMV
+from PT_HardTech_all
+group by 1,2
+qualify (row_number() over (order by tot_L12W_GMV desc))<=500)
+select * from PT_HardTech_all
+where seller_id in (select distinct seller_id from top)
+);
+
+/*****Pro Trader Refurb Tech*****/
+create temporary table PT_RefurbTech_all as (
+select 
+ck.seller_id
+,u.user_slctd_id as seller_name
+,cat.categ_lvl2_id
+,cat.categ_lvl2_name
+,ck.item_cndtn_id as item_condition_id	  
+,sum(ck.GMV20_PLAN) as L12W_GMV
+,sum(ck.GMV20_sold_quantity) as L12W_SI  
+
+from prs_restricted_v.slng_trans_super_fact ck 
+
+inner join (select distinct categ_lvl2_id,categ_lvl2_name,leaf_categ_id,site_id
+	        from access_views.dw_category_groupings 
+			where sap_category_id not in (5,7,41,23,-999))  as cat
+on ck.leaf_categ_id=cat.leaf_categ_id 
+and ck.lstg_site_id = cat.site_id
+and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal 
+on cal.cal_dt = ck.GMV_dt and cal.age_for_rtl_week_id between -12 and -1--2023 RW5-RW16
+	
+inner join access_views.dw_users u 
+on ck.seller_id = u.user_id
+
+left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where seller_id is not null) focus
+on ck.seller_id=focus.seller_id
+
+where 
+cat.categ_lvl2_id in (182094,175673,171957,3676,31530,175672,162497,171961,171485,9355,178893)
+and ck.item_cndtn_id in (2000,2010,2020,2030)
+and ck.slr_cntry_id = 3 --UK sellers
+and ck.EU_B2C_C2C_FLAG = 'B2C'
+and ck.ck_wacko_yn = 'N'
+and focus.seller_id is null
+group by 1,2,3,4,5);
+
+create table p_uk_bc_t.PT_RefurbTech_all as (
+with top as (
+select
+seller_id
+,seller_name
+,sum(L12W_GMV) as tot_L12W_GMV
+from PT_RefurbTech_all
+group by 1,2
+qualify (row_number() over (order by tot_L12W_GMV desc))<=500)
+select * from PT_RefurbTech_all
+where seller_id in (select distinct seller_id from top)
+);
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Add to Excel
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select * from p_uk_bc_t.PT_Appliances_all;
+
+select * from p_uk_bc_t.PT_HardTech_all;
+
+select * from p_uk_bc_t.PT_RefurbTech_all;

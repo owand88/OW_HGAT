@@ -1,0 +1,102 @@
+/*
+UKPLAN-169
+
+Utilize the logic used by Google that flags non-compliant images to identify listings within the Refurb program (CR +SR) which have logos on the main images. 
+Refurb CMs have to manually trawl through the site to flag these currently.
+
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Data connection in Excel reporting
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+with base as (
+select
+distinct
+batch_dt           --Google shopping feed Batch_dt in YYYYMMDD
+,site_name         --Google shopping site: us, de, uk, etc
+,item_id   
+,seller_id         --Oracle seller_id
+,issue_num
+,code              --Issue_code
+,attribute_name    --Issue detail
+,short_description    
+,detailed_description
+,servability       --Indicates if the issue effects the servability of the Google shopping ad (disapproved, demoted, unaffected)
+from mrkt_feed_v.google_merchant_issues_snapshot
+where
+to_date(batch_dt, 'yyyyMMdd') = current_date-1  --Filter for the listing feed batch by date
+and site_name = 'uk'   --Filter for specific sites
+)
+,refurb as (
+select 
+lstg.item_id
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 1000 then 'New'
+	  when cndtn.item_cndtn_id = 1500 then 'New - Other'
+	  when cndtn.item_cndtn_id = 1750 then 'New - With defects'
+	  
+	  when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified' 
+	  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  when cndtn.item_cndtn_id = 2500 then 'Refurb - Seller' 
+	  	  
+	  when cndtn.item_cndtn_id = 3000 then 'Used'
+	  when cndtn.item_cndtn_id = 4000 then 'Used - Very Good'
+	  when cndtn.item_cndtn_id = 5000 then 'Used - Good'
+	  when cndtn.item_cndtn_id = 6000 then 'Used - Acceptable'
+	  when cndtn.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	  else 'Other'
+	  end as item_condition
+,lstg.slr_id as seller_id
+,u.user_slctd_id as seller_name	  
+,lstg.auct_titl as listing_title
+,lstg.auct_start_dt as listing_start_dt
+,lstg.auct_end_dt as listing_end_dt
+,cat.original_vertical
+,cat.new_vertical
+,cat.categ_lvl2_name
+
+from access_views.dw_lstg_item lstg
+
+inner join (select distinct bsns_vrtcl_name as original_vertical, categ_lvl2_id, categ_lvl2_name, leaf_categ_id, site_id, new_vertical
+			from P_INVENTORYPLANNING_T.dw_category_groupings_adj) cat
+
+on lstg.leaf_categ_id = cat.leaf_categ_id and lstg.item_site_id = cat.site_id 
+
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+where 
+lstg.slr_cntry_id=3
+and lstg.item_site_id=3
+and lstg.auct_end_dt>current_date
+and item_cndtn_id in (2000,2010,2020,2030)
+)
+select
+refurb.item_id
+,refurb.item_cndtn_id
+,refurb.item_condition
+,refurb.seller_id
+,refurb.seller_name	  
+,refurb.listing_title
+,refurb.listing_start_dt
+,refurb.listing_end_dt
+,refurb.original_vertical
+,refurb.new_vertical
+,refurb.categ_lvl2_name
+,base.batch_dt as Google_batch_date   
+,base.issue_num
+,base.attribute_name    
+,base.code  
+,base.short_description    
+,base.detailed_description
+,base.servability 
+from base
+inner join refurb
+on base.item_id=refurb.item_id
+order by listing_end_dt,item_id,issue_num;

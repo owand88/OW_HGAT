@@ -1,0 +1,238 @@
+/*
+UKPLAN-289
+GMV impact from overlapping focus vertical
+*/
+
+--Examples of CR/SR listing assigned to other FC
+select distinct lstg_id,focused_vertical_lvl1 from access_views.focused_vert_txn
+where lstg_id in (123009289660,304349708173);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Focus Vertical Transaction Dataset
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists focus_txn;
+create temporary table focus_txn as (
+select 
+distinct
+cal.retail_year
+,cal.retail_week
+,ft.GMV_dt
+,ft.lstg_id
+,ft.ck_trans_id
+,ft.item_cndtn_id
+,case
+	when ft.item_cndtn_id = 1000 then 'New'
+	when ft.item_cndtn_id = 1500 then 'New - Other'
+	when ft.item_cndtn_id = 1750 then 'New - With defects'
+	when ft.item_cndtn_id = 2000 then 'Refurb - Certified'
+	when ft.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	when ft.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	when ft.item_cndtn_id = 2030 then 'Refurb - Good'
+	when ft.item_cndtn_id = 2500 then 'Refurb - Seller'			
+	when ft.item_cndtn_id = 3000 then 'Used'
+	when ft.item_cndtn_id = 4000 then 'Used - Very Good'
+	when ft.item_cndtn_id = 5000 then 'Used - Good'
+	when ft.item_cndtn_id = 6000 then 'Used - Acceptable'
+	when ft.item_cndtn_id = 7000 then 'Used - For parts / not working'
+	else 'Other'
+	end as item_condition
+,ft.cndtn_rollup_id
+,ft.lstg_site_id
+,ft.leaf_categ_id
+,cat.categ_lvl2_name
+,ft.focused_vertical_lvl1
+,ft.user_slctd_id
+,ft.B2C_C2C
+,ft.auct_titl
+,ft.brand
+,case when ft.slr_cntry_id != ft.byr_cntry_id then 'CBT' else 'DOM' end as dom_cbt_flag
+,ft.GMV2_PLAN
+from access_views.focused_vert_txn ft
+inner join access_views.dw_cal_dt cal
+on ft.GMV_DT = cal.cal_dt and cal.age_for_rtl_year_id in (-1,0) and cal.retail_week<=15
+inner join p_inventoryplanning_t.dw_category_groupings_adj cat
+on ft.leaf_categ_id = cat.leaf_categ_id and ft.lstg_site_id = cat.site_id
+where 
+ft.slr_cntry_id=3
+and ft.ck_wacko_yn='N'
+);
+
+--Data check
+--2023RW15 SR GMV:2.4M, 84.6% YoY
+select
+retail_year
+,sum(GMV2_PLAN)
+from focus_txn 
+where focused_vertical_lvl1='Seller Refurbished'
+and retail_week=15
+group by 1;
+
+--CR/SR conditions not classified as 'Certified Refurbished' or Seller Refurbished' focus verticals
+--Export to Excel
+select
+retail_year
+,retail_week
+,lstg_site_id
+,item_cndtn_id
+,item_condition
+,categ_lvl2_name
+,focused_vertical_lvl1
+,user_slctd_id as seller_name
+,sum(GMV2_PLAN) as RW_1_15_GMV
+from focus_txn 
+where item_cndtn_id in (2000,2010,2020,2030)
+group by 1,2,3,4,5,6,7,8;
+
+
+/*
+lstg_id
+175196213238
+175157609559
+*/
+select * 
+from focus_txn 
+where item_cndtn_id in (2000,2010,2020,2030)
+and B2C_C2C='C2C';
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Super Fact Transaction dataset
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists refurb_txn;
+create temporary table refurb_txn as (
+select
+cal.retail_year
+,cal.retail_week
+,ck.GMV_dt
+,ck.item_id
+,ck.ck_trans_id
+,ck.item_cndtn_id
+,case
+	when ck.item_cndtn_id = 2000 then 'Refurb - Certified'
+	when ck.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	when ck.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	when ck.item_cndtn_id = 2030 then 'Refurb - Good'
+	else 'Non CR / SR'
+	end as item_condition
+,ck.lstg_site_id
+,ck.leaf_categ_id
+,ck.seller_id
+,ck.EU_B2C_C2C_FLAG as b2c_c2c_flag
+,case when ck.slr_cntry_id != ck.byr_cntry_id then 'CBT' else 'DOM' end as dom_cbt_flag
+,ck.GMV20_PLAN
+from prs_restricted_v.slng_trans_super_fact ck
+inner join access_views.dw_cal_dt cal
+on ck.GMV_DT = cal.cal_dt and cal.age_for_rtl_year_id in (-1,0) and cal.retail_week<=15
+inner join p_inventoryplanning_t.dw_category_groupings_adj cat
+on ck.leaf_categ_id = cat.leaf_categ_id and ck.lstg_site_id = cat.site_id
+where 
+ck.slr_cntry_id = 3
+and ck.ck_wacko_yn = 'N'
+and ck.item_cndtn_id in (2000,2010,2020,2030)
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Compare SR in Focus Vertical dataset vs Super fact dataset
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/*****Exists in Focus Vertical transaction dataset but absent in super fact transaction dataset for refurb items*****/
+--622 rows
+select * from
+(select distinct GMV_dt as ft_GMV_dt, lstg_id as ft_item_id, ck_trans_id as ft_ck_trans_id, leaf_categ_id as fk_leaf_categ_id from focus_txn where item_cndtn_id in (2010,2020,2030)) a 
+full outer join
+(select distinct GMV_dt as txn_GMV_dt, item_id as txn_item_id, ck_trans_id as txn_ck_trans_id, leaf_categ_id as txn_leaf_categ_id from refurb_txn) b
+on a.ft_item_id=b.txn_item_id and  a.ft_ck_trans_id=b.txn_ck_trans_id
+where b.txn_item_id is null
+order by a.ft_GMV_dt desc;
+
+--Example: https://www.ebay.co.uk/itm/185547295930 (iPad 9th Generation 64GB Wi-Fi ONLY 10.2" S.Gray Brand New Apple Warranty 2021)
+--Trans_id=2454704535008 on 2023-04-13 (RW15), item_cndtn_id=2030
+--31 SR transactions (2023-03-14 to 2023-04-13)
+--2023-03-14 to 2023-04-10 transactions have item_cndtn_id=2020
+--2023-04-12 to 2023-04-13 transactions have item_cndtn_id=2030
+select GMV_dt, item_cndtn_id, item_condition, auct_titl, brand from focus_txn
+where lstg_id=185547295930 
+order by GMV_dt;
+
+select GMV_dt, item_cndtn_id, auct_titl, brand from access_views.focused_vert_txn
+where lstg_id=185547295930 
+order by GMV_dt;
+
+--Total 43 transactions
+--2022-09-02 to 2022-12-04 transactions have item_cndtn_id=2010
+--2023-03-14 to 2023-04-10 transactions have item_cndtn_id=2020
+--2023-04-12 to 2023-04-13 transactions have item_cndtn_id=2030
+--2023-04-14 transactions have item_cndtn_id=1000
+--Trans_id=2454704535008 on 2023-04-13 (RW15), item_cndtn_id=2030
+select GMV_dt,trans_id,item_cndtn_id 
+from access_views.ebay_trans_rltd_event --shows snapshot of item condition, used by Global team
+where item_id=185547295930
+order by 1;
+
+--Total 43 transactions
+--2022-09-02 to 2022-12-04 transactions have item_cndtn_id=2010
+--2023-03-14 to 2023-03-29 transactions have item_cndtn_id=2020
+--2023-03-30 transactions have item_cndtn_id=1000 as well as item_cndtn_id=2020
+--2023-03-30 to 2023-04-01 transactions have item_cndtn_id=2020
+--2023-04-10 to 2023-04-14 transactions have item_cndtn_id=1000
+--Trans_id=2454704535008 on 2023-04-13 (RW15), item_cndtn_id=1000
+select GMV_dt,ck_trans_id,item_cndtn_id from prs_restricted_v.slng_trans_super_fact
+where 
+item_id=185547295930
+and ck_wacko_yn = 'N'
+order by GMV_dt;
+
+--item_cndtn_id=1000
+select *
+from access_views.lstg_item_cndtn --shows latest listing condition
+where item_id=185547295930
+
+--Switched from Refurb - Very Good (2020) to New (1000) on 2023-04-14 for condition table used in the Focus Vertical WBR code, whereas super fact dataset switched to New (1000) between 2023-04-01 to 2023-04-10
+
+/*****Absent from Focus Vertical transaction dataset but present in super fact transaction dataset for refurb items*****/
+--82,365 rows
+select * from
+(select distinct GMV_dt as ft_GMV_dt, lstg_id as ft_item_id, ck_trans_id as ft_ck_trans_id, leaf_categ_id as fk_leaf_categ_id from focus_txn where item_cndtn_id in (2010,2020,2030)) a 
+full outer join
+(select distinct GMV_dt as txn_GMV_dt, item_id as txn_item_id, ck_trans_id as txn_ck_trans_id, leaf_categ_id as txn_leaf_categ_id from refurb_txn) b
+on a.ft_item_id=b.txn_item_id and  a.ft_ck_trans_id=b.txn_ck_trans_id
+where a.ft_item_id is null
+order by b.txn_GMV_dt desc;
+
+--Example https://www.ebay.co.uk/itm/144636620528 (De'Longhi Bean to Cup Coffee Machine Magnifica Evo ECAM290.61.SB - Refurbished)
+
+--Example https://www.ebay.co.uk/itm/285222093194 (SAMSUNG Galaxy S8 - S8+ - S9 - S9+ - S10 - S10e - 64GB - 128GB Unlocked Grade A+)
+--Trans_id: 2491203596018 (2023-04-13) not in Focus Vertical transaction dataset
+--Total 14 transactions
+--2023-04-06 to 2023-04-13 transactions have item_cndtn_id=1500 (New - Other)
+--2023-04-17 transactions have item_cndtn_id=2010 (Refurb - Excellent)
+select GMV_dt, item_cndtn_id, auct_titl, brand from access_views.focused_vert_txn
+where lstg_id=285222093194
+order by GMV_dt;
+
+--Total 14 transactions
+--2023-04-06 to 2023-04-13 transactions have item_cndtn_id=1500 (New - Other)
+--2023-04-17 transactions have item_cndtn_id=2010 (Refurb - Excellent)
+select GMV_dt,trans_id,item_cndtn_id 
+from access_views.ebay_trans_rltd_event --shows snapshot of item condition, used by Global team
+where item_id=285222093194
+order by 1;
+
+--Total 14 transactions
+--2023-04-06 to 2023-04-07 transactions have item_cndtn_id=1500 (New - Other)
+--2023-04-08 to 2023-04-17 transactions have item_cndtn_id=2010 (Refurb - Excellent)
+select GMV_dt,ck_trans_id,item_cndtn_id from prs_restricted_v.slng_trans_super_fact
+where 
+item_id=285222093194
+and ck_wacko_yn = 'N'
+order by GMV_dt;
+
+--item_cndtn_id=2010
+select *
+from access_views.lstg_item_cndtn --shows latest listing condition
+where item_id=285222093194
+
+--Switched from New - Other (1500) to Refurb - Excellent (2010) between 2023-04-13 and 2023-04-17 for condition table used in the Focus Vertical WBR code, whereas super fact dataset switched to Refurb - Excellent (2010) on 2023-04-08
+
+
+--US refurb dataset
+select * from access_views.rfrbshd_item_dtl
+where item_id=285222093194;
