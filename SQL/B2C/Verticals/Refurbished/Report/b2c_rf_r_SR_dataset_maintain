@@ -1,0 +1,448 @@
+/*Aim: Update list of SR categories to use in underlying code*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- 2022 Q1 SR Categories
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--SR category list
+select distinct categ_lvl2_name,categ_lvl2_id,categ_lvl3_id,categ_lvl4_id from access_views.dw_category_groupings 
+where categ_lvl2_id in (9355,178893,171485,175672,171957) and site_id=3
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- 2022 Q2 SR Categories
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select distinct 
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl3_id in (260325) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+when categ_lvl2_id in (63, 29223) then 'Collectibles'
+else bsns_vrtcl_name end as new_vertical
+,bsns_vrtcl_name,meta_categ_name,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name from access_views.dw_category_groupings 
+where site_id=3 and leaf_categ_id in (80053,1245,11205,131553,56083,106273,175669,175670,11071,22610,175711,11725,72406,139971,117042,171821,80077,112529,111694,14970,4787,3271,175708,4786,22635,14981,48647,14990,81741,48638,185053,184435)
+order by categ_lvl2_id,categ_lvl3_id,categ_lvl4_id
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- 2022 Q3 SR Categories (Some in H&G)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Add (70 -2 Italy only -1 duplicated=67) Q3 Leaf categories from GSheet as of 2022-05-17 (https://docs.google.com/spreadsheets/d/1VxPe0AC5PlE0N59FT-vt0SJCdPXdoSa1I0T5Z0cstqc/edit#gid=1551023337)
+select 
+distinct 
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl3_id in (260325) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+when categ_lvl2_id in (63, 29223) then 'Collectibles'
+else bsns_vrtcl_name end as new_vertical
+,bsns_vrtcl_name,meta_categ_name, categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name from access_views.dw_category_groupings 
+where site_id=3 and leaf_categ_id in (
+20614
+,38252
+,65643
+,184665
+,171754
+,156775
+,133701
+,20669
+,20670
+,169180
+,169181
+,170416
+,32883
+,122928
+,260310
+,66749
+,20680
+,185032
+,185013
+,20673
+,27552
+,185033
+,168754
+,20675
+,150139
+,184668
+,184667
+,121848
+,99633
+,177751
+,20676
+,122929
+,20677
+,178063
+,133705
+,66751
+,150140
+,122930
+,122931
+,66752
+,260311
+,99643
+,122932
+,134674
+,20681
+,20672
+,170730
+--,133701--Duplicated
+,133704
+,77285
+,69221
+,168763
+,54144
+,122933
+,179697
+,11724
+,3323
+,31388
+,50388
+,33082
+,71273
+,42226
+,71277
+--,262417--Italy only
+,42230
+,71266
+--,262419--Italy only
+,71268
+,177000
+,71307
+)
+order by categ_lvl2_id,categ_lvl3_id,categ_lvl4_id;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- 2023 Q1 SR Categories
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Add 53 Q1 Leaf categories from GSheet as of 2023-01-04 (https://ebayinc.sharepoint.com/:x:/r/sites/UKCertRefurb/_layouts/15/Doc.aspx?sourcedoc=%7BA969CAA8-5D5E-4ABA-97BF-051E9AF6CFAA%7D&file=Q1%202023%20launch%20categories.xlsx&wdLOR=c8F277441-2267-423D-8572-FA2F7F7FF171&action=default&mobileredirect=true)
+select 
+distinct 
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl3_id in (260325) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+when categ_lvl2_id in (63, 29223) then 'Collectibles'
+else bsns_vrtcl_name end as new_vertical
+,bsns_vrtcl_name,meta_categ_name, categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name from access_views.dw_category_groupings 
+where site_id=3 and leaf_categ_id in (
+15230
+,183063
+,183064
+,25321
+,42228
+,161001
+,169164
+,39019
+,79670
+,29519
+,84204
+,11858
+,36407
+,177659
+,32882
+,177753
+,101424
+,159902
+,43513
+,79656
+,177746
+,45734
+,20685
+,184654
+,184655
+,71296
+,168134
+,168135
+,42284
+,177016
+,260170
+,260171
+,122834
+,260172
+,20788
+,260173
+,122835
+,122836
+,122839
+,126396
+,185112
+,260443
+,260444
+,185111
+,43510
+,176937
+,79621
+,71240
+,20612
+,20613
+,185068
+,159909
+,115940
+)
+order by categ_lvl2_id,categ_lvl3_id,categ_lvl4_id;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- 2023 Q2 SR Categories (187 leaf categories due to launch on 2023-06-08 according to correspondance with Angie on 2023-04-20
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Add 187 2023 Q2 Leaf categories
+select 
+distinct 
+case when site_id = 3 and categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
+     when site_id = 3 and meta_categ_id in (26395) then 'Lifestyle'
+     when site_id = 3 and categ_lvl3_id in (260325) then 'Lifestyle'
+     when site_id = 3 and categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
+     when site_id = 3 and categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+     when site_id = 3 and categ_lvl3_id in (3244) then 'Parts & Accessories'
+     when site_id = 3 and categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+     when site_id = 3 and categ_lvl2_id in (46576) then 'Parts & Accessories'
+     when site_id = 3 and categ_lvl2_id in (63, 29223) then 'Collectibles'
+	 when site_id = 3 and meta_categ_id in (11450) then 'Fashion'
+     else bsns_vrtcl_name end as new_vertical
+,bsns_vrtcl_name,meta_categ_name,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,categ_lvl4_id,categ_lvl4_name,leaf_categ_id from access_views.dw_category_groupings 
+where site_id=3 and leaf_categ_id in (
+4689
+,15252
+,15256
+,83880
+,74927
+,29954
+,162044
+,3702
+,80183
+,3709
+,116309
+,75518
+,175679
+,4616
+,42014
+,164
+,131487
+,131486
+,131495
+,170078
+,131502
+,80151
+,131503
+,3673
+,27386
+,90715
+,44940
+,20318
+,90718
+,90719
+,175676
+,31568
+,31569
+,170083
+,1244
+,131511
+,170080
+,175668
+,42017
+,44980
+,3761
+,86720
+,175699
+,67286
+,67287
+,175704
+,51168
+,51167
+,64069
+,58317
+,58322
+,11209
+,44992
+,51199
+,64061
+,80216
+,11211
+,64052
+,184657
+,184658
+,175701
+,175702
+,184659
+,175703
+,56091
+,71509
+,56088
+,168074
+,11210
+,56090
+,56092
+,11180
+,51268
+,58319
+,58320
+,58321
+,61839
+,11175
+,61816
+,175710
+,58297
+,67262
+,61840
+,99269
+,11183
+,175709
+,44995
+,44996
+,3680
+,33963
+,23160
+,47779
+,51086
+,170
+,162075
+,122946
+,71250
+,71246
+,71318
+,71253
+,116023
+,71260
+,71262
+,155678
+,20713
+,177750
+,71254
+,71257
+,71256
+,20715
+,185045
+,185046
+,185047
+,185071
+,185055
+,185056
+,185061
+,185060
+,185059
+,185065
+,41373
+,33929
+,38331
+,40054
+,4669
+,163853
+,4673
+,40065
+,96966
+,149987
+,40979
+,15051
+,20381
+,48706
+,48707
+,48709
+,69962
+,182110
+,14985
+,91384
+,182111
+,48460
+,19699
+,19656
+,69967
+,50590
+,64606
+,64602
+,4785
+,69960
+,177023
+,177024
+,29945
+,30889
+,177022
+,12921
+,170089
+,183068
+,183069
+,184645
+,183071
+,183072
+,183073
+,73839
+,15053
+,15054
+,96954
+,15056
+,48626
+,48645
+,14971
+,48655
+,96964
+,175720
+,96969
+,183078
+,73368
+,183074
+,50595
+,48649
+,116868
+,50597
+,50596
+,73374
+,15088
+,175742
+,172510
+)
+order by categ_lvl2_id,categ_lvl3_id,categ_lvl4_id;
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Upload csv file
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--337 rows (L2, L3, L4 ID - Current methodology)
+select * from p_uk_bc_t.SR_categories order by launch_date,categ_lvl2_id;
+
+drop table if exists P_InventoryPlanning_T.SR_categories;
+create table P_InventoryPlanning_T.SR_categories as (select * from p_uk_bc_t.SR_categories order by cast(launch_date as date),launch_category);
+
+--337 rows
+select * from P_InventoryPlanning_T.SR_categories
+order by launch_date,categ_lvl2_id;
+
+
+--Upload csv file (leaf category ID) New methodology
+--349 rows
+select * from P_InventoryPlanning_T.SR_leaf_categories
+order by launch_date,umbrella_categ;
+
+
+
+
+
+
+/*
+--Danielle from the SSO team provided this dataset which she manages based on the GSheet working doc on 2022-10-02
+--GSheet: https://docs.google.com/spreadsheets/d/1VxPe0AC5PlE0N59FT-vt0SJCdPXdoSa1I0T5Z0cstqc/edit#gid=1551023337
+--109
+select * from P_Auditing_T.refurbished_expansion_categs
+where site=3;
+
+--105 rows (my list at L4)
+select * from p_uk_bc_t.SR_categories 
+
+--626 rows (my list at leaf cat)
+select 
+distinct
+a.*
+,leaf_categ_id
+,leaf_categ_name
+from p_uk_bc_t.SR_categories a
+left join access_views.dw_category_groupings b
+on a.categ_lvl2_id=b.categ_lvl2_id and a.categ_lvl3_id=b.categ_lvl3_id and a.categ_lvl4_id=b.categ_lvl4_id
+where b.site_id=3
+order by launch_date;
+*/

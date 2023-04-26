@@ -1,0 +1,109 @@
+ 
+------------------------------------------------------------------------------------------------------------
+-- .FREE SHIPPING
+------------------------------------------------------------------------------------------------------------
+ ---
+ Drop table if exists   P_ICHAN_T.b2c_pa_a_personalisation_delivery_times;
+--CREATE OR REPLACE TEMPORARY VIEW p2p_transactions AS 
+create table P_ICHAN_T.b2c_pa_a_personalisation_delivery_times as (
+SELECT
+lstg.SELLER_ID,
+ lstg.lstg_id,
+categ_lvl2_name,
+categ_lvl2_id
+--,CK_TRANS_ID
+--,CK_DT
+,lstg.HNDLNG_DAY_NUM,
+lkp.shpmt_mthd_id,
+i.shipping_method,
+lkp.SHPMT_MTHD_DESC,
+lkp.LCL_NAME,
+lkp.MIN_DLVRY_TM_IN_HOUR,
+lkp.API_SOAP_SRVC_CODE
+,lstg.lstg_end_dt
+--,CAST(lkp.Min_DLVRY_TM_IN_HOUR/24 AS DECIMAL (18,0)) min_dlvry_tm_in_hour
+,CASE WHEN lkp.Min_DLVRY_TM_IN_HOUR IS NULL THEN NULL
+	             WHEN lkp.Min_DLVRY_TM_IN_HOUR < 0 THEN NULL
+	             WHEN CAST(lkp.Min_DLVRY_TM_IN_HOUR/24 AS DECIMAL (18,0)) >= 6 THEN 6
+	             ELSE CAST(lkp.Min_DLVRY_TM_IN_HOUR/24 AS DECIMAL (18,0))
+	END AS SLA_P2P
+
+,CASE WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=1 THEN 1 
+	        ELSE 0 
+END AS PRO_1D_P2P
+
+	,CASE WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=1 THEN  1 
+	          WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=2 THEN  1 
+	          WHEN lstg.HNDLNG_DAY_NUM=1 AND SLA_P2P=1 THEN  1
+	          WHEN lstg.HNDLNG_DAY_NUM=1 AND SLA_P2P=0 THEN  1
+	          
+	          WHEN lstg.HNDLNG_DAY_NUM=2 AND SLA_P2P=1 THEN  1
+	          WHEN lstg.HNDLNG_DAY_NUM=1 AND SLA_P2P=2 THEN  1
+	          WHEN lstg.HNDLNG_DAY_NUM=0 AND SLA_P2P=3 THEN  1
+	          ELSE 0 
+	END AS PRO_3D_P2P
+
+	--,CASE WHEN PRO_3D_P2P=1 AND FACT.FREE_SHPNG_YN_IND='Y' THEN  1 ELSE 0 END AS PRO_3D_FREE_P2P 
+	,CASE WHEN PRO_3D_P2P=1 AND i.new_free_shpng_ind =1 THEN  1 ELSE 0 END AS PRO_3D_FREE_P2P 
+	--,case when FACT.FREE_SHPNG_YN_IND='Y' THEN  1 ELSE 0 End  as Free_shipping
+	,i.new_free_shpng_ind as Free_shipping
+,case when fact.shpmt_mthd_id in (301,302, 303,304,322,327,328,336,337,363,364,365, 366) then 1 else 0 end as shpmt_mthd_id_flag
+FROM ssa_shpmt_lstg_fact lstg -- select count(distinct lstg_id) from ssa_shpmt_lstg_fact where seller_id=141455937 and lstg_end_dt >= current_date lstg  limit 100
+--inner join P_ICHAN_T.recyclers_upload c on lst.slr_id=c.seller_id--   select * from P_ICHAN_T.recyclers_upload
+left join  DW_ITEMS_SHIPPING i on i.item_id=lstg.lstg_id-- = 402688783703 limit 10
+--left join DW_SHPMT_MTHD_LKP lk on lk.shpmt_mthd_id=i.shipping_method
+LEFT JOIN  SSA_SHPMT_TRANS_FACT FACT on lstg.lstg_id = fact.LSTG_ID and lstg.lstg_end_dt >= date_sub(current_date ,180) --  select * from SSA_SHPMT_TRANS_FACT FACT limit 10
+LEFT JOIN DW_SHPMT_MTHD_LKP LKP ON i.shipping_method=lkp.shpmt_mthd_id
+---LEFT JOIN ssa_shpmt_lstg_fact lstg on lstg.lstg_id = fact.LSTG_ID and lstg.lstg_end_dt >= date_sub(current_date , 60) 
+INNER JOIN ( select distinct  meta_categ_id, LEAF_CATEG_ID , SITE_ID ,  categ_lvl3_name,categ_lvl3_id ,categ_lvl2_name,categ_lvl2_id from DW_CATEGORY_GROUPINGS where site_id =3 and   categ_lvl2_id in (107059)) CAT
+							ON CAT.LEAF_CATEG_ID = lstg.LEAF_CATEG_ID AND CAT.SITE_ID = lstg.SELLER_SITE_ID   and cat.site_id = 3	
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lstg.LSTG_END_DT AND COND.ITEM_ID = lstg.LSTG_ID---  AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+WHERE -- fact.BUYER_CNTRY_ID=3
+lstg.SELLER_CNTRY_ID=3
+AND lstg.LSTG_SITE_ID=3
+
+--AND CK_DT between date_sub(current_date , 60) AND date_sub(current_date , 1)
+--AND CDE_MIN_DT=CDE_MAX_DT
+--AND fact.shpmt_mthd_id in (301,302, 303,304,322,327,328,336,337,363,364,365, 366)
+--AND CK_TRANS_ID<>0
+and lstg.lstg_end_dt >= CURRENT_DATE
+and lstg.seller_id in (
+941368740,
+1008203182,
+786749920,
+683414612,
+213962081,
+312205855
+
+));
+
+
+
+Drop table if exists  P_ICHAN_T.b2c_pa_a_personalisation_delivery_MAX;
+create table  P_ICHAN_T.b2c_pa_a_personalisation_delivery_MAX as (
+Select 
+Seller_id,
+lstg_id,
+--max(SLA_P2P ) AS MIN_DELIVERY_DAYS,
+--max(PRO_1D_P2P) AS  ONE_DAY,
+--max(PRO_3D_P2P) AS THREE_DAY,
+max(free_shipping) free_shipping,
+max(PRO_3D_FREE_P2P) as FREE_IN_3
+from  ( select distinct * from  P_ICHAN_T.b2c_pa_a_personalisation_delivery_times )
+group by 1,2 );
+--  select distinct * from  P_ICHAN_T.gp_heatmap_free_listings  where lstg_id= 363272334503
+
+Drop table if exists  P_ICHAN_T.b2c_pa_a_personalisation_delivery_OUTPUT;
+create table  P_ICHAN_T.b2c_pa_a_personalisation_delivery_OUTPUT as (
+Select 
+seller_id,
+--MIN_DELIVERY_DAYS,
+--ONE_DAY,
+--THREE_DAY,
+free_shipping,
+FREE_IN_3,
+count(distinct lstg_id) ll
+from P_ICHAN_T.b2c_pa_a_personalisation_delivery_MAX
+group by 1,2,3);
+
+SELECT * FROM  P_ICHAN_T.b2c_pa_a_personalisation_delivery_OUTPUT; 

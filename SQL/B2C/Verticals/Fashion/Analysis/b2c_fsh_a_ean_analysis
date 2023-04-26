@@ -1,0 +1,80 @@
+/*
+18/4/23 by O Wand 
+PURPOSE: Understand Sell Through Rates of Jigsaw and similar brands at an l2/l3/l4 level 
+Stakeholder: Omar Sheikh
+JIRA: https://jirap.corp.ebay.com/browse/UKPLAN-304
+
+*/ 
+DROP TABLE IF EXISTS P_OLWAND_T.202304_OS_Sell_Through_Jigsaw;
+CREATE TABLE P_OLWAND_T.202304_OS_Sell_Through_Jigsaw as 
+select 
+BRAND
+,CATEG_LVL2_NAME
+,CATEG_LVL3_NAME
+,CATEG_LVL4_NAME
+,no_sale_ind
+,CNDTN_DESC
+,Start_Price_Tranche
+,count(distinct SLR_ID) as sellers
+,count(distinct ITEM_ID) as item_cnt
+,sum(QTY_AVAIL) as QTY_AVAIL
+-- ,sum(QTY_SOLD) as QTY_SOLD
+,sum(CK_QTY_SOLD) as QTY_SOLD
+,sum(sale_duration) as sale_duration
+,sum(GMV) as GMV
+from (
+		select
+		lstg.DF_BRAND_TXT as brand
+		,lstg.item_id
+		,lstg.slr_id
+		,case lstg.ITEM_CNDTN_ID
+		when 1000 then 'New'
+		when 1500 then 'New - Other'
+		when 1750 then 'New - With defects'
+		when 2000 then 'Refurb - Certified'
+		when 2010 then 'Refurb - Excellent'
+		when 2020 then 'Refurb - Very Good'
+		when 2030 then 'Refurb - Good'
+		when 2500 then 'Refurb - Seller'
+		when 3000 then 'Used'
+		when 4000 then 'Used - Very Good'
+		when 5000 then 'Used - Good'
+		when 6000 then 'Used - Acceptable'
+		when 7000 then 'Used - For parts / not working' end as CNDTN_DESC
+		,CASE 		
+				WHEN lstg.START_PRICE_LSTG_CURNCY_AMT<20 THEN    'a. <20 GBP'		
+				WHEN lstg.START_PRICE_LSTG_CURNCY_AMT<50 THEN   'b. 20-50 GBP'		
+				WHEN lstg.START_PRICE_LSTG_CURNCY_AMT<75 THEN   'c. 50-75 GBP'		
+				WHEN lstg.START_PRICE_LSTG_CURNCY_AMT<100 THEN   'd. 75-100 GBP'	
+				WHEN lstg.START_PRICE_LSTG_CURNCY_AMT<200 THEN  'e. 100-200 GBP'		
+				WHEN lstg.START_PRICE_LSTG_CURNCY_AMT<500 THEN  'f. 200-500 GBP'	
+				WHEN lstg.START_PRICE_LSTG_CURNCY_AMT>=500 THEN 'g. >500 GBP' END AS Start_Price_Tranche
+		,cat.CATEG_LVL2_NAME
+		,cat.CATEG_LVL3_NAME
+		,cat.CATEG_LVL4_NAME
+		,sum(lstg.QTY_AVAIL) as QTY_AVAIL
+		,sum(lstg.QTY_SOLD) as QTY_SOLD
+		,sum(ck.QUANTITY) as CK_QTY_SOLD
+		,sum(ck.GMV20_PLAN) as GMV
+		,min(lstg.AUCT_START_DT) as start_dt
+		,coalesce(max(ck.gmv_dt),max(lstg.AUCT_END_DT)) as last_sale_dt
+		,case when sum(ck.QUANTITY) <= 0 then 1
+		when sum(ck.QUANTITY) is null then 1 else 0 end as NO_SALE_IND
+		,coalesce(last_sale_dt - start_dt + 1,0) as sale_duration
+		from PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+		inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.SITE_ID = 3
+		inner join ACCESS_VIEWS.DW_CAL_DT cal on cal.CAL_DT >= lstg.AUCT_START_DT and cal.CAL_DT <= lstg.AUCT_END_DT
+		and cal.AGE_FOR_RTL_WEEK_ID <= -1 and cal.AGE_FOR_RTL_YEAR_ID >= -1
+		left join PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck on lstg.ITEM_ID = ck.ITEM_ID and ck.SITE_ID = 3 and ck.RPRTD_WACKO_YN = 'N'
+
+		where 1=1
+		and lstg.DF_BRAND_TXT in ('Jigsaw','Vineyard Vines','Gap','American Eagle','Boohoo','Hollister','Mango')
+		and cat.NEW_VERTICAL = 'Fashion'
+		and cat.META_CATEG_ID = 11450 -- Clothes, Shoes and Accs
+		and lstg.LSTG_SITE_ID = 3
+		and lstg.B2C_C2C = 'B2C'
+
+		group by 1,2,3,4,5,6,7,8
+)
+group by 1,2,3,4,5,6,7
+;
