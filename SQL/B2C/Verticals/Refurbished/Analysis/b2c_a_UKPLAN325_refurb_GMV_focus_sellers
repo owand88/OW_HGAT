@@ -1,0 +1,53 @@
+/*
+UKPLAN-325
+Refurb GMV YTD from focus sellers (Urgent Murray Ask)
+*/
+
+create table p_uk_bc_t.refurb_focus_slr as (
+select
+retail_year
+,retail_week
+,ck.seller_id
+,usr.user_slctd_id as seller_name
+,case when bbe.item_cndtn_id = 2000 then 'Refurb - Certified'  
+	  when bbe.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when bbe.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when bbe.item_cndtn_id = 2030 then 'Refurb - Good'
+	  else 'Non-Refurb'
+	  end as item_condition
+,case when ck.site_id=3 then 'UK' else 'Non-UK' end as site
+,case when ck.slr_cntry_id != ck.byr_cntry_id then 'CBT' else 'DOM' end as DOM_CBT_flag
+,sum(ck.GMV_PLAN_USD) as tot_GMV
+,sum(ck.quantity) as tot_SI
+
+from access_views.dw_checkout_trans ck
+
+inner join access_views.dw_cal_dt as cal
+on cal.cal_dt = ck.gmv_dt
+and cal.age_for_rtl_year_id in (0,-1)
+and cal.age_for_rtl_week_id<=-1--Till 2023RW16
+
+inner join access_views.ebay_trans_rltd_event bbe
+on ck.item_id = bbe.item_id
+and ck.transaction_id = bbe.trans_id
+
+inner join p_inventoryplanning_t.dw_category_groupings_adj cat
+on ck.leaf_categ_id = cat.leaf_categ_id 
+and ck.site_id = cat.site_id
+
+inner join access_views.dw_users usr
+on ck.seller_id = usr.user_id
+
+left join (select distinct seller_id from P_awang_ops_t.seller_ops_83 
+		   where seller_id is not null) focus
+on ck.seller_id=focus.seller_id
+
+where
+ck.slr_cntry_id = 3
+and focus.seller_id is not null
+and bbe.item_cndtn_id in (2000,2010,2020,2030)
+and ck.ck_wacko_yn='N'
+and ! ck.sale_type in (10,12,14,15)
+
+group by 1,2,3,4,5,6,7
+);
