@@ -4,6 +4,12 @@ Requestor: Kevin Aloe (Collectibles)
 Developer: Gabriella Austin
 ********************************************************************************************************************/
 
+/******************************************************************************************************************** 
+Report: CCG Top Games Code for Weekly Report 
+Requestor: Kevin Aloe (Collectibles)
+Developer: Gabriella Austin
+********************************************************************************************************************/
+
 DROP TABLE IF EXISTS P_ukplan_report_T.Tab_Report_T1_CCG_ASPECTS;
 CREATE TEMPORARY TABLE P_ukplan_report_T.Tab_Report_T1_CCG_ASPECTS AS (
 SELECT DISTINCT
@@ -86,7 +92,7 @@ FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT TR
 INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT LI
 ON 			LI.ITEM_ID = TR.ITEM_ID
 
-LEFT JOIN 	P_GAAUSTIN_T.CCG_ASPECTS CCG
+LEFT JOIN 	P_ukplan_report_T.Tab_Report_T1_CCG_ASPECTS CCG
 ON 			LI.ITEM_ID = CCG.ITEM_ID
 AND 		LI.AUCT_END_DT = CCG.AUCT_END_DT
 
@@ -97,7 +103,6 @@ AND 		CAT.SITE_ID = 3
 
 INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT CAL 
 ON  		CAL.CAL_DT = TR.GMV_DT
-
 
 WHERE 		1=1
 AND 		case  when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
@@ -139,6 +144,7 @@ SELECT
 FROM P_ukplan_report_T.Tab_Report_T2_CCG_BASE
 GROUP BY 1,2,3,4,5,6
 );
+
 
 
 
