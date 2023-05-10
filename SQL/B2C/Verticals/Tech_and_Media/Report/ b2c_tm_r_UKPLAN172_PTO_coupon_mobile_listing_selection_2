@@ -1,0 +1,544 @@
+/*Process to select competitively priced listings for the weekly PTO coupon (UKPLAN-172)
+Code for initial discovery: https://github.ebay.com/uk-planning/uk-planning/blob/master/SQL/B2C/Verticals/Tech%20and%20Media/Analysis/b2c_tm_a_UKPLAN172_Lumina_Backmarket_PTO
+
+1.	Lumina sends report Tuesday morning
+2.  Bonnie completes file for PTO coupon listing selection by Wednesday morning. Notify Matt Potter & coupon analysts
+3.	Price override live on Thursday
+
+
+•	Select competitively priced listings 
+Criteria:
+CR/SR listings
+ebay pricing <= BM pricing (scraped Check Out Price + £3.99 service fee)
+
+•	Add a new flag to indicate if the competitively-priced listings should be selected for price-override.
+Criteria:
+1.	Seller standard is not “Below Standard”
+2.	Seller INR rate < 2% (0.02) and SNAD rate < 7% (0.07) --SNAD threshold changed to <5% on 2023-03-08 following Mark's feedback
+*/
+
+/*
+--33485 rows
+select count(*) from P_InventoryPlanning_T.Lumina_export_zeta;
+
+--9073 rows
+check row count
+select count(*) from P_InventoryPlanning_T.Lumina_export_zeta
+where eBayListingID is not null and eBayListingID <> 0;
+
+
+check data looks okay
+select *
+from P_InventoryPlanning_T.Lumina_export_zeta
+where eBayListingID is not null and eBayListingID <> 0
+limit 10
+*/
+
+drop table if exists lumina_export;
+create TEMPORARY table lumina_export as
+select distinct
+eb.ExportDate
+,eb.MWID
+,eb.CategoryName
+,eb.ProductName
+,eb.Brand
+,eb.Colour
+,eb.eBayListingID
+,eb.MemorySize
+,eb.ModelNo
+,eb.CurrentPrice as eB_CurrentPrice
+,eb.ShippingPrice as eB_ShippingPrice
+,eb.CheckOutPrice as eB_CheckOutPrice
+,eb.Seller as eB_Seller
+,bm.CurrentPrice as BM_CurrentPrice
+,bm.ShippingPrice as BM_ShippingPrice
+,bm.CheckOutPrice as BM_CheckOutPrice
+,bm.Seller as BM_Seller
+,coalesce(BM_CheckOutPrice+3.99,0.00) as BM_CheckOutPrice_plus_ServiceFee
+,case when BM_CheckOutPrice_plus_ServiceFee is null then 0 
+ when BM_CheckOutPrice_plus_ServiceFee = 0 then 0 
+else BM_CheckOutPrice_plus_ServiceFee - eB_CheckOutPrice end as price_amt_cheaper
+,std.seller_standard
+,case lstg.item_cndtn_id when 1000 then 'New'
+	  			when 1500 then 'New - Other'
+	  			when 1750 then 'New - With defects'
+	  			when 2000 then 'Refurb - Certified' 
+	  			when 2010 then 'Refurb - Excellent'
+	  			when 2020 then 'Refurb - Very Good'
+	  			when 2030 then 'Refurb - Good'
+	  			when 2500 then 'Refurb - Seller' 
+				when 3000 then 'Used'
+	  			when 4000 then 'Used - Very Good'
+	  			when 5000 then 'Used - Good'
+	  			when 6000 then 'Used - Acceptable'
+	  			when 7000 then 'Used - For parts / not working'
+	  			else 'Other' end as item_condition
+,case when msku.item_id is not null then 1 else 0 end as MSKU
+,user.user_id as seller_id
+,user.USER_SLCTD_ID as seller_name
+,inr_rate
+,snad_rate
+,case when eb.CheckOutPrice <= bm.CheckOutPrice + 3.99 then 1 else 0 end as comprice_flag
+,case when lstg.item_id is not null then 1 else 0 end as cr_sr_flag
+,case when user.user_id in (1046392160) and lstg.ITEM_CNDTN_ID in (2010,2020) then 1 -- musicmagpie refurb excellent or v-good
+	  when user.user_id in (1179924860,688643289) and lstg.ITEM_CNDTN_ID <= 2030 then 1 
+	  else 0 end as strategic_seller_include_flag
+,case when inr_rate <0.02 and snad_rate < 0.05  and std.sps_slr_level_cd <> 4 then 1 else 0 end as cps_include_flag
+,case when bm.eBayListingID is not null then 1 else 0 end as bm_in_stock_flag
+,case eb.CATEGORYNAME 
+			when 'Mobile Phones' then 1
+			when 'Appliances' then 2
+			when 'Computing' then 3
+			else 4 end as category_hierarchy		
+from P_InventoryPlanning_T.Lumina_export_zeta eb
+left join P_InventoryPlanning_T.Lumina_export_zeta bm on eb.MWID=bm.MWID and eb.eBayListingID=bm.eBayListingID
+													and bm.site='Backmarket' and bm.eBayListingID is not null and bm.eBayListingID <> 0
+
+/* listings */ 
+left join PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg on eb.EBAYLISTINGID = lstg.ITEM_ID 
+		and lstg.ITEM_CNDTN_ID between 2000 and 2500
+		and lstg.B2C_C2C = 'B2C'
+
+/* multi sku listings */
+left join (select distinct item_id from access_views.lstg_item_vrtn) MSKU on lstg.ITEM_ID = msku.item_id
+
+/* seller standards */
+left join 
+	(select 
+	user_id
+	,sps_slr_level_cd
+	,case when sps_slr_level_cd = 1 then 'Top Rated' 
+		  when sps_slr_level_cd = 2 then 'Above Standard' 
+		  when sps_slr_level_cd = 3 then 'Standard' 
+		  when sps_slr_level_cd = 4 then 'Below Standard' 
+		  else 'No seller standard' end as seller_standard
+	,last_eval_dt 
+	from prs_restricted_v.sps_level_metric_sum--released every 20th of the month
+	where sps_eval_type_cd = 1 and sps_prgrm_id = 3--Seller Standard evaluation type= Effective; Seller Performance Standard Program ID=UK
+	group by 1,2,3,4
+	qualify (row_number() over (partition by user_id order by last_eval_dt desc))=1) std
+on lstg.slr_id=std.user_id
+left join ACCESS_VIEWS.DW_USERS user on lstg.slr_id = user.user_id
+
+/*inr and snad rate l90 day pull */
+left join (
+select ck.SELLER_ID
+,sum(case when FINAL_CLAIM_TYPE_NAME like ('%INR') then 1 else 0 end)/count(distinct ck.TRANSACTION_ID) as INR_RATE
+,sum(case when FINAL_CLAIM_TYPE_NAME like ('%SNAD') then 1 else 0 end)/count(distinct ck.TRANSACTION_ID) as SNAD_RATE
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+inner join ACCESS_VIEWS.DW_CAL_DT cal on cal.CAL_DT = ck.GMV_DT
+and cal.AGE_FOR_DT_ID >= -91
+left join access_views.cps_embg_super_fact cps on ck.ITEM_ID = cps.ITEM_ID and ck.TRANSACTION_ID = cps.TRXN_ID
+group by 1
+) txn on lstg.slr_id = txn.seller_id
+
+where 1=1
+and eb.site = 'eBay'
+and eb.eBayListingID is not null 
+and eb.eBayListingID <> 0
+;
+/* check counts match original table */
+select 'Original' as table_type
+,count(*) from P_INVENTORYPLANNING_T.Lumina_export_zeta eb
+left join P_InventoryPlanning_T.Lumina_export_zeta bm on eb.MWID=bm.MWID and eb.eBayListingID=bm.eBayListingID
+													and bm.site='Backmarket' and bm.eBayListingID is not null and bm.eBayListingID <> 0
+where  eb.site = 'eBay'
+and eb.eBayListingID is not null 
+and eb.eBayListingID <> 0
+group by 1
+union 
+select 'New' as table_type
+,count(*) 
+from lumina_export
+group by 1
+;
+-- 3,636 rows
+
+/* check out lumina file */ 
+select *
+from lumina_export
+order by ebaylistingid
+;
+/* Create Waterfall final selection */
+select
+cr_sr_flag
+,case when strategic_seller_include_flag = 1 then 1 else cps_include_flag end as INR_SNAD_flag
+,bm_in_stock_flag
+,comprice_flag
+,count(*) as total
+,count(distinct eBayListingID) as listings
+,count(distinct eB_Seller) as sellers
+
+from lumina_export
+group by 1,2,3,4 
+order by 1,2,3,4 desc
+;
+
+
+/* apply ranking */
+drop table if exists lumina_export_2;
+create TEMPORARY table lumina_export_2 as
+select *
+,row_number() over (order by comprice_flag desc,price_amt_cheaper desc, category_hierarchy) as listing_rank
+from ( 
+select distinct eBayListingID
+,category_hierarchy
+,max(comprice_flag) as comprice_flag
+,max(price_amt_cheaper) as price_amt_cheaper
+from lumina_export
+where 1=1
+and cr_sr_flag = 1 -- item is certified or seller refurbished
+and (strategic_seller_include_flag = 1 -- strategic mobile seller inclusion
+or cps_include_flag = 1) -- inr < 5%, snad < 2% and seller is not below standard
+and bm_in_stock_flag = comprice_flag -- if item sold at backmarket the item must be lower in price
+group by 1,2
+)
+;
+/* check listings */
+
+select *
+from lumina_export_2
+order by listing_rank;
+ -- 501 item_ids
+
+/* create final table */ 
+drop table if exists lumina_export_3;
+create temporary table lumina_export_3 as
+select
+a.ExportDate as LuminaReportExport_dt
+,a.ebaylistingid as item_id
+,case when b.ebaylistingid is not null then 1 else 0 end as include_flag
+,a.item_condition
+,a.MSKU as MSKU_flag
+,a.seller_id
+,a.seller_name
+,a.seller_standard
+,a.inr_rate as INR_rate_L90D
+,a.snad_rate as SNAD_rate_L90D
+,a.eB_CheckOutPrice
+,a.BM_CheckOutPrice_plus_ServiceFee
+,a.price_amt_cheaper
+,a.BM_Seller
+,a.Brand
+,a.ModelNo
+,a.ProductName
+,a.Colour
+,a.MemorySize
+,a.eb_CurrentPrice
+,a.eB_ShippingPrice
+,a.BM_CurrentPrice
+,a.BM_ShippingPrice
+,a.BM_CheckOutPrice
+,a.MWID
+,b.listing_rank as include_rank
+
+from lumina_export a
+left join lumina_export_2 b on a.ebaylistingid = b.ebaylistingid
+;
+/* create sample report */
+drop table if exists P_OLWAND_T.lumina_export_fnl;
+create table P_OLWAND_T.lumina_export_fnl as
+select a.*
+,b.CategoryName
+from lumina_export_3 a
+left join lumina_export b on a.item_id = b.ebaylistingid
+;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Combine competitively priced products and those available on eBay, but not on BM or Out of stock on BM
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists adjustlumina_final;
+create temporary table adjustlumina_final as (
+--Competitively priced products
+with comp as (
+select 
+LuminaReportExport_dt
+,item_id
+,include_flag
+,item_condition
+,MSKU_flag
+,seller_id
+,seller_name
+,seller_standard
+,INR_rate_L90D
+,SNAD_rate_L90D
+,eB_CheckOutPrice
+,BM_CheckOutPrice_plus_ServiceFee
+,price_amt_cheaper
+,BM_Seller
+,Brand
+,ModelNo
+,ProductName
+,Colour
+,MemorySize
+,eb_CurrentPrice
+,eB_ShippingPrice
+,BM_CurrentPrice
+,BM_ShippingPrice
+,BM_CheckOutPrice
+,MWID
+,include_rank
+,include_rank as adjust_include_rank
+from adjustlumina
+)
+--Available on eBay, but not on BM or Out of stock on BM
+,ebay_only as (
+select 
+LuminaReportExport_dt
+,item_id
+,include_flag
+,item_condition
+,MSKU_flag
+,seller_id
+,seller_name
+,seller_standard
+,INR_rate_L90D
+,SNAD_rate_L90D
+,eB_CheckOutPrice
+,0.00 as BM_CheckOutPrice_plus_ServiceFee
+,0.00 as price_amt_cheaper
+," " as BM_Seller
+,Brand
+,ModelNo
+,ProductName
+,Colour
+,MemorySize
+,eb_CurrentPrice
+,eB_ShippingPrice
+,0.00 as BM_CurrentPrice
+,0.00 as BM_ShippingPrice
+,0.00 as BM_CheckOutPrice
+,MWID
+,0 as include_rank
+,adjust_include_rank+1000 as adjust_include_rank
+from ebay_only
+where include_flag=1
+)
+--Consider those listings with products present only on eBay but already selected due to consisting of competitively priced products
+,both as (
+select a.*
+from
+(select distinct item_id, include_rank from comp) a
+inner join
+(select distinct item_id from ebay_only)b
+on a.item_id = b.item_id
+)
+,combine as (
+select 
+a.LuminaReportExport_dt
+,a.item_id
+,a.include_flag
+,a.item_condition
+,a.MSKU_flag
+,a.seller_id
+,a.seller_name
+,a.seller_standard
+,a.INR_rate_L90D
+,a.SNAD_rate_L90D
+,a.eB_CheckOutPrice
+,a.BM_CheckOutPrice_plus_ServiceFee
+,a.price_amt_cheaper
+,a.BM_Seller
+,a.Brand
+,a.ModelNo
+,a.ProductName
+,a.Colour
+,a.MemorySize
+,a.eb_CurrentPrice
+,a.eB_ShippingPrice
+,a.BM_CurrentPrice
+,a.BM_ShippingPrice
+,a.BM_CheckOutPrice
+,a.MWID
+,case when b.item_id is not null then b.include_rank else a.adjust_include_rank end as adjust_include_rank
+from
+	(select * from comp
+	union all 
+	select * from ebay_only) a
+left join both b
+on a.item_id=b.item_id
+)
+,final_rank as (
+select 
+combine.* 
+,dense_rank() over (order by adjust_include_rank) as include_dense_rank_adjust
+from combine
+where include_flag=1
+)
+select
+a.LuminaReportExport_dt
+,a.item_id
+,a.include_flag
+,a.item_condition
+,a.MSKU_flag
+,a.seller_id
+,a.seller_name
+,a.seller_standard
+,a.INR_rate_L90D
+,a.SNAD_rate_L90D
+,a.eB_CheckOutPrice
+,a.BM_CheckOutPrice_plus_ServiceFee
+,a.price_amt_cheaper
+,a.BM_Seller
+,a.Brand
+,a.ModelNo
+,a.ProductName
+,a.Colour
+,a.MemorySize
+,a.eb_CurrentPrice
+,a.eB_ShippingPrice
+,a.BM_CurrentPrice
+,a.BM_ShippingPrice
+,a.BM_CheckOutPrice
+,a.MWID
+,b.include_dense_rank_adjust as include_rank
+from combine a
+left join final_rank b
+on a.MWID=b.MWID
+);
+
+--487+167 = 870 rows
+--To include all manual adjustment listings, the cap needs to increase to 289 for this week
+select * from adjustlumina_final
+order by include_flag desc,include_rank;
+
+--24 listings added after including competitively priced listings from musicmagpie (Excellent and Very Good) and onemoremobile (indicated by include_rank 166-180)
+--To maximise the 400 listing cap, another 30 listings from the pool of products identified to be available on eBay, but not on BackMacket or Out of Stock on Backmarket are added (these are indicated in Column B: include_rank 171 - 200)
+select * from adjustlumina
+order by include_flag desc, include_rank;
+
+--After the first manual adjustment, a total of 180 listings including 264 competitively priced products from 29 sellers are selected for the PTO coupon
+select 
+include_flag
+,case when include_rank <=400 then 1 else 0 end as include_top400_flag
+,count(*)
+,count(distinct MWID)
+,count(distinct item_id) 
+,count(distinct seller_id) 
+from adjustlumina--after 1st manual adjustment
+group by 1,2
+order by include_flag,include_top400_flag;
+
+--After the first and second manual adjustment, a total of 289 listings including 460 competitively priced or only-present on eBay CR/SR products from 35 sellers are selected for the PTO coupon
+select 
+include_flag
+,case when include_rank <=400 then 1 else 0 end as include_top400_flag
+,count(*)
+,count(distinct MWID)
+,count(distinct item_id) 
+,count(distinct seller_id) 
+from adjustlumina_final--after 2nd manual adjustment
+group by 1,2
+order by include_flag,include_top400_flag;
+
+drop table lumina;
+create temporary table lumina as (
+select * from adjustlumina_final
+);
+
+select * from lumina
+order by include_flag desc,include_rank;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Add latest data to master dataset for PTO coupon process
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--1. Create backup
+drop table if exists P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup;
+create table P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup
+as
+(select * from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO);
+
+--Check
+select LuminaReportExport_dt,count(*) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+group by 1 order by 1 desc;
+
+select LuminaReportExport_dt,count(*) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup
+group by 1 order by 1 desc;
+
+
+--2. Add data of latest week
+drop table if exists P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup_LatestWeekAdd;
+create table P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup_LatestWeekAdd
+as
+(
+select * from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup
+union all
+select * from lumina
+);
+
+--Check
+select LuminaReportExport_dt,count(*) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup_LatestWeekAdd
+group by 1 order by 1 desc;
+
+
+--3. Replace main table with backup
+drop table if exists P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO;
+create table P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+as (select * from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup_LatestWeekAdd);
+
+select LuminaReportExport_dt,count(*) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+group by 1 order by 1 desc;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Send to Matt/Mark for review
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--All competitively-priced products
+select 
+LuminaReportExport_dt
+,include_rank
+,MWID
+,item_id
+,item_condition
+,MSKU_flag
+,seller_id
+,seller_name
+,seller_standard
+,INR_rate_L90D
+,SNAD_rate_L90D
+,eB_CheckOutPrice
+,BM_CheckOutPrice_plus_ServiceFee
+,price_amt_cheaper
+,BM_Seller
+,Brand
+,ModelNo
+,ProductName
+,Colour
+,MemorySize
+,eb_CurrentPrice
+,eB_ShippingPrice
+,BM_CurrentPrice
+,BM_ShippingPrice
+,BM_CheckOutPrice
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+where 
+include_rank <=400
+and LuminaReportExport_dt = (select max(LuminaReportExport_dt) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO)
+order by include_flag desc, include_rank, MWID, item_id;
+
+--List of item_id (Also code used in the PTO coupon process)
+select distinct item_id,MSKU_flag,seller_name,include_rank
+from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+where 
+include_rank <=400
+and LuminaReportExport_dt = (select max(LuminaReportExport_dt) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO)
+order by include_rank;
+
+/*
+--Update dataset if further changes required after Matt's review
+
+create table P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_change as
+(select * from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO
+where  LuminaReportExport_dt <> '2023-04-11')
+
+select LuminaReportExport_dt,count(*) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_backup_LatestWeekAdd
+group by 1 order by 1 desc;
+
+select LuminaReportExport_dt,count(*) from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_change
+group by 1 order by 1 desc;
+
+drop table P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO;
+
+create table P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO as
+(select * from P_InventoryPlanning_T.Lumina_mobile_eb_bm_PTO_change);
+
+*/
