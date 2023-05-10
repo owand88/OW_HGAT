@@ -1,0 +1,159 @@
+/*•	Vertical: (P&A, H&G, Lifestyle, Tech, Collectibles, Fashion)
+•	Meta ID
+•	L2 category Id
+•	L2 category Name
+•	Seller group: Previous Pro Trader, Focus Seller , Other seller
+•	Last 12 month GMV
+•	Seller count
+*/-- select * from P_InventoryPlanning_T.pro_trader_previous_list ; 
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+-- 0. Pull base data table: Get GMV at seller and L2 level for all verticals by Seller Management
+-- 1. Summarise GMV data by Seller management by Vertical by L2
+-- 2. Summarise Count of seller id by Seller Management by Vertical ( Meta level)
+-- 3. Summarise Count of seller id by Seller Management by Vertical by L2
+-- 4. Pull seller id of eligible sellers
+ ----------------------------------------------------------------------------------------------------------------------------------------
+
+-- 0. 
+DROP TABLE IF EXISTS   P_INVENTORYPLANNING_T.pro_trader_category_selection_base  ; 
+CREATE TABLE  P_INVENTORYPLANNING_T.pro_trader_category_selection_base AS
+
+(SELect
+CK.SELLER_ID,
+--BSNS_VRTCL_NAME,
+NEW_VERTICAL,
+META_CATEG_ID,
+META_CATEG_NAME,
+categ_lvl2_id, 
+categ_lvl2_name, 
+---case when  slr_cntry_id = 3 and BYR_CNTRY_ID=3 and HIST.USEGM_ID = 206  then 'UK Dom B2C' when slr_cntry_id = 3  and HIST.USEGM_ID = 206 then  'B2C_CBT' 	else 'C2C' end as Bucket,
+CASE WHEN  FO.SELLER_ID=CK.SELLER_ID THEN 'Focus Seller'
+	when   pt.oracle_id=ck.seller_id and seller_signed_up ='TRUE' then 'OptIn PT'
+	when  pt.oracle_id=ck.seller_id and seller_signed_up ='FALSE' then 'OptOut PT'
+	else 'Eligible Seller' end as Seller_Management,
+	
+/*	
+	
+case WHEN   pt.oracle_id=ck.seller_id and seller_signed_up ='TRUE'  then  1 ELSE 0 END AS ProTrader_opt_in,
+case WHEN   pt.oracle_id=ck.seller_id and seller_signed_up ='FALSE'  then  1 ELSE 0 END AS ProTrader_opt_OUT,
+CASE WHEN FO.SELLER_ID=CK.SELLER_ID THEN 1 ELSE 0 END AS FOCUS_SELLER_2023Q2,
+*/
+SUM(CK.QUANTITY) AS BI,
+SUM(GMV_PLAN_USD) AS GMV
+FROM  DW_CHECKOUT_TRANS ck 
+INNER JOIN ( select CURNCY_ID, CURNCY_PLAN_RATE from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID     
+INNER JOIN P_INVENTORYPLANNING_T.dw_category_groupings_adj  AS CAT-- SELECT * FROM   P_INVENTORYPLANNING_T.dw_category_groupings_adj  cat where site_id =3  and  new_vertical ='Parts & Accessories' and  CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) LIMIT 1000; 
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID and CAT.SITE_ID =3 
+		AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+/*INNER JOIN ( select meta_categ_id, meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_id,
+LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID*/
+
+INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+        AND USEGM_ID = 206 
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5)AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+left outer JOIN DW_USERs U ON U.USER_ID= ck.seller_id 		
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT  AND age_for_rtl_week_id  >=-52  AND   age_for_rtl_week_id <= -1 
+      ---  AND CAL.AGE_FOR_RTL_YEAR_ID >= -2
+		---and age_for_rtl_week_id <= -1 AND age_for_rtl_week_id  >=-52 -- SELECT DISTINCT RETAIL_YEAR, RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT  WHERE  age_for_rtl_week_id  >=-52  AND   age_for_rtl_week_id <= -1 
+		---and  rtl_qtr_of_rtl_year_id = (select rtl_qtr_of_rtl_year_id from ACCESS_VIEWS.DW_CAL_DT where age_for_rtl_week_id = -1 group by 1)
+
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+LEFT JOIN  ( SELECT DISTINCT SELLER_ID FROM P_awang_ops_t.seller_ops_83 ) FO ON FO.SELLER_ID=CK.SELLER_ID
+left join  ( select distinct oracle_id, max(seller_signed_up )  seller_signed_up FROM P_InventoryPlanning_T.pro_trader_previous_list group by 1) pt on pt.oracle_id=ck.seller_id
+WHERE 1=1
+and  SLR_CNTRY_ID = 3 --UK sellers
+and  BYR_CNTRY_ID = 3 --UK buyers
+and ck.site_id = 3 
+AND RPRTD_WACKO_YN = 'N'
+And u.USER_DSGNTN_ID =2 
+AND AUCT_END_DT >= '2017-12-20'
+AND CREATED_DT >= '2017-12-20'    
+AND NEW_VERTICAL  IN (
+'Lifestyle',
+'Media',
+'Home & Garden',
+'Collectibles',
+'Lifestyle',
+'Fashion',
+'Parts & Accessories',
+'Business & Industrial',
+'Electronics'	)
+GROUP BY 1,2,3,4,5,6,7) ;
+-- 2070491  
+
+--select new_vertical,Seller_management, sum(GMV)  from   P_INVENTORYPLANNING_T.pro_trader_category_selection_l2  GROUP BY 1 ,2  ;
+-- 1. 
+drop table if exists   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_1  ;
+CREATE TABLE  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_1 as 
+select NEW_VERTICAL,	
+Seller_Management,
+count(distinct seller_id) seller_id,
+sum(GMV) GMV,
+sum(BI) BI 
+from P_INVENTORYPLANNING_T.pro_trader_category_selection_base
+group by 1,2; 
+-- 32 
+
+-- 2. 
+---
+drop table if exists   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_2  ; 
+CREATE TABLE  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_2 as 
+select NEW_VERTICAL,	
+META_CATEG_ID	,
+META_CATEG_NAME	,
+Seller_Management,
+count(distinct seller_id) seller_id,
+sum(GMV) GMV,
+sum(BI) BI 
+from  P_INVENTORYPLANNING_T.pro_trader_category_selection_base  
+group by 1,2,3,4; 
+--  
+select * from P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_1 limit 1000; 
+
+---3
+drop table if exists   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_3 ; 
+CREATE TABLE  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_3 as 
+select NEW_VERTICAL,	
+META_CATEG_ID	,
+META_CATEG_NAME	,
+categ_lvl2_id	,
+categ_lvl2_name,
+Seller_Management,
+count(distinct seller_id) seller_id,
+sum(GMV) GMV,
+sum(BI) BI 
+from  P_INVENTORYPLANNING_T.pro_trader_category_selection_base  
+group by 1,2,3,4,5,6; 
+--  
+
+--4. 
+drop table if exists   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_4 ;
+CREATE TABLE  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_4 as
+select * 
+from P_INVENTORYPLANNING_T.pro_trader_category_selection_base
+where Seller_management ='Eligible Seller'
+; 
+-- 
+--select count(* ) from P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_4 where   BI >= 500  ; 
+--select * from P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_4 where   BI >= 20   limit 1000; 
+/*
+drop table  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_rank ; 
+CREATE TABLE  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_rank as 
+SELECT * FROM (
+SELECT 
+ROW_NUMBER ( )   
+    OVER ( partition by new_vertical ORDER BY GMV DESC  )   AS RANK, * 
+FROM (SELECT SELLER_ID, new_vertical, SUM(GMV) GMV FROM   P_INVENTORYPLANNING_T.pro_trader_category_selection_base  GROUP BY 1,2) )
+	WHERE 1=1 and Rank <=1100 ; 
+*/
+
