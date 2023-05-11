@@ -46,15 +46,33 @@ From
 				OR (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) --Jewellery
 				)
 	inner join
-		(select item_id
-		,case when BIZ_PRGRM_NAME = 'PSA_SNEAKER_EBAY_UK' then 'Sneakers'
-			when BIZ_PRGRM_NAME = 'PSA_HANDBAGS_UK' then 'Handbags'
-			when BIZ_PRGRM_NAME = 'PSA_WATCHES_UK' then 'Watches'
-			Else 'Other' End as category
-		 from access_views.DW_PES_ELGBLT_HIST
-		where biz_prgrm_name in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK')
-			and ELGBL_YN_IND = 'Y'
-	-- 		and coalesce( auct_end_date, '2099-12-31') >= CURRENT_DATE-7
+		(select item_id, category
+		From
+			(select item_id
+			,case when BIZ_PRGRM_NAME = 'PSA_SNEAKER_EBAY_UK' then 'Sneakers'
+				when BIZ_PRGRM_NAME = 'PSA_HANDBAGS_UK' then 'Handbags'
+				when BIZ_PRGRM_NAME = 'PSA_WATCHES_UK' then 'Watches'
+				Else 'Other' End as category
+			 from access_views.DW_PES_ELGBLT_HIST
+			where biz_prgrm_name in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK')
+				and ELGBL_YN_IND = 'Y'
+		-- 		and coalesce( auct_end_date, '2099-12-31') >= CURRENT_DATE-7
+			Group by 1,2
+
+			UNION ALL
+
+			Select ITEM_ID
+			,'Jewellery' as category
+			From PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+			inner join time_frame cal
+				on lstg.AUCT_START_DT <= cal.cal_dt
+				and lstg.AUCT_END_DT >= cal.cal_dt
+			where (case when START_PRICE_LSTG_CURNCY_AMT > RSRV_PRICE_LSTG_CURNCY_AMT then START_PRICE_LSTG_CURNCY_AMT else RSRV_PRICE_LSTG_CURNCY_AMT End) >= 500
+			and SLR_CNTRY_ID = 3
+			and LSTG_SITE_ID = 3
+			and META_CATEG_ID = 281
+			AND CATEG_LVL2_ID <> 260324
+			Group by 1,2)
 		Group by 1,2
 		) PSA
 			on ck.ITEM_ID = psa.item_id
@@ -118,15 +136,33 @@ From
 				OR (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) --Jewellery
 				)
 	inner join
-		(select item_id
-		,case when BIZ_PRGRM_NAME = 'PSA_SNEAKER_EBAY_UK' then 'Sneakers'
-			when BIZ_PRGRM_NAME = 'PSA_HANDBAGS_UK' then 'Handbags'
-			when BIZ_PRGRM_NAME = 'PSA_WATCHES_UK' then 'Watches'
-			Else 'Other' End as category
-		 from access_views.DW_PES_ELGBLT_HIST
-		where biz_prgrm_name in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK')
-			and ELGBL_YN_IND = 'Y'
-	-- 		and coalesce( auct_end_date, '2099-12-31') >= CURRENT_DATE-7
+		(select item_id, category
+		From
+			(select item_id
+			,case when BIZ_PRGRM_NAME = 'PSA_SNEAKER_EBAY_UK' then 'Sneakers'
+				when BIZ_PRGRM_NAME = 'PSA_HANDBAGS_UK' then 'Handbags'
+				when BIZ_PRGRM_NAME = 'PSA_WATCHES_UK' then 'Watches'
+				Else 'Other' End as category
+			 from access_views.DW_PES_ELGBLT_HIST
+			where biz_prgrm_name in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK')
+				and ELGBL_YN_IND = 'Y'
+		-- 		and coalesce( auct_end_date, '2099-12-31') >= CURRENT_DATE-7
+			Group by 1,2
+
+			UNION ALL
+
+			Select ITEM_ID
+			,'Jewellery' as category
+			From PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+			inner join time_frame cal
+				on lstg.AUCT_START_DT <= cal.cal_dt
+				and lstg.AUCT_END_DT >= cal.cal_dt
+			where (case when START_PRICE_LSTG_CURNCY_AMT > RSRV_PRICE_LSTG_CURNCY_AMT then START_PRICE_LSTG_CURNCY_AMT else RSRV_PRICE_LSTG_CURNCY_AMT End) >= 500
+			and SLR_CNTRY_ID = 3
+			and LSTG_SITE_ID = 3
+			and META_CATEG_ID = 281
+			AND CATEG_LVL2_ID <> 260324
+			Group by 1,2)
 		Group by 1,2
 		) PSA
 			on ck.ITEM_ID = psa.item_id
@@ -192,15 +228,33 @@ INNER JOIN DW_CATEGORY_GROUPINGS CAT
 			OR (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) --Jewellery
 			)
 	inner join
-		(select item_id
-		,case when BIZ_PRGRM_NAME = 'PSA_SNEAKER_EBAY_UK' then 'Sneakers'
-			when BIZ_PRGRM_NAME = 'PSA_HANDBAGS_UK' then 'Handbags'
-			when BIZ_PRGRM_NAME = 'PSA_WATCHES_UK' then 'Watches'
-			Else 'Other' End as category
-		 from access_views.DW_PES_ELGBLT_HIST
-		where biz_prgrm_name in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK')
-			and ELGBL_YN_IND = 'Y'
-	-- 		and coalesce( auct_end_date, '2099-12-31') >= CURRENT_DATE-7
+		(select item_id, category
+		From
+			(select item_id
+			,case when BIZ_PRGRM_NAME = 'PSA_SNEAKER_EBAY_UK' then 'Sneakers'
+				when BIZ_PRGRM_NAME = 'PSA_HANDBAGS_UK' then 'Handbags'
+				when BIZ_PRGRM_NAME = 'PSA_WATCHES_UK' then 'Watches'
+				Else 'Other' End as category
+			 from access_views.DW_PES_ELGBLT_HIST
+			where biz_prgrm_name in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK')
+				and ELGBL_YN_IND = 'Y'
+		-- 		and coalesce( auct_end_date, '2099-12-31') >= CURRENT_DATE-7
+			Group by 1,2
+
+			UNION ALL
+
+			Select ITEM_ID
+			,'Jewellery' as category
+			From PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+			inner join time_frame cal
+				on lstg.AUCT_START_DT <= cal.cal_dt
+				and lstg.AUCT_END_DT >= cal.cal_dt
+			where (case when START_PRICE_LSTG_CURNCY_AMT > RSRV_PRICE_LSTG_CURNCY_AMT then START_PRICE_LSTG_CURNCY_AMT else RSRV_PRICE_LSTG_CURNCY_AMT End) >= 500
+			and SLR_CNTRY_ID = 3
+			and LSTG_SITE_ID = 3
+			and META_CATEG_ID = 281
+			AND CATEG_LVL2_ID <> 260324
+			Group by 1,2)
 		Group by 1,2
 		) PSA
 			on ck.ITEM_ID = psa.item_id
