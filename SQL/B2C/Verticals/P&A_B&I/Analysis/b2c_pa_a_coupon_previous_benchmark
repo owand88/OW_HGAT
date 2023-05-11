@@ -1,0 +1,130 @@
+-- UKPLAN-240
+-- P&A is going to have a Vertical only 10% off Coupon in week 15 2023 ( Coupon name: SCORE10)
+-- Belower query looks at previous coupon performance at 10%, 15% and 20 % discount level
+-- Requested by Manish 
+
+/*
+Discount	
+Average Number of days	
+Count of coupon_name	
+Seller Per Coupon	
+coupon_gmb per coupon	
+coupon_spend per coupon	
+GMB per seller per coupon	
+Spend per seller per coupon	
+GMB per seller per day	
+Spend per seller per day*/
+
+------
+------
+------
+------
+-------
+
+drop table  if exists P_INVENTORYPLANNING_T.Coupon_PA_vertical_takeover;
+create table P_INVENTORYPLANNING_T.Coupon_PA_vertical_takeover as (
+select  
+datediff(end_date, '1970-01-01') - datediff(start_date, '1970-01-01') AS Number_of_days,
+month(start_date) as  Month ,
+b.USER_SLCTD_ID,
+a.* 
+from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1  a 
+left join ACCESS_VIEWS.dw_users b on a.slr_id=b.user_id  -- help table dw_users
+where retail_year >=2023
+and vertical in('Parts & Accessories')
+ and promotion_type ='seller coupon'); 
+ 
+select * from  P_INVENTORYPLANNING_T.Coupon_PA_vertical_takeover limit 100; 
+ 
+-- Combine view
+ Select  distinct 
+  Number_of_days,
+coupon_name
+,discount_offer
+ from  P_INVENTORYPLANNING_T.Coupon_PA_vertical_takeover
+ where discount_offer =0.1
+union all 
+  Select  distinct 
+  Number_of_days,
+coupon_name,discount_offer
+ from  P_INVENTORYPLANNING_T.Coupon_PA_vertical_takeover
+ where discount_offer =0.15
+ union all
+  Select  distinct 
+  Number_of_days,
+coupon_name,discount_offer
+ from  P_INVENTORYPLANNING_T.Coupon_PA_vertical_takeover
+ where discount_offer =0.2
+ ;;
+ ------
+------
+------
+------
+-------
+ select DISTINCT REDMD_DATE, CRE_DATE, SUM(GMB) FROM  prs_restricted_v.DW_EIP_LYLTY_RED_REF where INCNTV_CD in ('SCORE10') GROUP BY 1,2  limit 1000;
+
+
+ --1. Can we get this RRP YoY broken down by L4?
+/*CREATE TABLE P_ICHAN_T.PA_RPP_YOY AS
+-- tyres inventory prop
+drop table  if exists P_ICHAN_T.PA_RPP_YOY;
+create table P_ICHAN_T.PA_RPP_YOY as 
+(
+Select 
+Retail_year,
+Retail_week,
+Vertical,
+Inventory_Prop,
+Inventory_prop_flag,
+Categ_lvl2_name,
+Categ_lvl3_name,
+--Seller_id,
+--SELLER,
+PROMOTION_TYPE,
+--PROMOTION_NAME,
+SUM(PROMOTION_GMV) PROMOTION_GMV,
+SUM(LISTING_CNT) LISTING_CNT
+FROM P_SLR_TRACKER_T.seller_union_all_hist -- SELECT * FROM  P_SLR_TRACKER_T.seller_union_all_hist  WHERE 1=1 and Vertical in('Parts & Accessories') and Retail_year>= 2022
+WHERE 1=1
+and Vertical in('Parts & Accessories')
+and Retail_year>= 2022
+
+and  promotion_type in (
+
+'RPP') 
+GROUP BY 1,2,3,4,5,6,7,8
+);
+*/
+---SE--ECT * FROM  P_ICHAN_T.PA_trade_promotions WHERE PROMOTION_TYPE LIKE '%DAIL%'
+/*
+drop table  if exists P_ICHAN_T.PA_trade_promotions;
+create table P_ICHAN_T.PA_trade_promotions as 
+(
+Select 
+Retail_year,
+Retail_week,
+Vertical,
+
+PROMOTION_TYPE,
+PROMOTION_NAME,
+SUM(PROMOTION_GMV) PROMOTION_GMV,
+SUM(LISTING_CNT) LISTING_CNT
+FROM P_SLR_TRACKER_T.seller_union_all_hist -- SELECT * FROM  P_SLR_TRACKER_T.seller_union_all_hist  WHERE 1=1 and Vertical in('Parts & Accessories') and Retail_year>= 2022
+WHERE 1=1
+and Vertical in('Parts & Accessories')
+and Retail_year>= 2022 
+and retail_week between 1 and 16
+GROUP BY 1,2,3,4,5) ; 
+
+select Retail_year,
+Retail_week,
+Vertical,
+
+PROMOTION_TYPE,
+SUM(PROMOTION_GMV) PROMOTION_GMV,
+SUM(LISTING_CNT) LISTING_CNT from P_ICHAN_T.PA_trade_promotions
+WHERE
+promotion_type in ( 'COUPON', '','RPP','DAILY DEALS')
+GROUP BY 1,2,3,4
+limit 1000; 
+*/
