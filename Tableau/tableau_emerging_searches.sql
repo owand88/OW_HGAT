@@ -279,8 +279,8 @@ with base as (
 	,retail_year
 	,retail_week
 	,retail_wk_end_date
-	,'Overall '||row_number() over (order by LW desc) as vertical_rank
-	,row_number() over (order by LW desc) as rank
+	,'Overall '||row_number() over (order by LW_LW_1_pct_diff desc) as vertical_rank
+	,row_number() over (order by LW_LW_1_pct_diff desc) as rank
 	,search_input
 	,adjusted_vertical
 	,L2
