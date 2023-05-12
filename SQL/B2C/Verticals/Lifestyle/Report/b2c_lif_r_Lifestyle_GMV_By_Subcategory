@@ -46,6 +46,7 @@ inner join
 			,site_id
 			,new_vertical
 	FROM P_INVENTORYPLANNING_T.dw_category_groupings_adj 
+	Where new_vertical = 'Lifestyle'
 	) CAT
 		ON lstg.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
 		AND cat.site_id = 3
@@ -80,8 +81,8 @@ SELECT
 ,lstg.CATEG_LVL3_NAME
 ,lstg.CATEG_LVL4_NAME
 ,lstg.new_vertical
-,count(distinct case when retail_year = 2022 then lstg.item_id End) as TY_LL
-,count(distinct case when retail_year = 2021 then lstg.item_id End) as LY_LL
+,count(distinct case when retail_year = 2023 then lstg.item_id End) as TY_LL
+,count(distinct case when retail_year = 2022 then lstg.item_id End) as LY_LL
 
 FROM (Select *
 	From 
@@ -99,7 +100,7 @@ FROM (Select *
 	Where new_vertical = 'Lifestyle') lstg
 INNER JOIN DW_CAL_DT CAL
 			ON lstg.AUCT_START_DT < cal.cal_dt and lstg.AUCT_END_DT >= cal.CAL_DT
-			and (RETAIL_YEAR in (2021,2022)) and
+			and (RETAIL_YEAR >= (select retail_year from ACCESS_VIEWS.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1) and
 			(RETAIL_WEEK between 1
 			and (select RETAIL_WEEK from DW_CAL_DT CAL where AGE_FOR_RTL_WEEK_ID = -1 Group by 1))	
 INNER JOIN DW_USERS u
@@ -137,11 +138,11 @@ SELECT
 ,trfc.CATEG_LVL2_NAME
 ,trfc.CATEG_LVL3_NAME
 ,trfc.CATEG_LVL4_NAME
-,new_vertical
-,sum(case when RETAIL_YEAR = 2022 then trfc.TTL_VI_CNT End) as TY_VI
-,sum(case when RETAIL_YEAR = 2021 then trfc.TTL_VI_CNT End) as LY_VI
-,sum(case when RETAIL_YEAR = 2022 then trfc.SRP_IMPRSN_CNT End) as TY_IMP
-,sum(case when RETAIL_YEAR = 2021 then trfc.SRP_IMPRSN_CNT End) as LY_IMP
+,trfc.new_vertical
+,sum(case when RETAIL_YEAR = 2023 then trfc.TTL_VI_CNT End) as TY_VI
+,sum(case when RETAIL_YEAR = 2022 then trfc.TTL_VI_CNT End) as LY_VI
+,sum(case when RETAIL_YEAR = 2023 then trfc.SRP_IMPRSN_CNT End) as TY_IMP
+,sum(case when RETAIL_YEAR = 2022 then trfc.SRP_IMPRSN_CNT End) as LY_IMP
 
 FROM (Select *
 	From 
@@ -159,7 +160,7 @@ FROM (Select *
 	Where new_vertical = 'Lifestyle') trfc		
 INNER JOIN DW_CAL_DT CAL
 			ON trfc.cal_dt = cal.CAL_DT
-			and (RETAIL_YEAR in (2021,2022)) and
+			and (RETAIL_YEAR >= (select retail_year from ACCESS_VIEWS.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1) and
 			(RETAIL_WEEK between 1
 			and (select RETAIL_WEEK from DW_CAL_DT CAL where AGE_FOR_RTL_WEEK_ID = -1 Group by 1))	
 INNER JOIN DW_USERS u
@@ -195,10 +196,10 @@ SELECT
 ,ck.CATEG_LVL3_NAME
 ,ck.CATEG_LVL4_NAME
 ,ck.new_vertical
-,sum(case when retail_year = 2022 then ck.GMV20_PLAN End) as TY_GMV
-,sum(case when retail_year = 2021 then ck.GMV20_PLAN End) as LY_GMV
-,sum(case when retail_year = 2022 then ck.GMV20_SOLD_QUANTITY End) as TY_SI
-,sum(case when retail_year = 2021 then ck.GMV20_SOLD_QUANTITY End) as LY_SI
+,sum(case when retail_year = 2023 then ck.GMV20_PLAN End) as TY_GMV
+,sum(case when retail_year = 2022 then ck.GMV20_PLAN End) as LY_GMV
+,sum(case when retail_year = 2023 then ck.GMV20_SOLD_QUANTITY End) as TY_SI
+,sum(case when retail_year = 2022 then ck.GMV20_SOLD_QUANTITY End) as LY_SI
 
 FROM (Select *
 	From 
@@ -216,7 +217,7 @@ FROM (Select *
 	Where new_vertical = 'Lifestyle') ck 
 INNER JOIN DW_CAL_DT CAL
 			ON ck.gmv_dt = cal.CAL_DT
-			and (RETAIL_YEAR in (2019,2020,2021,2022)) and
+			and (RETAIL_YEAR >= (select retail_year from ACCESS_VIEWS.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1) and
 			(RETAIL_WEEK between 1
 			and (select RETAIL_WEEK from DW_CAL_DT CAL where AGE_FOR_RTL_WEEK_ID = -1 Group by 1))	
 INNER JOIN DW_USERS u
@@ -297,12 +298,12 @@ retail_week
 ,ck.CATEG_LVL2_NAME
 ,ck.CATEG_LVL3_NAME
 ,ck.new_vertical
-,sum(case when retail_year = 2022 then ck.GMV20_PLAN End) as TY_GMV
-,sum(case when retail_year = 2021 then ck.GMV20_PLAN End) as LY_GMV
-,sum(case when retail_year = 2020 then ck.GMV20_PLAN End) as 2LY_GMV
-,sum(case when retail_year = 2019 then ck.GMV20_PLAN End) as 3LY_GMV
-,sum(case when retail_year = 2022 then ck.GMV20_SOLD_QUANTITY End) as TY_SI
-,sum(case when retail_year = 2021 then ck.GMV20_SOLD_QUANTITY End) as LY_SI
+,sum(case when retail_year = 2023 then ck.GMV20_PLAN End) as TY_GMV
+,sum(case when retail_year = 2022 then ck.GMV20_PLAN End) as LY_GMV
+,sum(case when retail_year = 2021 then ck.GMV20_PLAN End) as 2LY_GMV
+,sum(case when retail_year = 2020 then ck.GMV20_PLAN End) as 3LY_GMV
+,sum(case when retail_year = 2023 then ck.GMV20_SOLD_QUANTITY End) as TY_SI
+,sum(case when retail_year = 2022 then ck.GMV20_SOLD_QUANTITY End) as LY_SI
 
 FROM (Select *
 	From 
@@ -319,7 +320,7 @@ FROM (Select *
 	Where new_vertical = 'Lifestyle') ck 
 INNER JOIN DW_CAL_DT CAL
 			ON ck.gmv_dt = cal.CAL_DT
-			and (RETAIL_YEAR in (2019,2020,2021,2022))
+			and (RETAIL_YEAR >= (select retail_year from ACCESS_VIEWS.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1)
 INNER JOIN DW_USERS u
 			on u.user_id = ck.SELLER_ID
 LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
@@ -390,8 +391,8 @@ SELECT
 ,0 as LY_GMV
 ,0 as TY_SI
 ,0 as LY_SI
-,count(distinct case when retail_year = 2022 then lstg.item_id End) as TY_LL
-,count(distinct case when retail_year = 2021 then lstg.item_id End) as LY_LL
+,count(distinct case when retail_year = 2023 then lstg.item_id End) as TY_LL
+,count(distinct case when retail_year = 2022 then lstg.item_id End) as LY_LL
 
 
 FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg	
@@ -442,10 +443,10 @@ SELECT
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
 ,cat.new_vertical
-,sum(case when retail_year = 2022 then ck.GMV20_PLAN End) as TY_GMV
-,sum(case when retail_year = 2021 then ck.GMV20_PLAN End) as LY_GMV
-,sum(case when retail_year = 2022 then ck.GMV20_SOLD_QUANTITY End) as TY_SI
-,sum(case when retail_year = 2021 then ck.GMV20_SOLD_QUANTITY End) as LY_SI
+,sum(case when retail_year = 2023 then ck.GMV20_PLAN End) as TY_GMV
+,sum(case when retail_year = 2022 then ck.GMV20_PLAN End) as LY_GMV
+,sum(case when retail_year = 2023 then ck.GMV20_SOLD_QUANTITY End) as TY_SI
+,sum(case when retail_year = 2022 then ck.GMV20_SOLD_QUANTITY End) as LY_SI
 ,0 as TY_LL
 ,0 as LY_LL
 
@@ -541,8 +542,8 @@ SELECT
 ,0 as LY_SI
 ,0 as TY_GMV_POUNDS
 ,0 as LY_GMV_POUNDS
-,count(distinct case when retail_year = 2022 then lstg.item_id End) as TY_LL
-,count(distinct case when retail_year = 2021 then lstg.item_id End) as LY_LL
+,count(distinct case when retail_year = 2023 then lstg.item_id End) as TY_LL
+,count(distinct case when retail_year = 2022 then lstg.item_id End) as LY_LL
 
 
 FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg	
@@ -626,12 +627,12 @@ SELECT
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
 ,cat.CATEG_LVL3_NAME
-,sum(case when retail_year = 2022 then ck.GMV20_PLAN End) as TY_GMV
-,sum(case when retail_year = 2021 then ck.GMV20_PLAN End) as LY_GMV
-,sum(case when retail_year = 2022 then ck.GMV20_SOLD_QUANTITY End) as TY_SI
-,sum(case when retail_year = 2021 then ck.GMV20_SOLD_QUANTITY End) as LY_SI
-,sum(case when RETAIL_YEAR = 2022 then ck.GMV20_LC_AMT End) as TY_GMV_POUNDS
-,sum(case when RETAIL_YEAR = 2021 then ck.GMV20_LC_AMT End) as LY_GMV_POUNDS
+,sum(case when retail_year = 2023 then ck.GMV20_PLAN End) as TY_GMV
+,sum(case when retail_year = 2022 then ck.GMV20_PLAN End) as LY_GMV
+,sum(case when retail_year = 2023 then ck.GMV20_SOLD_QUANTITY End) as TY_SI
+,sum(case when retail_year = 2022 then ck.GMV20_SOLD_QUANTITY End) as LY_SI
+,sum(case when RETAIL_YEAR = 2023 then ck.GMV20_LC_AMT End) as TY_GMV_POUNDS
+,sum(case when RETAIL_YEAR = 2022 then ck.GMV20_LC_AMT End) as LY_GMV_POUNDS
 ,0 as TY_LL
 ,0 as LY_LL
 
@@ -786,8 +787,8 @@ SELECT
 ,0 as LY_GMV
 ,0 as TY_SI
 ,0 as LY_SI
-,count(distinct case when retail_year = 2022 then lstg.item_id End) as TY_LL
-,count(distinct case when retail_year = 2021 then lstg.item_id End) as LY_LL
+,count(distinct case when retail_year = 2023 then lstg.item_id End) as TY_LL
+,count(distinct case when retail_year = 2022 then lstg.item_id End) as LY_LL
 
 
 FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg	
@@ -865,10 +866,10 @@ SELECT
 ,cat.CATEG_LVL2_NAME
 ,cat.CATEG_LVL3_NAME
 ,cat.new_vertical
-,sum(case when retail_year = 2022 then ck.GMV20_PLAN End) as TY_GMV
-,sum(case when retail_year = 2021 then ck.GMV20_PLAN End) as LY_GMV
-,sum(case when retail_year = 2022 then ck.GMV20_SOLD_QUANTITY End) as TY_SI
-,sum(case when retail_year = 2021 then ck.GMV20_SOLD_QUANTITY End) as LY_SI
+,sum(case when retail_year = 2023 then ck.GMV20_PLAN End) as TY_GMV
+,sum(case when retail_year = 2022 then ck.GMV20_PLAN End) as LY_GMV
+,sum(case when retail_year = 2023 then ck.GMV20_SOLD_QUANTITY End) as TY_SI
+,sum(case when retail_year = 2022 then ck.GMV20_SOLD_QUANTITY End) as LY_SI
 ,0 as TY_LL
 ,0 as LY_LL
 
