@@ -1,0 +1,64 @@
+/*
+Requestor: Frances Monro
+Request: Total 2021 GMV number for Toys & Games (meta 220) for C2C & B2C and Domestic and CBT
+Report creator: Gabriella Austin
+*/
+
+select
+	CAL.RETAIL_YEAR
+    ,SF.EU_B2C_C2C_FLAG as FLAG
+    ,CASE WHEN SF.byr_cntry_id = 3 THEN 'DOM' ELSE 'CBT' END AS CBT_flag
+    ,cat.meta_categ_id
+    ,cat.meta_categ_name
+	,CAT.CATEG_LVL3_ID
+	,CAT.CATEG_LVL3_NAME
+    ,sum(SF.GMV20_plan) as GMV
+	,sum(SF.QUANTITY) as SI
+
+FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT sf
+
+INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT LI
+ON			LI.ITEM_ID = SF.ITEM_ID
+
+INNER JOIN  ACCESS_VIEWS.DW_CAL_DT AS CAL
+ON          CAL.CAL_DT = SF.GMV_DT
+
+INNER JOIN  ACCESS_VIEWS.DW_CATEGORY_GROUPINGS  CAT
+ON          LI.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+AND         CAT.site_id = 3
+AND 		CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+
+where 		1=1
+and 		SF.slr_cntry_id = 3 --UK sellers
+and 		SF.lstg_site_id = 3
+and 		SF.iscore = 1
+and 		SF.rprtd_wacko_yn = 'N'
+and 		SF.auct_end_dt > '2018-12-29'
+-- and 		cat.META_CATEG_ID = 220
+and 		cat.CATEG_LVL3_ID = 183447
+and 		CAL.RETAIL_YEAR = 2021
+-- and 		CAL.RETAIL_WEEK <= 44
+
+
+GROUP BY 1,2,3,4,5,6,7
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

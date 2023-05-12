@@ -1,0 +1,72 @@
+/*  
+Requestor: Dom TW (Collectibles)
+Developer : Gabriella Austin 
+Description: Get Bidder ID's, Location and Auction type for specified sellers in 2023
+*/
+
+SELECT DISTINCT
+	LI.SLR_ID
+	,LI.ITEM_ID
+	,BID.BDR_ID
+	,LI.AUCT_START_DT
+	,LI.AUCT_END_DT
+	,CAST(BID.BID_DT AS DATE) AS BID_DT
+	,LI.ABIN_YN_IND
+	,LI.AUCT_TYPE
+	,LI.SLR_CNTRY_ID
+	,BID.BDR_CNTRY_ID
+	,BID_CO.CNTRY_DESC as BDR_CNTRY_Name 
+	,BID.BDR_SITE_ID
+	,site_co.SITE_NAME
+	,bid.BID_AMT_UNIT_LSTG_CURNCY
+	,CASE WHEN BID.WINNING_QTY > 0 THEN 'Y' ELSE 'N' END AS Winning_Bid_YN
+	,CASE 
+		WHEN BID.BID_TYPE_CODE = 1 THEN 'Valid Bid'
+		WHEN BID.BID_TYPE_CODE = 3 THEN 'Bid Retraction - Bidder Inititated'
+		WHEN BID.BID_TYPE_CODE = 4 THEN 'Auto Retracted Bid'
+		WHEN BID.BID_TYPE_CODE = 5 THEN 'Bid Cancellation - Seller Initiated'
+		WHEN BID.BID_TYPE_CODE = 6 THEN 'Auto Cancelled Bid'
+		WHEN BID.BID_TYPE_CODE = 9 THEN 'Fixed Price Item Purchase, 2nd chance offer, Seller Initiated Offer (aka Custom Offer)'
+		WHEN BID.BID_TYPE_CODE = 10 THEN 'Motors Lower Price' 
+		END AS BID_TYPE_CODE
+	,CASE WHEN BID.BID_STATUS_ID = 0 THEN 'Live Bids' ELSE 'Ended Bid' END AS Bid_Status
+
+FROM 		PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT li  
+
+INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT cal 
+ON  		LI.AUCT_START_DT = CAL.CAL_DT
+
+INNER JOIN 	ACCESS_VIEWS.DW_BID bid
+ON 			LI.ITEM_ID =  bid.ITEM_ID
+AND 		LI.AUCT_END_DT = BID.AUCT_END_DT
+
+LEFT JOIN 	ACCESS_VIEWS.DW_COUNTRIES bid_co
+ON 			bid_co.CNTRY_ID = bid.BDR_CNTRY_ID
+
+LEFT JOIN 	ACCESS_VIEWS.DW_SITES site_co
+ON 			site_co.SITE_ID = bid.BDR_SITE_ID
+
+WHERE 		1=1
+AND 		LI.ISCORE = 1
+AND 		LI.SLR_CNTRY_ID = 3
+AND 		LI.SLR_ID = 217045988
+AND 		CAL.AGE_FOR_RTL_YEAR_ID = 0
+
+ORDER BY 	1,2,3
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

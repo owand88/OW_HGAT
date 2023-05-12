@@ -1,0 +1,123 @@
+/********************************************************************************************************************************************************************************
+Requestor - Amy Kent
+Developer - Gabriella Austin
+Description - Monthly GMV, SI and ASP for all artists involved in the Direct From Artist initiative (seller list manually provided)
+********************************************************************************************************************************************************************************/
+DROP TABLE IF EXISTS TEMP_DFA_BASE;
+CREATE TEMPORARY TABLE TEMP_DFA_BASE AS (
+SELECT 
+cal.RETAIL_YEAR
+,cal.MONTH_ID
+,cal.MONTH_BEG_DT
+,tran.SELLER_ID
+,user.USER_SLCTD_ID
+,tran.ITEM_ID
+,tran.EU_B2C_C2C_FLAG
+,CASE WHEN tran.BYR_CNTRY_ID = 3 THEN 'Dom' ELSE 'CBT' END as CBT_DOM
+,inv.NEW_VERTICAL as Vertical
+,cat.META_CATEG_ID
+,cat.META_CATEG_NAME
+,tran.GMV20_PLAN
+,tran.QUANTITY
+
+
+FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+
+INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+ON 			lstg.ITEM_ID = tran.ITEM_ID
+
+LEFT JOIN 	ACCESS_VIEWS.DW_CAL_DT cal
+ON 			tran.GMV_DT = cal.CAL_DT
+
+INNER JOIN 	(	SELECT *
+				FROM access_views.dw_category_groupings 
+				WHERE sap_category_id NOT IN (5,7,41,23,-999)
+			) as cat																
+ON 			lstg.LEAF_CATEG_ID = cat.leaf_categ_id 
+AND 		cat.site_id = 3 
+
+LEFT JOIN	(	SELECT 
+					item_id
+					,new_vertical
+					,inventory_prop
+					,focus_flag 
+				FROM p_awang_ops_t.item_invent_lstg 
+			) inv
+ON 			lstg.item_id = inv.item_id
+
+INNER JOIN 	dw_users user
+ON 			tran.slr_id = user.user_id
+
+WHERE 		1=1
+AND 		inv.new_vertical = 'Collectibles'
+AND 		tran.ISCORE = 1
+AND 		tran.RPRTD_WACKO_YN = 'N'
+AND 		tran.SITE_ID = 3
+AND 		tran.auct_end_dt >= '2018-12-30' 
+AND 		tran.SLR_CNTRY_ID = 3
+AND 		cal.MONTH_BEG_DT >= '2022-06-01'
+AND 		tran.SELLER_ID in ( 
+1502086091  
+,44216154
+,36417378
+,44647010
+,261841814
+,78424006
+,1148572640
+,331691158
+,20196164
+,1427465227
+,95890855
+,1653860919
+,313598560
+,1327226350
+,57962134
+,120380240
+,1047412996
+,44933437
+,1753225702
+,1093219742
+,144391626
+,121496771
+,1145364242
+,241251626
+,1189238138
+,1320798512
+,1961685427
+,719921943
+,226833419
+,2269802638
+,225538752
+,52118663
+)
+)
+
+SELECT 
+MONTH_ID
+,MONTH_BEG_DT
+,SELLER_ID
+,USER_SLCTD_ID
+,CBT_DOM
+,Vertical
+,SUM(GMV20_PLAN) AS GMV
+,SUM(QUANTITY) AS SI
+,GMV/SI AS ASP
+
+FROM TEMP_DFA_BASE
+
+GROUP BY 1,2,3,4,5,6
+
+ORDER BY 3,1,5
+
+
+
+
+
+
+
+
+
+
+
+
+
