@@ -7,6 +7,7 @@
 -- Date Created: 	28/03/2023
 
 --1) What % of seller cancelled OOSs have QTY_SOLD = QTY_AVAIL (OOS on eBay) vs QTY_SOLD < QTY_AVAIL (OOS through combination of eBay and other platforms)
+
 Drop table if exists p_robevans_t.b2c_lux_a_cancellations_deepdive;
 Create table p_robevans_t.b2c_lux_a_cancellations_deepdive as
 
@@ -24,7 +25,7 @@ FROM
 	From DW_CHECKOUT_TRANS ck
 	INNER JOIN DW_CAL_DT cal
 		on ck.gmv_dt = cal.CAL_DT
-		and cal.AGE_FOR_RTL_WEEK_ID >= -52
+		and cal.AGE_FOR_RTL_WEEK_ID >= -104
 		and cal.AGE_FOR_RTL_WEEK_ID <= -1
 	inner JOIN 
 		(select
@@ -32,6 +33,7 @@ FROM
 			from  access_views.DW_PES_ELGBLT_HIST
 			where biz_prgrm_name in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK') -- Sneakers AG program
 			and ELGBL_YN_IND = 'Y'
+			and evltn_end_ts = '2099-12-31 00:00:00.0'
 			GrOUP BY 1
 		) PSA
 			on psa.item_id = ck.ITEM_ID
@@ -65,6 +67,7 @@ LEFT JOIN
 			from  access_views.DW_PES_ELGBLT_HIST
 			where biz_prgrm_name in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK') -- Sneakers AG program
 			and ELGBL_YN_IND = 'Y'
+			and evltn_end_ts = '2099-12-31 00:00:00.0'
 			GrOUP BY 1
 		) PSA
 			on psa.item_id = ck.ITEM_ID
@@ -134,6 +137,7 @@ From
 		from  access_views.DW_PES_ELGBLT_HIST
 		where biz_prgrm_name in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK')
 		and ELGBL_YN_IND = 'Y'
+		and evltn_end_ts = '2099-12-31 00:00:00.0'
 		GROUP BY 1) psa 
 			on ck.item_id = psa.item_id
 
