@@ -1,0 +1,69 @@
+/*
+Hi Both, wondering if you can give me some relatively quick analysis. I'm trying to understand of our top 150 sellers what their GMV split is across refurb vs all other conditions at a seller level. Are you able to share that?
+
+*/
+
+--find top 150 refurb sellers
+drop table if exists top150_users;
+create TEMPORARY table top150_users as
+select *
+,row_number() over (order by gmv desc) as seller_gmv_rank
+from (
+		select 
+		ck.slr_id
+		,sum(ck.GMV20_PLAN) as gmv
+		from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+		inner join ACCESS_VIEWS.DW_CAL_DT cal on ck.GMV_DT = cal.CAL_DT
+		where 1=1
+		and cal.AGE_FOR_RTL_YEAR_ID >= 0
+		and cal.AGE_FOR_RTL_WEEK_ID <= -1
+		and ck.RPRTD_WACKO_YN = 'N'
+		and ck.LSTG_SITE_ID = 3
+		and ck.SLR_CNTRY_ID = 3
+		and ck.item_cndtn_id between 2000 and 2030
+		and ck.B2C_C2C = 'B2C'
+		group by 1
+		)
+
+;
+
+select cal.RETAIL_YEAR
+-- ,cal.RETAIL_WEEK
+,ck.SELLER_ID
+,user.USER_SLCTD_ID as SELLER_NAME
+,cat.NEW_VERTICAL as VERTICAL_NAME
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,case ck.item_cndtn_id when 1000 then 'New'
+	  			   		 when 1500 then 'New - Other'
+	  			   		 when 1750 then 'New - With defects'
+	  			   		 when 2000 then 'Refurb - Certified' 
+	  			   		 when 2010 then 'Refurb - Excellent'
+	  			   		 when 2020 then 'Refurb - Very Good'
+	  			   		 when 2030 then 'Refurb - Good'
+	  			   		 when 2500 then 'Refurb - Seller' 
+				   		 when 3000 then 'Used'
+	  			   		 when 4000 then 'Used - Very Good'
+	  			   		 when 5000 then 'Used - Good'
+	  			   		 when 6000 then 'Used - Acceptable'
+	  			   		 when 7000 then 'Used - For parts / not working'
+	  			   		 else 'Other' end as item_condition
+,sum(ck.GMV20_PLAN) as gmv
+,sum(ck.QUANTITY) as si
+,sum(case when ck.ITEM_CNDTN_ID between 2000 and 2030 then ck.GMV20_PLAN end) as refurb_gmv
+,sum(case when ck.ITEM_CNDTN_ID between 2000 and 2030 then ck.QUANTITY end) as refurb_si
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+inner join ACCESS_VIEWS.DW_CAL_DT cal on ck.GMV_DT = cal.CAL_DT
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.SITE_ID = 3
+inner join ACCESS_VIEWS.DW_USERS user on ck.SELLER_ID = user.USER_ID
+inner join top150_users tops on ck.SELLER_ID =tops.slr_id and seller_gmv_rank <= 150
+where 1=1
+and cal.AGE_FOR_RTL_YEAR_ID >= 0
+and cal.AGE_FOR_RTL_WEEK_ID <= -1
+and ck.RPRTD_WACKO_YN = 'N'
+and ck.LSTG_SITE_ID = 3
+and ck.SLR_CNTRY_ID = 3
+and ck.B2C_C2C = 'B2C'
+
+group by 1,2,3,4,5,6,7
+;
