@@ -6,7 +6,7 @@
 --					2) What is the average lead time to an OOS seller-cancelled sale vs the average lead time to a regular sale of AG?
 -- Date Created: 	28/03/2023
 
---1) What % of seller cancelled OOSs have QTY_SOLD = QTY_AVAIL (OOS on eBay) vs QTY_SOLD < QTY_AVAIL (OOS through combination of eBay and other platforms)
+--1) Are OOS SIC as a result of Fee Suprise (i.e. new to eBay sellers)/are the SIC as a result of sellers who are new to AG?
 
 Drop table if exists p_robevans_t.b2c_lux_a_cancellations_deepdive;
 Create table p_robevans_t.b2c_lux_a_cancellations_deepdive as
