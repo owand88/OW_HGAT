@@ -1,0 +1,50 @@
+/*
+From Matt Potter
+WOuld it be possible to run daily sales for the attached listings?
+
+We ran a push notification on Tuesday, so looking to see the impact.
+
+*/
+
+select cal.RETAIL_YEAR
+,cal.RETAIL_WEEK
+,cal.AGE_FOR_RTL_WEEK_ID
+,cal.CAL_DT
+,ck.SELLER_ID
+,user.USER_SLCTD_ID as SELLER_NAME
+,cat.NEW_VERTICAL as VERTICAL_NAME
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,adhoc.item_id
+,case ck.item_cndtn_id when 1000 then 'New'
+	  			   		 when 1500 then 'New - Other'
+	  			   		 when 1750 then 'New - With defects'
+	  			   		 when 2000 then 'Refurb - Certified' 
+	  			   		 when 2010 then 'Refurb - Excellent'
+	  			   		 when 2020 then 'Refurb - Very Good'
+	  			   		 when 2030 then 'Refurb - Good'
+	  			   		 when 2500 then 'Refurb - Seller' 
+				   		 when 3000 then 'Used'
+	  			   		 when 4000 then 'Used - Very Good'
+	  			   		 when 5000 then 'Used - Good'
+	  			   		 when 6000 then 'Used - Acceptable'
+	  			   		 when 7000 then 'Used - For parts / not working'
+	  			   		 else 'Other' end as item_condition
+,case when cal.day_of_week_id = 3 then 1 else 0 end as TUE_IND						 
+,sum(ck.GMV20_PLAN) as gmv
+,sum(ck.QUANTITY) as si
+from  P_OLWAND_T.adhoc_item_requests adhoc 
+left join PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck on ck.ITEM_ID = adhoc.item_id
+left join ACCESS_VIEWS.DW_CAL_DT cal on ck.GMV_DT = cal.CAL_DT
+left join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.SITE_ID = 3
+left join ACCESS_VIEWS.DW_USERS user on ck.SELLER_ID = user.USER_ID
+where 1=1
+and cal.AGE_FOR_RTL_YEAR_ID >= -1
+and ck.RPRTD_WACKO_YN = 'N'
+and ck.LSTG_SITE_ID = 3
+and ck.SLR_CNTRY_ID = 3
+and ck.B2C_C2C = 'B2C'
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12
+
+;

@@ -1,3 +1,8 @@
+
+-- ProTrader 2023 Q3 Q4 Category Selection process
+-- Requested by Stephen Norton
+-- UKPLAN-310
+
 /*•	Vertical: (P&A, H&G, Lifestyle, Tech, Collectibles, Fashion)
 •	Meta ID
 •	L2 category Id
@@ -8,14 +13,14 @@
 */-- select * from P_InventoryPlanning_T.pro_trader_previous_list ; 
 
 ------------------------------------------------------------------------------------------------------------------------------------------------
--- 0. Pull base data table: Get GMV at seller and L2 level for all verticals by Seller Management
--- 1. Summarise GMV data by Seller management by Vertical by L2
--- 2. Summarise Count of seller id by Seller Management by Vertical ( Meta level)
--- 3. Summarise Count of seller id by Seller Management by Vertical by L2
--- 4. Pull seller id of eligible sellers
+-- 1. Pull base data table: Get GMV at seller and L2 level for all verticals by Seller Management
+-- 2. Top vertical for each seller
+-- 3. Apply GMV threshold to exclude small sellers
+-- 4. Output data 
+
  ----------------------------------------------------------------------------------------------------------------------------------------
 
--- 0. 
+-- 1. 
 DROP TABLE IF EXISTS   P_INVENTORYPLANNING_T.pro_trader_category_selection_base  ; 
 CREATE TABLE  P_INVENTORYPLANNING_T.pro_trader_category_selection_base AS
 
@@ -90,70 +95,46 @@ AND NEW_VERTICAL  IN (
 'Electronics'	)
 GROUP BY 1,2,3,4,5,6,7) ;
 -- 2070491  
+--select new_vertical,seller_management , count(distinct seller_id ) from   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_lookup  where GMV>=20000  group by 1 , 2 ;   -- 33564
 
---select new_vertical,Seller_management, sum(GMV)  from   P_INVENTORYPLANNING_T.pro_trader_category_selection_l2  GROUP BY 1 ,2  ;
--- 1. 
-drop table if exists   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_1  ;
-CREATE TABLE  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_1 as 
-select NEW_VERTICAL,	
-Seller_Management,
-count(distinct seller_id) seller_id,
-sum(GMV) GMV,
-sum(BI) BI 
-from P_INVENTORYPLANNING_T.pro_trader_category_selection_base
-group by 1,2; 
--- 32 
+--select * from  P_INVENTORYPLANNING_T.pro_trader_category_selection_base ;
 
--- 2. 
----
-drop table if exists   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_2  ; 
-CREATE TABLE  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_2 as 
-select NEW_VERTICAL,	
-META_CATEG_ID	,
-META_CATEG_NAME	,
-Seller_Management,
-count(distinct seller_id) seller_id,
-sum(GMV) GMV,
-sum(BI) BI 
-from  P_INVENTORYPLANNING_T.pro_trader_category_selection_base  
-group by 1,2,3,4; 
---  
-select * from P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_1 limit 1000; 
+--2. Top vertical for each seller
+Drop table if exists   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_vert  ; 
+create table  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_vert as 
+select  rank , Seller_id,
+Seller_Top_Vertical,
+GMV as Seller_Top_Vertical_GMV 
+from (
+select row_number () over ( partition by seller_id  ORDER BY GMV DESC  ) rank, * from (
+select seller_id, 
+new_vertical as Seller_Top_vertical, 
+sum(GMV) GMV 
+from  P_INVENTORYPLANNING_T.pro_trader_category_selection_base
+group by 1 ,2  ) ) where rank =1 ; 
+-- 211449
 
----3
-drop table if exists   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_3 ; 
-CREATE TABLE  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_3 as 
-select NEW_VERTICAL,	
-META_CATEG_ID	,
-META_CATEG_NAME	,
-categ_lvl2_id	,
-categ_lvl2_name,
-Seller_Management,
-count(distinct seller_id) seller_id,
-sum(GMV) GMV,
-sum(BI) BI 
-from  P_INVENTORYPLANNING_T.pro_trader_category_selection_base  
-group by 1,2,3,4,5,6; 
---  
+-- 3 Apply GMV threshold to exclude small sellers
+DROP TABLE IF EXISTS   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_lookup  ; 
+create table   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_lookup as 
+select a.*, b.seller_management , case when GMV>=20000 then 'Above_20k' else 'Below_20K' end as Seller_GMV_Threshold , GMV as Seller_Total_GMV 
+from P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_vert  a  inner join 
+(select  seller_id, max(seller_management ) seller_management , sum(GMV) GMV   from    P_INVENTORYPLANNING_T.pro_trader_category_selection_base group by 1   ) b on a.seller_id=b.seller_id ; 
+;
+select * from  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_lookup limit 1000; 
 
---4. 
-drop table if exists   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_4 ;
-CREATE TABLE  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_4 as
-select * 
-from P_INVENTORYPLANNING_T.pro_trader_category_selection_base
-where Seller_management ='Eligible Seller'
+--4 Output data 
+DROP TABLE IF EXISTS   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_distinct   ; 
+create table   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_distinct as 
+select 
+a.*,
+b.Seller_Top_Vertical,
+b.Seller_Top_Vertical_GMV,
+b.Seller_GMV_Threshold,
+b.Seller_Total_GMV
+from P_INVENTORYPLANNING_T.pro_trader_category_selection_base  a 
+left join   P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_lookup b on a.seller_id =b.seller_id 
+where Seller_GMV_Threshold = 'Above_20k'
 ; 
--- 
---select count(* ) from P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_4 where   BI >= 500  ; 
---select * from P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_output_4 where   BI >= 20   limit 1000; 
-/*
-drop table  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_rank ; 
-CREATE TABLE  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_rank as 
-SELECT * FROM (
-SELECT 
-ROW_NUMBER ( )   
-    OVER ( partition by new_vertical ORDER BY GMV DESC  )   AS RANK, * 
-FROM (SELECT SELLER_ID, new_vertical, SUM(GMV) GMV FROM   P_INVENTORYPLANNING_T.pro_trader_category_selection_base  GROUP BY 1,2) )
-	WHERE 1=1 and Rank <=1100 ; 
-*/
+select * from  P_INVENTORYPLANNING_T.pro_trader_category_selection_seller_distinct 
 
