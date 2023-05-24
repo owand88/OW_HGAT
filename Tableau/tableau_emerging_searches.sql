@@ -4,12 +4,14 @@ Author: Bonnie Chu
 Date: 2023-04-12
 Description: Report to show emerging searches (and top searches in latest week) on UK site for category managers to identify inventory opportunities.
 */
+--2023-05-16 (Run on 2023-05-18) 2 day lag in data
+--select max(session_start_dt) from access_views.srch_cnvrsn_event_fact;
+
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--- View used in Tableau dashboard [Create 1 view from CTE]
--- Changed from initial methodology of building 1 view from 'union all' 4 views >> failed to run on Zeta ["Error running query: org.apache.spark.sql.AnalysisException: Query analysis exceeds max time configured: 600 seconds, abort.;"]
+-- Tableau dataset
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-drop view if exists P_ukplan_report_T.searches;
-create view P_ukplan_report_T.searches as (
+drop table if exists P_ukplan_report_T.searches;
+create table P_ukplan_report_T.searches as (
 -- All seraches on UK site in latest 4 full weeks
 with base as (
 	select    
