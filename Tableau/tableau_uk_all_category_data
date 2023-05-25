@@ -31,7 +31,7 @@ where 1 = 1
 
 
 -- Table which contains the fixed item condition type values 
--- This table data comes from a Zeta Sheet names "Item Condition Fixed List" (https://zeta.dss.vip.ebay.com/zeta/share/#/zeta-sheet?dashboardId=9f502c38-1fcd-403e-91a6-6a9094732e08)
+-- This table data comes from a Zeta Sheet named "Item Condition Fixed List" (https://zeta.dss.vip.ebay.com/zeta/share/#/zeta-sheet?dashboardId=9f502c38-1fcd-403e-91a6-6a9094732e08)
 select * from P_ukplan_report_T.item_condition_fixed_list
 ;
 
