@@ -22,7 +22,7 @@ select
 	,CATEG_LVL3_NAME
 	,CATEG_LVL4_ID
 	,CATEG_LVL4_NAME
-	,1 as dummy_join_column -- This is a fixed value column that will be used to join with Item Condition data later on to allow users to export category data with item condition details
+	,'1' as dummy_join_column -- This is a fixed value column that will be used to join with Item Condition data later on to allow users to export category data with item condition details
 from P_INVENTORYPLANNING_T.dw_category_groupings_adj
 where 1 = 1
 	and site_id = 3  -- UK Website
