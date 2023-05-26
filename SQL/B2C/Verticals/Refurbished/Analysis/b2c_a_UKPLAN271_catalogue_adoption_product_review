@@ -1,0 +1,536 @@
+/*UKPLAN-271
+Assess current catalogue adoption and product review usage within refurb listing, establish correlation with conversion.
+Product reviews increase views and conversion, only listings with EPIDs can be reviewed hence getting product review is as a drive to increase catalogue adoption.
+*/
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Explore product review dataset
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Example: Bush V18P01BP25DC 25v Cordless Handstick Vacuum Cleaner - 1 Year Guarantee (https://www.ebay.co.uk/itm/255344001725) Refurb - Good
+--https://www.ebay.co.uk/urw/Bush-V18P01BP25DC-0-65L-Cordless-Handstick-Vacuum-Cleaner-White/product-reviews/13040394348?_itm=255344001725
+--EPID: 13040394348
+--On site: 26 product ratings (Overall rated 4.7), 24 reviews
+select * from access_views.ctlg_item_fact 
+where item_id=255344001725;
+
+--Review data from Catalogue dataset: rlvnc_revw_score_num - 123, totl_revw_cnt - 26, rated 4.73
+select 
+rlvnc_revw_score_num
+,totl_revw_cnt
+,rlvnc_revw_score_num / totl_revw_cnt as EPID_rating
+from access_views.ctlg_prod_fact
+where prod_ref_id=13040394348;
+
+--Review data from DW_UC dataset (Used in Mansie's previous analysis): rvw_count - 24, avg_rvw_rtg - 4.21, Review with content - 24
+--This dataset computes the average review rating from all active guides for that review subject. Different from the one shown on site.
+select * from access_views.dw_uc_rvw_subj_lkp
+where prod_ref_id = 13040394348;
+
+--26 rows, 2 row with no description
+--The dataset, access_views.dw_uc, aligns with number of reviews with content on site, can be used in analysis.
+select u.*
+from access_views.dw_uc u
+inner join access_views.dw_uc_rvw_subj_lkp m
+on u.rvw_subj_id = m.rvw_subj_id
+where m.prod_ref_id = 13040394348
+and u.uc_type_id = 1 -- review
+and u.uc_status_id = 1 -- active
+and u.label_id in (2,5) -- Good review (has star rating + content); Good review (has star rating without content)
+;
+
+/*Other checks*/
+--No product review shown on MSKU listing page (https://www.ebay.co.uk/itm/384704211126)
+
+--Checked with David Lifely on 2023-04-27 that UK Analytics team uses p_uk_iac_t.UK_VI, and the higher view numbers captured in access_views.ctlg_item_fact could be attributed to views from bots
+--However this view only gets refreshed weekly till 2023-05-20
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Refurb live listing on UK site (Live >= 2023-05-24 and not out of stock ) 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--2023-05-20
+select max(cal_dt) from p_uk_iac_t.UK_VI;
+
+drop table if exists p_uk_bc_t.refurb_lstg_live;
+create table p_uk_bc_t.refurb_lstg_live as (
+select 
+distinct
+lstg.item_id
+,coalesce(MSKU.item_vrtn_id,-999) as item_vrtn_id
+,case when MSKU.item_id is not null then 1 else 0 end as MSKU_flag
+,cndtn.item_cndtn_id
+,case when cndtn.item_cndtn_id = 2000 then 'Refurb - Certified'  
+	  when cndtn.item_cndtn_id = 2010 then 'Refurb - Excellent'
+	  when cndtn.item_cndtn_id = 2020 then 'Refurb - Very Good'
+	  when cndtn.item_cndtn_id = 2030 then 'Refurb - Good'
+	  else 'Non-Refurb'
+	  end as item_condition
+,lstg.slr_id as seller_id
+,u.user_slctd_id as seller_name	  
+,lstg.auct_titl as listing_title
+,lstg.auct_start_dt as listing_start_dt
+,lstg.auct_end_dt as listing_end_dt
+,cat.original_vertical
+,cat.adjusted_vertical
+,cat.categ_lvl2_name
+,cat.categ_lvl2_id
+,cat.categ_lvl3_name
+,cat.categ_lvl3_id
+--,eps.SIAB_B2C_C2C_IND as B2C_C2C
+
+/*Drop L30D metrics to align to data range used for views (p_uk_iac_t.UK_VI has view data till 2023-05-20 only)
+,eps.L30D_GMV_PLAN_USD_AMT--Last 30 day GMV of listing
+,eps.L30D_TRXN_CNT--Last 30 day Transaction Count of listing
+,eps.L30D_SOLD_QTY--Last 30 day Quantity Sold of listing
+,eps.L30D_VI_CNT--Last 30 day View item count of listing
+,eps.L30D_SRP_IMPRSN_CNT--Last 30 day SRP impression of the item
+*/
+
+--EPID level
+,coalesce(eps.prod_ref_id,epms.prod_ref_id) as EPID
+,epn.prod_title as EPID_name
+,epn.brand_txt as brand
+
+,cast(epn.rlvnc_revw_score_num / epn.totl_revw_cnt as decimal (18,1)) as EPID_rating
+,case when cast((epn.rlvnc_revw_score_num / epn.totl_revw_cnt) as decimal (18,0)) < 3 then '1 Star / 2 Star'
+	  when cast((epn.rlvnc_revw_score_num / epn.totl_revw_cnt) as decimal (18,0)) < 4 then '3 Star'
+	  when cast((epn.rlvnc_revw_score_num / epn.totl_revw_cnt) as decimal (18,0)) < 5 then '4 Star'
+	  when cast((epn.rlvnc_revw_score_num / epn.totl_revw_cnt) as decimal (18,0)) = 5 then '5 Star'
+	  else null
+	  end as EPID_rating_group
+	  
+,rvw.rvw_with_content_cnt as EPID_review_with_content_count
+,case when rvw.rvw_with_content_cnt  = 1 then '1 Review'
+	  when rvw.rvw_with_content_cnt  <= 50 then '2 - 50 Review'
+	  when rvw.rvw_with_content_cnt  <= 100 then '51 - 100 Review'
+	  when rvw.rvw_with_content_cnt  > 100 then '100+ Review'
+	  else null
+	  end as EPID_review_with_content_count_group
+	  
+,epn.totl_revw_cnt as EPID_total_review_count	  
+
+--Compare with DW_UC data source
+,rvw.UC_review_count
+,rvw.UC_EPID_rating
+
+from access_views.dw_lstg_item lstg
+
+inner join (select bsns_vrtcl_name as original_vertical, new_vertical as adjusted_vertical,categ_lvl2_id,categ_lvl2_name,categ_lvl3_id,categ_lvl3_name,leaf_categ_id,site_id 
+			from P_INVENTORYPLANNING_T.dw_category_groupings_adj
+			group by 1,2,3,4,5,6,7,8) cat
+on lstg.leaf_categ_id=cat.leaf_categ_id
+and lstg.item_site_id=cat.site_id and cat.site_id=3
+
+inner join access_views.dw_users u 
+on lstg.slr_id = u.user_id
+
+left join (select item_id, cndtn_rollup_id, item_cndtn_id from access_views.lstg_item_cndtn group by 1,2,3) cndtn
+on lstg.item_id = cndtn.item_id
+
+left join (select distinct item_id, item_vrtn_id from access_views.lstg_item_vrtn) MSKU
+on lstg.item_id=MSKU.item_id
+
+left join access_views.ctlg_item_fact eps
+on lstg.item_id=eps.item_id
+
+left join access_views.ctlg_vrtn_fact epms
+on lstg.item_id=epms.item_id and MSKU.item_vrtn_id=epms.item_vrtn_id
+
+left join access_views.ctlg_prod_fact epn
+on coalesce(eps.prod_ref_id,epms.prod_ref_id)=epn.prod_ref_id
+
+--Compare with DW_UC data source
+left join 
+(select 
+m.prod_ref_id
+,m.rvw_count as UC_review_count
+,cast(m.avg_rvw_rtg as decimal(18,1)) as UC_EPID_rating
+,count(u.uc_id) as rvw_with_content_cnt
+from access_views.dw_uc u
+inner join access_views.dw_uc_rvw_subj_lkp m--1 row per review subect ID
+on u.rvw_subj_id = m.rvw_subj_id
+and u.uc_type_id = 1 -- review
+and u.uc_status_id = 1 -- active
+and u.label_id in (2)-- Good review (has star rating + content)
+group by 1,2,3) rvw
+on coalesce(eps.prod_ref_id,epms.prod_ref_id)=rvw.prod_ref_id
+
+where 
+lstg.slr_cntry_id=3
+and lstg.item_site_id=3
+and lstg.auct_end_dt>=current_date
+and lstg.qty_avail > lstg.qty_sold--not out of stock
+and cndtn.item_cndtn_id in (2000,2010,2020,2030)
+);
+
+/*****Data check*****/
+--On site: 253 product ratings (Overall rated 4.8), 197 reviews [https://www.ebay.co.uk/itm/184227407320#rwid]
+--Metrics from DW_UC data not aligned, Do not use UC_review_count, UC_EPID_rating
+select * from p_uk_bc_t.refurb_lstg_live
+where item_id=184227407320;
+
+--0 row
+--All the listings with high number of reviews with content are rated positively or neutral (3 Star or above)
+select * from p_uk_bc_t.refurb_lstg_live
+where MSKU_flag=0 and catalog_review_count>0 
+and EPID_rating_group not in ('2+ Star','1+ Star', '0 Star')
+and EPID_review_with_content_count_group not in ('1 Review', '2 - 50 Review');
+
+--Only 21 active live and not oute of stock listings (from 5 EPIDs) with more than 50 reviews and rated 1 Star or 2 Star (mostly H&G, none from Tech, all in New condition)
+--https://www.ebay.co.uk/itm/185906931943 (Baby Milk Powder Cow & Gate 1 First Infant Milk From Birth 800g 0-12 Months)
+--https://www.ebay.co.uk/itm/374574662264 (Long-Handled Twist Cultivator 950mm Breaking Soil Dirt Removes Weeds)
+with ctlg (
+select 
+prod_ref_id
+,prod_title
+,rlvnc_revw_score_num
+,totl_revw_cnt
+,rlvnc_revw_score_num / totl_revw_cnt as EPID_rating
+from access_views.ctlg_prod_fact
+where 
+cast((rlvnc_revw_score_num  / totl_revw_cnt) as decimal(18,0)) < 3
+and totl_revw_cnt > 50 
+and site_id=3
+and active_ind = 1 --active product
+and ll_cnt > 0 --product with live listing
+and mtrty_dscrptv_cd >= 8 --visible in selling flow
+)
+select 
+a.item_id
+,a.auct_end_dt
+,a.item_title_txt
+,a.bsns_vrtcl_name
+,a.item_cndtn_id
+,a.prod_ref_id
+,ctlg.prod_title
+,ctlg.rlvnc_revw_score_num
+,ctlg.totl_revw_cnt
+,ctlg.EPID_rating
+from access_views.ctlg_item_fact a
+inner join ctlg
+on a.prod_ref_id=ctlg.prod_ref_id
+inner join access_views.dw_lstg_item lstg
+on a.item_id=lstg.item_id
+where a.auct_end_dt>=current_date
+and lstg.qty_avail > lstg.qty_sold;--not out of stock
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Catalogue Adoption
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Base population:
+/*
+As of 2023-05-23, there is a total of 31,531 CR / SR live, not out of stock listings on the UK site from UK sellers. 
+57% of listings (17,986, 15213 SKU and 2773 MSKU listings) have an EPID. MSKU listing is counted as catalogue-adopted if at least one variant is populated with an EPID. 
+*/
+select * from p_uk_bc_t.refurb_lstg_live;
+
+with adopt (
+select 
+item_id
+,MSKU_flag
+,max(case when EPID is not null then 1 else 0 end) as adopt_flag
+from p_uk_bc_t.refurb_lstg_live
+group by 1,2)
+select
+adopt_flag
+,MSKU_flag
+,count(distinct item_id) 
+,count(distinct item_id) / sum(count(distinct item_id)) over()
+from adopt
+group by 1,2;
+
+--All refurb listing (Export to Excel)
+select
+item_id
+,item_vrtn_id as item_variant_id
+,MSKU_flag
+,item_cndtn_id
+,item_condition
+,seller_id
+,seller_name
+,listing_title
+,listing_end_dt
+,listing_start_dt
+,categ_lvl2_name
+,categ_lvl2_id
+,EPID
+,EPID_name
+,brand
+--No product review shown on MSKU listing page
+,case when MSKU_flag=0 then EPID_review_with_content_count else null end as EPID_review_with_content_count 
+,case when MSKU_flag=0 then EPID_review_with_content_count_group else null end as EPID_review_with_content_count_group
+,case when MSKU_flag=0 then EPID_rating else null end as EPID_rating
+,case when MSKU_flag=0 then EPID_rating_group else null end as EPID_rating_group
+,case when MSKU_flag=0 then EPID_total_review_count else null end as EPID_total_review_count
+from p_uk_bc_t.refurb_lstg_live
+order by listing_end_dt desc, item_id, item_vrtn_id;
+
+--Catologue adoption by categories (Export to Excel)
+/*
+Top 5 categories account for over 70% of all refurb live and in stock listings. 
+Laptops & Netbooks (21%)
+Desktops & All-in-Ones (19%)
+Mobile & Smart Phones (17%)
+Drives, Storage & Blank Media (8%)
+Appliances (5%)
+
+
+Mobile & Smart Phones category records as high as 92% catalogue adoption rate, followed by 78% in Drives, Storage & Blank Media and 75% in Appliances 
+Only 17% in Desktops & All-in-Ones and 40% in Laptops & Netbooks.
+*/
+with adopt as (
+select 
+item_id
+,MSKU_flag
+,item_condition
+,categ_lvl2_name
+,max(case when EPID is not null then 1 else 0 end) as adopt_flag
+from p_uk_bc_t.refurb_lstg_live
+group by 1,2,3,4)
+,transpose as (
+select
+categ_lvl2_name
+,item_condition
+,MSKU_flag
+,count(distinct case when adopt_flag=1 then item_id end) as lstg_catalogue_adopted_vol
+,count(distinct case when adopt_flag=0 then item_id end) as lstg_not_catalogue_adopted_vol
+,count(distinct item_id) as tot_lstg_vol
+from adopt
+group by 1,2,3)
+select
+categ_lvl2_name
+,item_condition
+,MSKU_flag
+,lstg_catalogue_adopted_vol
+,lstg_not_catalogue_adopted_vol
+,tot_lstg_vol
+from transpose
+order by (lstg_catalogue_adopted_vol + lstg_not_catalogue_adopted_vol) desc;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Product Review
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--15,213 SKU listings with EPID
+--51% with no reviews
+--49% (7497) were rated (reviewed), 48% (7330) have reviews with content
+with base as (
+select 
+item_id
+,categ_lvl2_name
+,EPID_rating
+,EPID_rating_group
+,EPID_total_review_count 
+,EPID_review_with_content_count
+,EPID_review_with_content_count_group
+from p_uk_bc_t.refurb_lstg_live
+where MSKU_flag=0 and EPID is not null)
+select
+case when EPID_review_with_content_count is null then 0 else 1 end as review_with_content_flag
+,case when EPID_total_review_count is null then 0 else 1 end as review_flag
+,count(distinct item_id)
+,count(distinct item_id) / sum(count(distinct item_id)) over ()
+from base
+group by 1,2;
+
+--Catalogue-adopted SKU listing by categories and presence of reviews (Export to Excel)
+with review as (
+select 
+item_id
+,categ_lvl2_name
+,item_condition
+,max(case when EPID_review_with_content_count > 0 then 1 else 0 end) as review_with_content_flag
+,max(case when EPID_total_review_count > 0 then 1 else 0 end) as review_flag
+from p_uk_bc_t.refurb_lstg_live
+where MSKU_flag=0 and EPID is not null
+group by 1,2,3)
+,transpose as (
+select
+categ_lvl2_name
+,item_condition
+,count(distinct case when review_flag=1 then item_id end) as lstg_with_review_vol
+,count(distinct case when review_flag=0 then item_id end) as lstg_without_review_vol
+,count(distinct case when review_with_content_flag=1 then item_id end) as lstg_with_review_with_content_vol
+,count(distinct case when review_with_content_flag=0 then item_id end) as lstg_without_review_with_content_vol
+from review
+group by 1,2)
+select
+categ_lvl2_name
+,item_condition
+,lstg_with_review_vol
+,lstg_without_review_vol
+,lstg_with_review_with_content_vol
+,lstg_without_review_with_content_vol
+from transpose
+order by (lstg_with_review_vol + lstg_without_review_vol) desc;
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Add traffic, sales data
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--To look at correlation between reviews and conversion, select only listings from base that are live in the specific 30 day period (2023-04-21 to 2023-05-20 [Latest Views data])
+select count(distinct cal_dt) from DW_CAL_DT
+where cal_date between '2023-04-21' and '2023-05-20';
+
+--11,524 listings live in the period of 2023-04-21 to 2023-05-20 (76% of 15,213 SKU listings with EPID)
+with base as (
+select 
+item_id
+,categ_lvl2_name
+,EPID_rating
+,EPID_rating_group
+,EPID_total_review_count 
+,EPID_review_with_content_count
+,EPID_review_with_content_count_group
+from p_uk_bc_t.refurb_lstg_live
+where MSKU_flag=0 and EPID is not null
+and (listing_start_dt <= '2023-04-21' and listing_end_dt >= '2023-05-20'))
+select count(*) from base;
+
+drop table if exists p_uk_bc_t.refurb_lstg_live_conversion;
+create table p_uk_bc_t.refurb_lstg_live_conversion as ( 
+with base as (
+select 
+item_id
+,item_condition
+,seller_id
+,seller_name	  
+,listing_title
+,listing_start_dt
+,listing_end_dt
+,categ_lvl2_name
+,categ_lvl2_id
+,categ_lvl3_name
+,categ_lvl3_id
+,EPID
+,EPID_name
+,brand
+,EPID_rating
+,EPID_rating_group
+,EPID_total_review_count 
+,EPID_review_with_content_count
+,EPID_review_with_content_count_group
+from p_uk_bc_t.refurb_lstg_live 
+where MSKU_flag=0 and EPID is not null--SKU listings with EPID
+and (listing_start_dt <= '2023-04-21' and listing_end_dt >= '2023-05-20')
+)
+,txn as (
+select 
+item_id
+,sum(GMV_PLAN_USD) as L30D_GMV
+,sum(quantity) as L30D_SI
+from access_views.dw_checkout_trans
+where GMV_dt between '2023-04-21' and '2023-05-20'
+group by 1
+)
+,views as (
+select 
+item_id
+,sum(VI) as L30D_view
+from p_uk_iac_t.UK_VI 
+where cal_dt between '2023-04-21' and '2023-05-20'
+group by 1
+)
+select
+base.item_id
+,base.item_condition
+,base.seller_id
+,base.seller_name	  
+,base.listing_title
+,base.listing_start_dt
+,base.listing_end_dt
+,base.categ_lvl2_name
+,base.categ_lvl2_id
+,base.categ_lvl3_name
+,base.categ_lvl3_id
+,base.EPID
+,base.EPID_name
+,base.brand
+
+,coalesce(base.EPID_review_with_content_count,0) as EPID_review_with_content_count
+,coalesce(base.EPID_review_with_content_count_group,'No Review With Content') as EPID_review_with_content_group
+
+,coalesce(base.EPID_total_review_count,0) as EPID_ttl_review_count 
+
+,coalesce(base.EPID_rating,0) as EPID_rating
+,coalesce(base.EPID_rating_group,'No Rating') as EPID_rating_group
+
+,coalesce(txn.L30D_GMV,0) as L30D_GMV
+,coalesce(txn.L30D_SI,0) as L30D_SI
+,coalesce(views.L30D_view,0) as L30D_View
+
+from base 
+left join txn
+on base.item_id=txn.item_id
+left join views
+on base.item_id=views.item_id
+);
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Correlation between product reviews and conversion
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select * from p_uk_bc_t.refurb_lstg_live_conversion;
+
+--11,524 listings live in the period of 2023-04-21 to 2023-05-20
+--84% (9672) has views in L30D
+select 
+case when L30D_view=0 then 0 else 1 end as L30D_view_flag
+,count(*)
+,count(*) / sum(count(*)) over ()
+from p_uk_bc_t.refurb_lstg_live_conversion
+group by 1;
+
+--Control group (4441 listings)
+/*
+- SKU listing 
+- View > 0
+- Review with content = 0
+*/
+
+select 
+categ_lvl2_name
+,count(*)
+from p_uk_bc_t.refurb_lstg_live_conversion
+where L30D_view > 0 and EPID_review_with_content_count = 0
+group by 1
+order by 2 desc;
+
+--Target group (5231 listings)
+/*
+- SKU listing 
+- View > 0
+- Review with content > 0
+*/
+
+select 
+categ_lvl2_name
+,count(*)
+from p_uk_bc_t.refurb_lstg_live_conversion
+where L30D_view > 0 and EPID_review_with_content_count > 0
+group by 1
+order by 2 desc;
+
+--Export to Excel (9672 live and in stock SKU listings with EPID and L30Dview > 0)
+select
+case when EPID_review_with_content_count = 0 then 'Control' else 'Target' end as compare_group
+,item_id
+,item_condition
+,seller_id
+,seller_name
+,listing_title
+,listing_start_dt
+,listing_end_dt
+,categ_lvl2_name
+,categ_lvl2_id
+,categ_lvl3_name
+,categ_lvl3_id
+,EPID
+,EPID_name
+,brand
+,EPID_review_with_content_count
+,EPID_review_with_content_group
+,EPID_ttl_review_count 
+,EPID_rating
+,EPID_rating_group
+,L30D_GMV
+,L30D_SI
+,L30D_View
+from p_uk_bc_t.refurb_lstg_live_conversion
+where L30D_view > 0;
