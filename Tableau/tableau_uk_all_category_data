@@ -1,0 +1,59 @@
+-- JIRA:            UKPLAN-381
+-- Task:            Tableau: All Category Data
+
+-- Author: 			Tugrul Ates
+-- Date:            2023-05-25
+
+-- Stakeholder: 	All UK business
+-- Description: 	Provides the all ebay category data down to L4 level, so the users can search and find the category breakdown details, also export them
+
+-- Notes:           This report will help the Pro Trader team a lot when they are selecting the categories for their cohorts
+--                  All category data table needs to be joined with another table that contains item condition types, so we can repeat the same category data value for each item conditions in the export files
+
+
+create view P_ukplan_report_T.all_category_data as 
+select 
+	distinct NEW_VERTICAL
+	,META_CATEG_ID
+	,META_CATEG_NAME
+	,CATEG_LVL2_ID
+	,CATEG_LVL2_NAME
+	,CATEG_LVL3_ID
+	,CATEG_LVL3_NAME
+	,CATEG_LVL4_ID
+	,CATEG_LVL4_NAME
+	,'1' as dummy_join_column -- This is a fixed value column that will be used to join with Item Condition data later on to allow users to export category data with item condition details
+from P_INVENTORYPLANNING_T.dw_category_groupings_adj
+where 1 = 1
+	and site_id = 3  -- UK Website
+	and sap_category_id not in (5, 7, 41,23,-999) -- Excluding the non-core categories
+;
+
+
+-- Table which contains the fixed item condition type values 
+-- This table data comes from a Zeta Sheet named "Item Condition Fixed List" (https://zeta.dss.vip.ebay.com/zeta/share/#/zeta-sheet?dashboardId=9f502c38-1fcd-403e-91a6-6a9094732e08)
+select * from P_ukplan_report_T.item_condition_fixed_list
+;
+
+
+/*
+-- Example to return the same category data for each item condition type 
+
+select
+distinct t1.*
+,t2.item_condition
+from P_ukplan_report_T.all_category_data  as t1
+join P_ukplan_report_T.item_condition_fixed_list as t2
+on t1.dummy_join_column = t2.dummy_join_column
+where t1.categ_lvl4_id = 101713
+;
+
+select
+distinct t1.*
+,t2.item_condition_group
+from P_ukplan_report_T.all_category_data  as t1
+join P_ukplan_report_T.item_condition_fixed_list as t2
+on t1.dummy_join_column = t2.dummy_join_column
+where t1.categ_lvl4_id = 101713
+;
+*/

@@ -1,0 +1,32 @@
+-- JIRA:            UKPLAN-380
+-- Task:            Providing the the list of L2/3s for focused categories 
+
+-- Author: 			Tugrul Ates
+-- Date:            2023-05-23
+
+-- Stakeholder: 	Alexandra Hiatt, Christine Drumm, Stephen Norton
+-- Description: 	Providing a list of L2/3s  for focused categories for Stephe Norton to inform his seller analysis
+
+
+select
+    distinct focus.focused_vertical_lvl1 as focus_category_vertical
+    ,cat.new_vertical as business_vertical
+    ,cat.meta_categ_id
+    ,cat.meta_categ_name
+    ,cat.categ_lvl2_id
+    ,cat.categ_lvl2_name
+    ,cat.categ_lvl3_id
+    ,cat.categ_lvl3_name
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT as tran
+join ACCESS_VIEWS.DW_CAL_DT as cal  on tran.GMV_DT = cal.CAL_DT 
+join P_INVENTORYPLANNING_T.dw_category_groupings_adj as cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and tran.LSTG_SITE_ID = cat.SITE_ID
+left join access_views.focused_vert_txn focus on tran.ITEM_ID=focus.LSTG_ID and tran.CK_TRANS_ID=focus.CK_TRANS_ID and tran.LSTG_SITE_ID = focus.LSTG_SITE_ID and tran.LEAF_CATEG_ID = focus.LEAF_CATEG_ID
+where 1=1
+and tran.slr_cntry_id = 3
+and year(tran.gmv_dt) >= year(current_date) - 1  --This is to return the results for This year and Last Year
+and cal.AGE_FOR_RTL_WEEK_ID <= -1  -- This is to extract the results up to the previous completed week
+and tran.ck_wacko_yn = 'N'
+and tran.iscore = 1
+and cat.sap_category_id not in (5, 7, 41,23,-999)
+and (focus.focused_vertical_lvl1 is not null or focus.focused_vertical_lvl1 != '')
+;
