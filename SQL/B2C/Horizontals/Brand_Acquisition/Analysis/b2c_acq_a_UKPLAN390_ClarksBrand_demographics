@@ -1,0 +1,90 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-390
+
+Objective: Understand the type of buyer in Clarks in clothes shoes and accessories
+
+Description: I'll be looking at age, gender, customer segmentation
+
+*/
+DROP TABLE IF EXISTS P_OLWAND_T.202305_UKPLAN390_Brand_Buyer_Demographics;
+CREATE TABLE P_OLWAND_T.202305_UKPLAN390_Brand_Buyer_Demographics AS
+
+select RETAIL_YEAR
+,RETAIL_MONTH
+,CONCAT(RETAIL_YEAR,'M',lpad(RETAIL_MONTH,2,'0')) as RETAIL_YEARMONTH
+,brand
+,NEW_VERTICAL
+,META_CATEG_NAME
+,CATEG_LVL2_NAME
+,B2C_C2C
+,coalesce(MACRO_CL_NAME,'99 No Segment') as Seller_Segment
+,CBT_DOM
+,case 
+when customer_age >= 75 THEN '8 75 +'
+when customer_age >= 65 THEN '7 65-74'
+when customer_age >= 55 THEN '6 55-64'
+when customer_age >= 45 THEN '5 45-54'
+when customer_age >= 35 THEN '4 35-44'
+when customer_age >= 25 THEN '3 25-34'
+when customer_age >= 18 THEN '2 18-24'
+when customer_age is not null then '1 Under 18' else '0 No Age Specified' end as age_band
+,gender
+,customer_location
+,count (DISTINCT SELLER_ID) as sellers
+,count (distinct BUYER_ID) as buyers
+,count (distinct item_id) as items
+,sum (quantity) as BI
+,sum(GMV20_PLAN) as GMV
+
+from 
+(select distinct
+cal.RETAIL_YEAR
+,cal.RTL_MONTH_OF_RTL_YEAR_ID as RETAIL_MONTH
+,lstg.brand
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,ck.B2C_C2C
+,seg.MACRO_CL_NAME
+,case when dna.DATE_OF_BIRTH is not null and dna.DATE_OF_BIRTH != 'DELETED' then floor(months_between(ck.GMV_DT,cast(dna.DATE_OF_BIRTH as date))/12) end as customer_age
+,case 
+		when dna.user_id is not null and dna.USER_CNTRY_ID != 3 then cntry.CNTRY_DESC
+		when dna.state not in  ('DELETED','default','Unknown') then dna.STATE else 'No Location' end as customer_location
+,case when dna.USER_CNTRY_ID = 3 then 'DOM' else 'CBT' end as CBT_DOM
+,case when dna.GNDR_TYPE_CD in ('M','F') then dna.GNDR_TYPE_CD else 'U' end as GENDER
+,ck.SELLER_ID
+,ck.BUYER_ID
+,ck.ITEM_ID
+,ck.QUANTITY
+,ck.GMV20_PLAN
+
+
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.SITE_ID = 3
+inner join ACCESS_VIEWS.dw_cal_dt cal on cal.CAL_DT = ck.GMV_DT
+		and cal.AGE_FOR_RTL_MONTH_ID <= -1 and cal.AGE_FOR_RTL_YEAR_ID >= -1
+		
+-- listings for required brands		
+inner join (select distinct lstg.item_id
+				,lstg.DF_BRAND_TXT as brand
+				from PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+				inner join ACCESS_VIEWS.dw_cal_dt cal on cal.CAL_DT >= lstg.AUCT_START_DT and cal.CAL_DT <= lstg.AUCT_END_DT
+						and cal.AGE_FOR_RTL_MONTH_ID <= -1 and cal.AGE_FOR_RTL_YEAR_ID >= -2
+				inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on cat.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.SITE_ID = 3
+				where 1=1
+				and ((lstg.DF_BRAND_TXT in ('Clarks') and cat.META_CATEG_ID = 11450) --Clothes Shoes & Accessories
+				and lstg.LSTG_SITE_ID = 3))	lstg on ck.ITEM_ID = lstg.ITEM_ID
+-- segmentation
+left join ACCESS_VIEWS.LFSTG_CLSTR_PRMRY_USER seg on ck.BUYER_ID = seg.PRIMARY_USER_ID and ck.gmv_dt between seg.RCRD_EFF_START_DT and seg.RCRD_EFF_END_DT
+-- demographics
+left join PRS_SECURE_V.USER_DNA_DIM dna on ck.BUYER_ID = dna.user_id
+--countriesA
+left join ACCESS_VIEWS.DW_COUNTRIES cntry on dna.CUST_CNTRY_ID = cntry.CNTRY_ID
+where 1=1
+and ck.SITE_ID = 3 -- uk site
+and ck.SLR_CNTRY_ID = 3 -- uk sellers
+AND CK.CK_WACKO_YN  =  'N'
+AND CK.SALE_TYPE NOT IN (10,15)
+)
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13
+;
