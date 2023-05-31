@@ -1,0 +1,226 @@
+-- UKPLAN-356
+-- P&A Strategic Inventory LL definition
+
+
+---to update working deck (slide 6) with the redefinition of OE Wheels from OE to MPSOV bucket---
+-------------------------------------------------------
+-------------------------------------------------------
+-- List of OEM Item ids
+-----
+Drop table  if exists   P_ichan_T.pa_strat_inv_ll_oem_id ;
+create table  P_ichan_T.pa_strat_inv_ll_oem_id   as
+SELECT DISTINCT ITEM_ID ,brand_type FROM (
+ select * FROM (select 
+						upper(ASPCT_VLU_NM) as brand_type,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('brand type' ) and NS_TYPE_CD='df' 
+						 and  aspct.auct_end_dt  >=  date '2019-01-01' group by 1,2,3,4
+						 ) where brand_type ='GENUINE OEM' )  ; 
+---- 191205875 
+
+
+-- LL definition:
+
+
+
+Drop table if exists   P_INVENTORYPLANNING_T.pa_strat_inv_ll_definition ;-- select distinct retail_week from   p_ichan_t.listings_oem limit 100 
+create table   P_INVENTORYPLANNING_T.pa_strat_inv_ll_definition  as (
+select * from 
+(
+select 
+Retail_year,
+Retail_week,
+--CAT.CATEG_LVL2_ID, 
+--CAT.categ_lvl2_name,
+---case when CATEG_LVL2_ID=6030 and  CNDTN_ROLLUP_ID = 3  then 'GP' else 'other' end as inventory_prop,
+case 
+		when  ( lst.ITEM_ID = cbase.ITEM_ID	and  categ_lvl3_id in (180035) and   CNDTN_ROLLUP_ID = 1 ) and USER_SLCTD_ID not in ( 'mechanics-choice' , 'online-automotive-01604666170','partbusters') then 'OEM_motorcycle_Wheels_tyres_parts'
+		when (  lst.ITEM_ID = cbase.ITEM_ID	and  categ_lvl2_id in (6030) and   CNDTN_ROLLUP_ID = 1 ) and USER_SLCTD_ID not in ( 'mechanics-choice' , 'online-automotive-01604666170','partbusters') then 'OEM_excluding_motorcycle'
+	--	when   lst.ITEM_ID = cbase.ITEM_ID	and  categ_lvl2_id in (6030) and   CNDTN_ROLLUP_ID = 1 and USER_SLCTD_ID not in ( 'mechanics-choice' , 'online-automotive-01604666170','partbusters') then 'OEM'
+		when  categ_lvl2_id in (6030) and  CNDTN_ROLLUP_ID = 3 then 'GP'
+		when  categ_lvl3_id in (33743)  and   CNDTN_ROLLUP_ID = 1   then 'Car Tyres and Wheels'
+		---when   categ_lvl3_id in (180035)  and   CNDTN_ROLLUP_ID = 1   then 'Car and Motor Wheels and Tyres'
+		when  categ_lvl2_id in (10063	,6747	,25622	,122304	,180035	,84149	,36628	,96382	,184632	) then 'Motorcycle'
+		else 'Other C&T' end as Focus_Breakdown,
+----,case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  'Other'  end as Condition,
+---SUM( CASE WHEN 	 lst.ITEM_ID = cbase.ITEM_ID		 THEN 1 ELSE 0 END) OEM_LL,
+COUNT(DISTINCT lst.ITEM_ID ) AS TOTAL_LL
+from  DW_LSTG_ITEM lst 
+INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 --and cASE WHEN ck.GMv_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.GMV_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+/*left join (select distinct item_id , max(brand_type ) brand_type from (SELECT distinct item_id, brand_type from ( select 
+						upper(ASPCT_VLU_NM) as brand_type,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('brand type' ) and NS_TYPE_CD='df' 
+						 and  aspct.auct_end_dt  >=  date '2022-01-01' group by 1,2,3,4) where  brand_type ='GENUINE OEM' ) group by 1 ) cbase
+				ON lst.ITEM_ID = cbase.ITEM_ID		*/
+LEFT JOIN  P_ichan_T.pa_strat_inv_ll_oem_id   cbase ON lst.ITEM_ID = cbase.ITEM_ID	
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID   
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 
+ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2019   and Lst.AUCT_END_DT >='2019-01-01' 
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and lst.SLR_CNTRY_ID =3
+AND bsns_vrtcl_name='Parts & Accessories'
+ and lst.AUCT_end_dt >= '2019-01-01'
+ GROUP BY 1,2,3
+ )sub 
+ where 1=1
+ and retail_year >=2020 and retail_week in ( select DISTINCT retail_week from DW_CAL_DT where AGE_FOR_WEEK_ID <=-1 ) ) ;
+ ---
+ select * from P_INVENTORYPLANNING_T.pa_strat_inv_ll_definition where retail_year >=2021 limit 1000;
+
+
+---------------
+-- 15 -05 -2023
+-- Include CBT
+-- Would we be able to look at CBT under the lens of non-UK sellers that contributing to listings on UK site?
+	
+	
+Drop table if exists   P_INVENTORYPLANNING_T.pa_strat_inv_ll_definition_cbt ;-- select * from  P_INVENTORYPLANNING_T.pa_strat_inv_ll_definition_cbt  limit 100 
+create table   P_INVENTORYPLANNING_T.pa_strat_inv_ll_definition_cbt  as (
+select * from 
+(
+select 
+Retail_year,
+Retail_week,
+case when  slr_cntry_id = 3 and lst.SLR_site_ID = 3 and  lst.ITEM_site_ID = 3 and HIST.USEGM_ID = 206  then 'UK Dom B2C'
+	 when slr_cntry_id <> 3 and lst.ITEM_site_ID = 3  and HIST.USEGM_ID = 206 then  'B2C_CBT'
+	else 'C2C' end as Bucket,
+--CAT.CATEG_LVL2_ID, 
+--CAT.categ_lvl2_name,
+---case when CATEG_LVL2_ID=6030 and  CNDTN_ROLLUP_ID = 3  then 'GP' else 'other' end as inventory_prop,
+case 
+		when  ( lst.ITEM_ID = cbase.ITEM_ID	and  categ_lvl3_id in (180035) and   CNDTN_ROLLUP_ID = 1 ) and USER_SLCTD_ID not in ( 'mechanics-choice' , 'online-automotive-01604666170','partbusters') then 'OEM_motorcycle_Wheels_tyres_parts'
+		when (  lst.ITEM_ID = cbase.ITEM_ID	and  categ_lvl2_id in (6030) and   CNDTN_ROLLUP_ID = 1 ) and USER_SLCTD_ID not in ( 'mechanics-choice' , 'online-automotive-01604666170','partbusters') then 'OEM_excluding_motorcycle'
+	--	when   lst.ITEM_ID = cbase.ITEM_ID	and  categ_lvl2_id in (6030) and   CNDTN_ROLLUP_ID = 1 and USER_SLCTD_ID not in ( 'mechanics-choice' , 'online-automotive-01604666170','partbusters') then 'OEM'
+		when  categ_lvl2_id in (6030) and  CNDTN_ROLLUP_ID = 3 then 'GP'
+		when  categ_lvl3_id in (33743)  and   CNDTN_ROLLUP_ID = 1   then 'Car Tyres and Wheels'
+		---when   categ_lvl3_id in (180035)  and   CNDTN_ROLLUP_ID = 1   then 'Car and Motor Wheels and Tyres'
+		when  categ_lvl2_id in (10063	,6747	,25622	,122304	,180035	,84149	,36628	,96382	,184632	) then 'Motorcycle'
+		else 'Other C&T' end as Focus_Breakdown,
+----,case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 3 then 'Used' else  'Other'  end as Condition,
+---SUM( CASE WHEN 	 lst.ITEM_ID = cbase.ITEM_ID		 THEN 1 ELSE 0 END) OEM_LL,
+COUNT(DISTINCT lst.ITEM_ID ) AS TOTAL_LL
+from  DW_LSTG_ITEM lst 
+INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 
+					
+				AND				HIST.USEGM_ID = 206 --and cASE WHEN ck.GMv_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.GMV_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+/*left join (select distinct item_id , max(brand_type ) brand_type from (SELECT distinct item_id, brand_type from ( select 
+						upper(ASPCT_VLU_NM) as brand_type,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('brand type' ) and NS_TYPE_CD='df' 
+						 and  aspct.auct_end_dt  >=  date '2022-01-01' group by 1,2,3,4) where  brand_type ='GENUINE OEM' ) group by 1 ) cbase
+				ON lst.ITEM_ID = cbase.ITEM_ID		*/
+LEFT JOIN  P_ichan_T.pa_strat_inv_ll_oem_id   cbase ON lst.ITEM_ID = cbase.ITEM_ID	
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID   
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 
+ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2019   and Lst.AUCT_END_DT >='2019-01-01' 
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+--and lst.SLR_CNTRY_ID =3
+AND bsns_vrtcl_name='Parts & Accessories'
+ and lst.AUCT_end_dt >= '2019-01-01'
+ GROUP BY 1,2,3,4
+ )sub 
+ where 1=1
+ and retail_year >=2020 and retail_week in ( select DISTINCT retail_week from DW_CAL_DT where AGE_FOR_WEEK_ID <=-1 ) ) ;
+ ---
+ select * from P_INVENTORYPLANNING_T.pa_strat_inv_ll_definition_cbt where retail_year >=2022 and retail_week =19  limit 1000;
+
+
+	
+------------
+------------
+------------
+------------
+------------
+------------
+------------
+------------
+/*
+
+Drop table if exists   P_ichan_T.pa_strat_inv_ll_oem ;-- select distinct retail_week from   p_ichan_t.listings_oem limit 100 
+create table  P_ichan_T.pa_strat_inv_ll_oem  as (
+select 
+Retail_year,
+Retail_week,
+--categ_lvl3_id,
+--categ_lvl3_name,
+--slr_id,
+case when USER_SLCTD_ID in ( 'mechanics-choice' , 'online-automotive-01604666170','partbusters') then  USER_SLCTD_ID else 'other seller' end as seller_mapping,
+case when   lst.ITEM_ID = cbase.ITEM_ID	and  categ_lvl2_id in (6030) and   CNDTN_ROLLUP_ID = 1 then 'OEM'
+		else 'Other' end as OEM_all,
+COUNT(DISTINCT lst.ITEM_ID ) AS TOTAL_LL
+from  DW_LSTG_ITEM lst 
+INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 --and cASE WHEN ck.GMv_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.GMV_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+/*left join (select distinct item_id , max(brand_type ) brand_type from (SELECT distinct item_id, brand_type from ( select 
+						upper(ASPCT_VLU_NM) as brand_type,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('brand type' ) and NS_TYPE_CD='df' 
+						 and  aspct.auct_end_dt  >=  date '2022-01-01' group by 1,2,3,4) where  brand_type ='GENUINE OEM' ) group by 1 ) cbase
+				ON lst.ITEM_ID = cbase.ITEM_ID		*/
+inner join P_ichan_T.pa_strat_inv_ll_oem_id   cbase 	ON lst.ITEM_ID = cbase.ITEM_ID	
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID   
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 
+ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2020  and Lst.AUCT_END_DT >='2020-01-01' 
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and lst.SLR_CNTRY_ID =3
+ and lst.AUCT_end_dt >= '2019-01-01'
+ and bsns_vrtcl_name =  'Parts & Accessories' 
+   GROUP BY 1,2,3,4 ) ;
+ 
+ -----
+ select retail_year, retail_week,  seller_mapping, sum(total_ll)oem_ll
+ from P_ichan_T.pa_strat_inv_ll_oem   --- where retail_year >=2022 
+ --where retail_year >=2022 and retail_week = 46
+ where oem_all ='OEM' 
+ group by 1,2,3;
+ 
+  select retail_year, retail_week,  seller_mapping, sum(total_ll)oem_ll
+ from P_ichan_T.pa_strat_inv_ll_oem   --- where retail_year >=2022 
+ where retail_year =2023 and retail_week = 17
+ and oem_all ='OEM' 
+ group by 1,2,3;
+ */
+ 
