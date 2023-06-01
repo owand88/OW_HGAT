@@ -5,13 +5,12 @@
 -- Date:            2023-05-31
 
 -- Stakeholder: 	Pro Trader
--- Description: 	Helps Pro Trader team to review the Top 750 sellers for the cohorts that they have chosen for their new quarter. Pro Trader team then will pick the sellers from this report and start inviting them to the Pro Trader (Standard) programme
+-- Description: 	Helps Pro Trader team to review the Top 1000 sellers for the cohorts that they have chosen for their new quarter. Pro Trader team then will pick the sellers from this report and start inviting them to the Pro Trader (Standard) programme
 
 -- Notes:           This report will also have flags for the sellers who have been invited (opted-in or not), and who have participated
 
 
 create view P_ukplan_report_T.protrader_top_sellers as 
-
 with protrader_cohorts_for_new_quarter as 
 	(
 	select
@@ -19,11 +18,16 @@ with protrader_cohorts_for_new_quarter as
 		,3 as site_id  -- This is to ensure that we only selecth the data for the UK website category hierarchy when we join this table with the category groupings table later on
 		,dense_rank() over (order by cohort_year||cohort_quarter_id desc) as cohort_recency_rank  -- Later on, this cohort_recency_rank value will help us to only return the top sellers for the recent Pro Trader cohort. We will do this by selecting the cohorts with "cohort_recency_rank = 1" value 
 		from P_ukplan_report_T.protrader_quarterly_cohorts
-		where (seller_id is null and seller_name is null)  -- By doing this we are only retreiving the rows where the cohort definition is based on categories and item conditions, not seller_ids. Because for this report, we are trying to extract the top sellers from those category + item condition combinations
+		--from cohorts
+		where 1 = 1
+		and (seller_id is null and seller_name is null)  -- By doing this we are only retreiving the rows where the cohort definition is based on categories and item conditions, not seller_ids. Because for this report, we are trying to extract the top sellers from those category + item condition combinations
+		and cohort_year is not null
+		and cohort_year != ''
 	)
 
 , previously_invited_sellers as 
 	(
+	-- PART 1: 
 	-- Seller Data for the previous quarters - which is available in Hive
 	select
 		distinct seller_id
@@ -31,7 +35,6 @@ with protrader_cohorts_for_new_quarter as
 			when seller_sign_up = 1 then 'Yes'
 			when seller_sign_up = 0 then 'No'
 		end as seller_signup_flag
-		,'Hive' as seller_data_source
 
 	from  p_mdall_v.sfdc_hive_lttm_seller
 
@@ -42,15 +45,29 @@ with protrader_cohorts_for_new_quarter as
 
 	union all
 
+	-- PART 2: 
 	-- Seller Data for the previous quarters - which is NOT available in Hive
 	-- This historical table is controlled by a Zeta Sheet (https://zeta.dss.vip.ebay.com/zeta/share/#/zeta-sheet?dashboardId=04a90893-0e4d-4022-a380-8a2c49b8da11)
 	select 
 		distinct seller_id
 		,'Yes' as seller_signup_flag  -- In the historical table, we only have the sellers who have opted-in to Pro Trader Standard programme. Therefore, "seller_signup_flag" value for all the records in this table is "Yes"
-		,'Historical' as seller_data_source
+		
 	from P_ukplan_report_T.historical_protrader_sellers
 	)
+	
+, previously_invited_sellers_deduped as -- We create this table because there are sellers who have been invited to Pro Trader multiple times in different quarters and they have participated in one of those quarters. This causes duplicate rows in the final results output
+	(
+	select 
+		distinct seller_id
+		,seller_signup_flag
 
+	from previously_invited_sellers
+
+	group by 1,2
+	qualify ( dense_rank() over (partition by seller_id order by seller_signup_flag desc) ) = 1  -- If the seller has both "Yes" and "No" values for seller_signup_flag column, this line will only choose "Yes" value to avoid having duplicate rows later on
+
+	)
+	
 , seller_standard_data as 
 (
 	select 
@@ -72,57 +89,71 @@ with protrader_cohorts_for_new_quarter as
 	qualify ( row_number() over (partition by user_id order by last_eval_dt desc) ) = 1  -- This ensures that we extract the most recent seller standard data
 )
 
--- Final table
-select
-	tran.slr_id as seller_id
-	,usr.user_slctd_id as seller_name
-	,case when pis.seller_id is null then 'No' else 'Yes' end as previously_invited_seller_flag
-	,nvl(pis.seller_signup_flag, 'No') as seller_signup_flag
-	,nvl(pis.seller_data_source, 'Transaction') as seller_data_source
-	,ssd.seller_standard
-	,cat.new_vertical as adjusted_vertical
-	,case when tran.slr_cntry_id != tran.byr_cntry_id then 'CBT' else 'DOM' end as dom_cbt_flag
-	
-	,sum(case when cal.age_for_rtl_week_id between -4 and -1 then tran.gmv20_plan else 0 end) as gmv_plan_usd_4w
-	,sum(case when cal.age_for_rtl_week_id between -53 and -1 then tran.gmv20_plan else 0 end) as gmv_plan_usd_52w
-	,sum(case when cal.age_for_rtl_week_id between -4 and -1 then tran.gmv20_sold_quantity else 0 end) as si_4w
-	,sum(case when cal.age_for_rtl_week_id between -53 and -1 then tran.gmv20_sold_quantity else 0 end) as si_52w
+, combined_data as 
+(
+	select
+		tran.slr_id as seller_id
+		,usr.user_slctd_id as seller_name
+		,ptc.cohort_name
+		,case when pis.seller_id is null then 'No' else 'Yes' end as previously_invited_seller_flag
+		,nvl(pis.seller_signup_flag, 'No') as seller_signup_flag
+		,ssd.seller_standard
+		,cat.new_vertical as adjusted_vertical
+		,case when tran.slr_cntry_id != tran.byr_cntry_id then 'CBT' else 'DOM' end as dom_cbt_flag
 
-from prs_restricted_v.slng_trans_super_fact as tran
+		,sum(case when cal.age_for_rtl_week_id between -4 and -1 then tran.gmv20_plan else 0 end) as gmv_plan_usd_4w
+		,sum(case when cal.age_for_rtl_week_id between -53 and -1 then tran.gmv20_plan else 0 end) as gmv_plan_usd_52w
+		,sum(case when cal.age_for_rtl_week_id between -4 and -1 then tran.gmv20_sold_quantity else 0 end) as si_4w
+		,sum(case when cal.age_for_rtl_week_id between -53 and -1 then tran.gmv20_sold_quantity else 0 end) as si_52w
 
-join dw_cal_dt as cal  
-	on tran.gmv_dt = cal.cal_dt 
+	from prs_restricted_v.slng_trans_super_fact as tran
 
-join p_inventoryplanning_t.dw_category_groupings_adj as cat 
-	on tran.leaf_categ_id = cat.leaf_categ_id 
-	and tran.lstg_site_id = cat.site_id
+	join dw_cal_dt as cal  
+		on tran.gmv_dt = cal.cal_dt 
 
-join dw_users as usr
-	on tran.slr_id = usr.user_id
-	
-join protrader_cohorts_for_new_quarter as ptc 
-	on tran.item_cndtn_id = ptc.item_condition_id
-	and cat.site_id = ptc.site_id 
-	and ptc.meta_categ_id = cat.meta_categ_id
-	and ptc.categ_lvl2_id = cat.categ_lvl2_id
-	and ptc.categ_lvl3_id = cat.categ_lvl3_id
+	join p_inventoryplanning_t.dw_category_groupings_adj as cat 
+		on tran.leaf_categ_id = cat.leaf_categ_id 
+		and tran.lstg_site_id = cat.site_id
 
-join seller_standard_data as ssd
-	on tran.slr_id = ssd.user_id
-	and usr.user_id = ssd.user_id
+	join dw_users as usr
+		on tran.slr_id = usr.user_id
 
-left join previously_invited_sellers as pis
-	on tran.slr_id = pis.seller_id
+	join protrader_cohorts_for_new_quarter as ptc 
+		on tran.item_cndtn_id = ptc.item_condition_id
+		and cat.site_id = ptc.site_id 
+		and ptc.meta_categ_id = cat.meta_categ_id
+		and ptc.categ_lvl2_id = cat.categ_lvl2_id
+		and ptc.categ_lvl3_id = cat.categ_lvl3_id
 
-where 1=1
-	and tran.slr_cntry_id = 3
-	and tran.eu_b2c_c2c_flag = 'B2C'  -- Only B2C sellers get invited to Pro Trader programme
-	and cal.age_for_rtl_week_id >= -53 --This is to return the results for the last 53 weeks
-	and cal.age_for_rtl_week_id <= -1
-	and tran.ck_wacko_yn = 'N'
-	and tran.iscore = 1
-	and cat.sap_category_id not in (5, 7, 41,23,-999)  -- This will help us to only work with the Core categories
-	and ptc.cohort_recency_rank = 1 -- This will only use the data for the recent wuarter entries from the cohort table 
-	
-group by 1,2,3,4,5,6,7,8
+	join seller_standard_data as ssd
+		on tran.slr_id = ssd.user_id
+		and usr.user_id = ssd.user_id
+
+	left join previously_invited_sellers_deduped as pis
+		on tran.slr_id = pis.seller_id
+
+	where 1=1
+		and tran.slr_cntry_id = 3
+		and tran.eu_b2c_c2c_flag = 'B2C'  -- Only B2C sellers get invited to Pro Trader programme
+		and cal.age_for_rtl_week_id >= -53 --This is to return the results for the last 53 weeks
+		and cal.age_for_rtl_week_id <= -1
+		and tran.ck_wacko_yn = 'N'
+		and tran.iscore = 1
+		and cat.sap_category_id not in (5, 7, 41,23,-999)  -- This will help us to only work with the Core categories
+		and ptc.cohort_recency_rank = 1 -- This will only use the data for the recent wuarter entries from the cohort table 
+
+	group by 1,2,3,4,5,6,7,8
+)
+
+, ranked_data as 
+(
+	select 
+		*
+		,dense_rank() over (partition by cohort_name order by gmv_plan_usd_52w desc) as top_seller_rank
+
+		from combined_data
+)
+
+--Final data selection
+select * from ranked_data where top_seller_rank <= 1000  -- In this part, we are selecting the top 1000 sellers for each Pro Trader Cohort. The original request was selecting top 750 sellers. However, as some of those sellers have opted in Pro Trader Standard programme before. As we are not removing those sellers from the final output, extracting 1000 sellers instead of 750 would prevent having less seller data to review
 ;
