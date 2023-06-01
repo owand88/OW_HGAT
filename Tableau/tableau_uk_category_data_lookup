@@ -1,8 +1,8 @@
 -- JIRA:            UKPLAN-381
--- Task:            Tableau: All Category Data
+-- Task:            Tableau: Category Data Lookup
 
 -- Author: 			Tugrul Ates
--- Date:            2023-05-25
+-- Date:            2023-05-29
 
 -- Stakeholder: 	All UK business
 -- Description: 	Provides the all ebay category data down to L4 level, so the users can search and find the category breakdown details, also export them
