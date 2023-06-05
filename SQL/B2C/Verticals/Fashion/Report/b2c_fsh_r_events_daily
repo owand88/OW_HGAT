@@ -9,7 +9,7 @@ inner join ACCESS_VIEWS.RPP_ITEM ri on ri.rpp_crtn_id = re.rpp_crtn_id
 inner join ACCESS_VIEWS.DW_LSTG_ITEM lstg on ri.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3
 inner join access_views.DW_CAL_DT cal on (cal.cal_dt=cast(re.START_TS as date) or cal.cal_dt=cast(re.end_ts as date))
 inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and lstg.ITEM_SITE_ID = cat.SITE_ID
-and cal.AGE_FOR_RTL_WEEK_ID between -4 and 0
+and cal.AGE_FOR_RTL_WEEK_ID between -8 and 0
 and cat.new_vertical = 'Fashion'
 and cat.meta_categ_id = 11450 --Clothes Shoes & Accessories
 and re.url_txt like '%/fashion/%'
@@ -178,7 +178,7 @@ group by 1,2,3,4,5,6) ev on cal.cal_dt = ev.cal_dt
 left join traffic_overall trfc on cal.cal_dt = trfc.cal_dt and trfc.categ_lvl3_id = ev.categ_lvl3_id
 left join checkout_overall ck on cal.cal_dt = ck.gmv_dt and ck.categ_lvl3_id = ev.categ_lvl3_id
 where 1=1
-and cal.AGE_FOR_RTL_WEEK_ID between -4 and 0
+and cal.AGE_FOR_RTL_WEEK_ID between -8 and 0
 and cal.AGE_FOR_DT_ID <= -1
 group by 1,2,3,4,5,6,7
 ;
