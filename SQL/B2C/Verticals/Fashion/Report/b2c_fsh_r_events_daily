@@ -1,0 +1,184 @@
+drop table if exists events;
+create temporary table events as
+select distinct re.RPP_EVENT_ID
+,re.event_name
+,re.start_ts
+,re.end_ts
+from ACCESS_VIEWS.rpp_event re
+inner join ACCESS_VIEWS.RPP_ITEM ri on ri.rpp_crtn_id = re.rpp_crtn_id
+inner join ACCESS_VIEWS.DW_LSTG_ITEM lstg on ri.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3
+inner join access_views.DW_CAL_DT cal on (cal.cal_dt=cast(re.START_TS as date) or cal.cal_dt=cast(re.end_ts as date))
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and lstg.ITEM_SITE_ID = cat.SITE_ID
+and cal.AGE_FOR_RTL_WEEK_ID between -4 and 0
+and cat.new_vertical = 'Fashion'
+and cat.meta_categ_id = 11450 --Clothes Shoes & Accessories
+and re.url_txt like '%/fashion/%'
+;
+
+drop table if exists events_ev;
+create temporary table events_ev as
+select distinct re.RPP_EVENT_ID
+,re.event_name
+,re.start_ts
+,re.end_ts
+,ri.ITEM_ID
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_ID
+,cat.CATEG_LVL3_NAME
+from ACCESS_VIEWS.rpp_event re
+inner join ACCESS_VIEWS.RPP_ITEM ri on ri.rpp_crtn_id = re.rpp_crtn_id
+inner join ACCESS_VIEWS.DW_LSTG_ITEM lstg on ri.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3
+inner join access_views.DW_CAL_DT cal on cal.cal_dt=cast(re.START_TS as date)
+inner join events ev on re.RPP_EVENT_ID = ev.RPP_EVENT_ID
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and lstg.ITEM_SITE_ID = cat.SITE_ID
+;
+
+drop table if exists traffic_ev;
+create temporary table traffic_ev as
+select
+ev.RPP_EVENT_ID
+,trfc.item_id
+-- ,TRFC.CAL_DT
+,sum(srp_imprsn_cnt + store_imprsn_cnt) as IMP
+,sum(TTL_VI_CNT) as VI
+FROM PRS_restricted_V.SLNG_TRFC_SUPER_FACT TRFC
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = TRFC.cal_dt
+         AND CAL.AGE_FOR_RTL_YEAR_ID >= -1 
+		and AGE_FOR_DT_ID <= -1
+inner join events_ev ev on trfc.cal_dt between cast(ev.start_ts as date) and cast(ev.end_ts as date) 
+			and trfc.ITEM_ID = ev.item_id
+where trfc.SITE_ID = 3
+group by 1,2
+;
+
+drop table if exists checkout_ev;
+create temporary table checkout_ev as
+
+select 
+ev.RPP_EVENT_ID
+,ck.item_id
+-- ,ck.GMV_DT
+,count(distinct ck.TRANSACTION_ID) as TRANSACTIONS
+,SUM(gmv_plan_usd) AS GMV
+,sum(ck.quantity) as SI
+  	FROM  access_views.DW_CHECKOUT_TRANS ck  
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.gmv_dt
+        AND CAL.AGE_FOR_RTL_YEAR_ID >= -1 
+		and AGE_FOR_DT_ID <= -1
+inner join access_views.DW_USEGM_HIST HIST ON HIST.USER_ID = CK.SELLER_ID 
+										AND CK.gmv_dt BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+										AND HIST.USEGM_GRP_ID = 48 AND HIST.USEGM_ID = 206 AND HIST.END_DATE >= '2015-12-30'
+inner join events_ev ev on ck.GMV_TIME between ev.start_ts and ev.end_ts and ev.item_id = ck.ITEM_ID
+group by 1,2
+;
+
+-- select *
+-- from  p_olwand_t.fashion_events;
+
+drop table if exists p_olwand_t.fashion_events_lvl;
+create table p_olwand_t.fashion_events_lvl as
+select ev.RPP_EVENT_ID
+,ev.event_name
+,ev.start_ts
+,ev.end_ts
+,ev.NEW_VERTICAL
+,ev.META_CATEG_NAME
+,ev.CATEG_LVL2_NAME
+,ev.CATEG_LVL3_NAME
+,cal.RETAIL_YEAR
+,cal.RETAIL_WEEK
+,sum(trfc.IMP) as IMP
+,sum(trfc.VI) as VI
+,sum(ck.gmv) as GMV
+,sum(ck.SI) as SI
+,sum(ck.TRANSACTIONS) as TTL_TRANSACTIONS
+,count(distinct ev.item_id) as EVENT_ITEMS
+from events_ev ev
+inner join ACCESS_VIEWS.dw_cal_dt cal on cast(ev.start_ts as date) = cal.cal_dt
+left join traffic_ev trfc on ev.RPP_EVENT_ID = trfc.RPP_EVENT_ID and ev.item_id = trfc.item_id
+left join checkout_ev ck on ev.RPP_EVENT_ID = ck.RPP_EVENT_ID and ev.item_id = ck.item_id
+
+group by 1,2,3,4,5,6,7,8,9,10
+;
+
+
+drop table if exists traffic_overall;
+create temporary table traffic_overall as
+select
+ev.categ_lvl3_id
+,TRFC.CAL_DT
+,sum(srp_imprsn_cnt + store_imprsn_cnt) as IMP
+,sum(TTL_VI_CNT) as VI
+FROM PRS_restricted_V.SLNG_TRFC_SUPER_FACT TRFC
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = TRFC.cal_dt
+         AND CAL.AGE_FOR_RTL_YEAR_ID >= -1 
+		and AGE_FOR_DT_ID <= -1
+inner join events_ev ev on trfc.cal_dt between cast(ev.start_ts as date) and cast(ev.end_ts as date) 
+			and trfc.ITEM_ID = ev.item_id
+where trfc.SITE_ID = 3
+group by 1,2
+;
+
+drop table if exists checkout_overall;
+create temporary table checkout_overall as
+
+select 
+ev.categ_lvl3_id
+,ck.GMV_DT
+,count(distinct ck.TRANSACTION_ID) as TRANSACTIONS
+,SUM(gmv_plan_usd) AS GMV
+,sum(ck.quantity) as SI
+  	FROM  access_views.DW_CHECKOUT_TRANS ck  
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.gmv_dt
+        AND CAL.AGE_FOR_RTL_YEAR_ID >= -1 
+		and AGE_FOR_DT_ID <= -1
+inner join access_views.DW_USEGM_HIST HIST ON HIST.USER_ID = CK.SELLER_ID 
+										AND CK.gmv_dt BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+										AND HIST.USEGM_GRP_ID = 48 AND HIST.USEGM_ID = 206 AND HIST.END_DATE >= '2015-12-30'
+inner join events_ev ev on ck.GMV_TIME between ev.start_ts and ev.end_ts and ev.item_id = ck.ITEM_ID
+group by 1,2
+;
+
+drop table if exists p_olwand_t.fashion_events_overall;
+create table p_olwand_t.fashion_events_overall as
+select 
+cal.CAL_DT
+,cal.RETAIL_WEEK
+,cal.RETAIL_YEAR
+,ev.NEW_VERTICAL
+,ev.META_CATEG_NAME
+,ev.CATEG_LVL2_NAME
+,ev.CATEG_LVL3_NAME
+,sum(ev.NEW_EVENTS) as NEW_EVENTS
+,sum(trfc.IMP) as IMP
+,sum(trfc.VI) as VI
+,sum(ck.gmv) as GMV
+,sum(ck.SI) as SI
+,sum(ck.TRANSACTIONS) as TTL_TRANSACTIONS
+,sum(ev.EVENT_ITEMS) as EVENT_ITEMS
+from ACCESS_VIEWS.dw_cal_dt cal
+left join (
+select cal.cal_dt
+,ev.NEW_VERTICAL
+,ev.META_CATEG_NAME
+,ev.CATEG_LVL2_NAME
+,ev.CATEG_LVL3_NAME
+,ev.categ_lvl3_id
+,count(distinct ev.RPP_EVENT_ID) as new_events
+,count(distinct ev.item_id) as EVENT_ITEMS
+from events_ev ev
+inner join ACCESS_VIEWS.dw_cal_dt cal on cal.cal_dt BETWEEN cast(ev.start_ts as date) and cast(ev.end_ts as date)
+group by 1,2,3,4,5,6) ev on cal.cal_dt = ev.cal_dt
+left join traffic_overall trfc on cal.cal_dt = trfc.cal_dt and trfc.categ_lvl3_id = ev.categ_lvl3_id
+left join checkout_overall ck on cal.cal_dt = ck.gmv_dt and ck.categ_lvl3_id = ev.categ_lvl3_id
+where 1=1
+and cal.AGE_FOR_RTL_WEEK_ID between -4 and 0
+and cal.AGE_FOR_DT_ID <= -1
+group by 1,2,3,4,5,6,7
+;
