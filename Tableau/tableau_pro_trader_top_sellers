@@ -105,7 +105,7 @@ with protrader_cohorts_for_new_quarter as
 	select
 		tran.slr_id as seller_id
 		,usr.user_slctd_id as seller_name
-		,case when usr.want_telemarketing = 'Y' then 'Yes' else 'No' end as marketing_email_optin
+		,case when pii.sellr_email_elgbl_yn = 'Y' then 'Yes' else 'No' end as marketing_email_optin
 		,ptc.cohort_name
 		,case when pis.seller_id is null then 'No' else 'Yes' end as previously_invited_seller_flag
 		,nvl(pis.seller_signup_flag, 'No') as seller_signup_flag
@@ -141,6 +141,10 @@ with protrader_cohorts_for_new_quarter as
 	join seller_standard_data as ssd
 		on tran.slr_id = ssd.user_id
 		and usr.user_id = ssd.user_id
+		
+	join MDM_USER_PII as pii  -- This table contains marketing preference data (i.e. Marketing Email Optin Y/N flag)
+		on tran.slr_id = pii.user_id
+		and usr.user_id = pii.user_id
 
 	left join previously_invited_sellers_deduped as pis
 		on tran.slr_id = pis.seller_id
