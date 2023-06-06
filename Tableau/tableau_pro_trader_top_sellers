@@ -89,17 +89,30 @@ with protrader_cohorts_for_new_quarter as
 	qualify ( row_number() over (partition by user_id order by last_eval_dt desc) ) = 1  -- This ensures that we extract the most recent seller standard data
 )
 
+, focused_seller_data as 
+(
+	select 
+		distinct seller_id 
+
+	from ACCESS_VIEWS.SDM_MDP_BOB_SELLER 
+
+	where BOB_SELLER_SGMNT_CD in ('Managed', 'Pro Trader Scaling')
+	and cohort = year(current_date)
+)
+
 , combined_data as 
 (
 	select
 		tran.slr_id as seller_id
 		,usr.user_slctd_id as seller_name
+		,case when usr.want_telemarketing = 'Y' then 'Yes' else 'No' end as marketing_email_optin
 		,ptc.cohort_name
 		,case when pis.seller_id is null then 'No' else 'Yes' end as previously_invited_seller_flag
 		,nvl(pis.seller_signup_flag, 'No') as seller_signup_flag
 		,ssd.seller_standard
 		,cat.new_vertical as adjusted_vertical
 		,case when tran.slr_cntry_id != tran.byr_cntry_id then 'CBT' else 'DOM' end as dom_cbt_flag
+		,case when fsd.seller_id is null then 'No' else 'Yes' end as focused_seller_flag
 
 		,sum(case when cal.age_for_rtl_week_id between -4 and -1 then tran.gmv20_plan else 0 end) as gmv_plan_usd_4w
 		,sum(case when cal.age_for_rtl_week_id between -53 and -1 then tran.gmv20_plan else 0 end) as gmv_plan_usd_52w
@@ -131,6 +144,9 @@ with protrader_cohorts_for_new_quarter as
 
 	left join previously_invited_sellers_deduped as pis
 		on tran.slr_id = pis.seller_id
+		
+	left join focused_seller_data as fsd
+		on tran.slr_id = fsd.seller_id
 
 	where 1=1
 		and tran.slr_cntry_id = 3
@@ -142,7 +158,7 @@ with protrader_cohorts_for_new_quarter as
 		and cat.sap_category_id not in (5, 7, 41,23,-999)  -- This will help us to only work with the Core categories
 		and ptc.cohort_recency_rank = 1 -- This will only use the data for the recent wuarter entries from the cohort table 
 
-	group by 1,2,3,4,5,6,7,8
+	group by 1,2,3,4,5,6,7,8,9,10
 )
 
 , ranked_data as 
@@ -157,3 +173,5 @@ with protrader_cohorts_for_new_quarter as
 --Final data selection
 select * from ranked_data where top_seller_rank <= 1000  -- In this part, we are selecting the top 1000 sellers for each Pro Trader Cohort. The original request was selecting top 750 sellers. However, as some of those sellers have opted in Pro Trader Standard programme before. As we are not removing those sellers from the final output, extracting 1000 sellers instead of 750 would prevent having less seller data to review
 ;
+
+
