@@ -1,0 +1,61 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-389
+
+Objective: Understand CR performance decline for dyson YoY
+We'll look specifically at dyson_outlet Oracle ID 637260360
+
+
+
+*/
+DROP TABLE IF EXISTS P_OLWAND_T.UKPLAN389_Dyson_analysis;
+CREATE TABLE P_OLWAND_T.UKPLAN389_Dyson_analysis AS
+
+select
+cal.RETAIL_WEEK
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,case when ck.SELLER_ID = 637260360 then 1 else 0 end as dyson_flag
+,case ck.item_cndtn_id when 1000 then 'New'
+	  			when 1500 then 'New - Other'
+	  			when 1750 then 'New - With defects'
+	  			when 2000 then 'Refurb - Certified' 
+	  			when 2010 then 'Refurb - Excellent'
+	  			when 2020 then 'Refurb - Very Good'
+	  			when 2030 then 'Refurb - Good'
+	  			when 2500 then 'Refurb - Seller' 
+				when 3000 then 'Used'
+	  			when 4000 then 'Used - Very Good'
+	  			when 5000 then 'Used - Good'
+	  			when 6000 then 'Used - Acceptable'
+	  			when 7000 then 'Used - For parts / not working'
+	  			else 'Other' end as item_condition
+,case when cpn.item_id is not null then 1 else 0 end as cpn_ind
+,case when ck.BYR_CNTRY_ID = ck.SLR_CNTRY_ID then 'DOM' else 'CBT' end as DOM_CBT
+,count(distinct case when AGE_FOR_RTL_YEAR_ID = 0 then ck.ITEM_ID end) as unique_listings_TY
+,count(distinct case when AGE_FOR_RTL_YEAR_ID = -1 then ck.ITEM_ID end) as unique_listings_LY
+,sum(case when AGE_FOR_RTL_YEAR_ID = 0 then ck.GMV20_PLAN end) as GMV_TY
+,sum(case when AGE_FOR_RTL_YEAR_ID = -1 then ck.GMV20_PLAN end) as GMV_LY
+,sum(case when AGE_FOR_RTL_YEAR_ID = 0 then ck.QUANTITY end) as SI_TY
+,sum(case when AGE_FOR_RTL_YEAR_ID = -1 then ck.QUANTITY end) as SI_LY
+,sum(case when dyson_flag = 1 and AGE_FOR_RTL_YEAR_ID = 0 then ck.GMV20_PLAN end) as DYSON_GMV_TY
+,sum(case when dyson_flag = 1 and AGE_FOR_RTL_YEAR_ID = -1 then ck.GMV20_PLAN end) as DYSON_GMV_LY
+,sum(case when dyson_flag = 1 and AGE_FOR_RTL_YEAR_ID = 0 then ck.QUANTITY end) as DYSON_SI_TY
+,sum(case when dyson_flag = 1 and AGE_FOR_RTL_YEAR_ID = -1 then ck.QUANTITY end) as DYSON_SI_LY
+
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.SITE_ID = 3
+inner join ACCESS_VIEWS.dw_cal_dt cal on cal.CAL_DT = ck.GMV_DT
+		and cal.AGE_FOR_RTL_WEEK_ID <= -1 and cal.AGE_FOR_RTL_YEAR_ID >= -1 and cal.RETAIL_WEEK <= (select max(RETAIL_WEEK) from ACCESS_VIEWS.dw_cal_dt where AGE_FOR_RTL_WEEK_ID = -1)
+left join P_OLWAND_T.Coupon_Redemptions cpn on ck.TRANSACTION_ID = cpn.transaction_id and ck.ITEM_ID = cpn.item_id 
+
+
+where 1=1
+and ck.SITE_ID = 3 -- uk site
+and ck.SLR_CNTRY_ID = 3 -- uk sellers
+AND CK.CK_WACKO_YN  =  'N'
+AND CK.SALE_TYPE NOT IN (10,15)
+and ck.ITEM_CNDTN_ID between 2000 and 2030
+
+group by 1,2,3,4,5,6,7,8
+;

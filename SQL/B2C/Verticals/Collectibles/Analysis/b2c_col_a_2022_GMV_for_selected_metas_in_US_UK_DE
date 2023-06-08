@@ -1,0 +1,37 @@
+-- JIRA:            UKPLAN-399
+-- Task:            2022 GMV for the selected Global Art & Antiques meta categories in UK/DE/US
+
+-- Author: 			Tugrul Ates
+-- Date:            2023-06-07
+
+-- Stakeholder: 	Frances Monroe
+-- Description: 	Helps Pro Trader team to review the Top 1000 sellers for the cohorts that they have chosen for their new quarter. Pro Trader team then will pick the sellers from this report and start inviting them to the Pro Trader (Standard) programme
+
+
+select  
+	cat.META_CATEG_ID
+   ,case 
+	   when tran.SLR_CNTRY_ID = 1 then 'US'
+	   when tran.SLR_CNTRY_ID = 3 then 'UK'
+	   when tran.SLR_CNTRY_ID = 77 then 'DE'
+   end as country
+   ,case when tran.SLR_CNTRY_ID = tran.BYR_CNTRY_ID then 'Domestic' else 'CBT' end dom_cbt_flag
+   ,case 
+	   when tran.SLR_CNTRY_ID in (3, 77) then EU_B2C_C2C_FLAG 
+	   else b2c_c2c
+   end as b2c_c2c_flag
+  ,sum(tran.GMV20_PLAN) as gmv_usd_y22
+  ,sum(tran.CORE_ITEM_CNT) as si_y22   
+  
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT as tran
+join p_inventoryplanning_t.dw_category_groupings_adj as cat 
+	on cat.SITE_ID = tran.LSTG_SITE_ID 
+	and cat.LEAF_CATEG_ID = tran.LEAF_CATEG_ID
+	
+where 1=1
+and tran.SLR_CNTRY_ID in (3,1, 77) -- GMV
+and tran.gmv_dt >= '2022-01-02'
+and tran.gmv_dt <= '2022-12-31'
+and cat.META_CATEG_ID in (550, 870, 353, 20081)
+group by 1,2,3,4
+;
