@@ -40,25 +40,3 @@ group by 1,2,3,4,5
 )
 where exclude_flag = 0
 ;
-
-select 
-cal.RETAIL_YEAR
-,cat.META_CATEG_NAME
-,cat.CATEG_LVL2_NAME
-,cat.CATEG_LVL3_NAME
-
-,sum(tran.GMV20_PLAN) as GMV
-,sum(tran.QUANTITY) as SI
-from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
-inner join ACCESS_VIEWS.dw_cal_dt cal on tran.gmv_dt = cal.CAL_DT
-inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and tran.SITE_ID = cat.SITE_ID
-where 1=1
-and tran.RPRTD_WACKO_YN = 'N'
-and cal.AGE_FOR_RTL_YEAR_ID >= -4
-and cat.new_vertical = 'Fashion'
-and cal.AGE_FOR_RTL_WEEK_ID <= -1
-and tran.SITE_ID = 3
-and tran.SLR_CNTRY_ID = 3
-and tran.BYR_CNTRY_ID = 3
-and  cat.CATEG_LVL2_ID = 260324 and tran.ITEM_PRICE_AMT >= 500
-group by 1,2,3,4
