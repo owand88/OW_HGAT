@@ -137,7 +137,7 @@ with protrader_cohorts_for_new_quarter as
 		and ptc.meta_categ_id = cat.meta_categ_id
 		and ptc.categ_lvl2_id = cat.categ_lvl2_id
 		and ptc.categ_lvl3_id = cat.categ_lvl3_id
-		and ptc.categ_lvl4_id = cat.categ_lvl4_id
+		and (ptc.categ_lvl4_id = '' or ptc.categ_lvl4_id IS NULL OR ptc.categ_lvl4_id = cat.categ_lvl4_id)
 
 	join seller_standard_data as ssd
 		on tran.slr_id = ssd.user_id
