@@ -10,8 +10,8 @@ Description: Report to show emerging searches (and top searches in latest week) 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Tableau dataset
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-drop table if exists P_ukplan_report_T.searches;
-create table P_ukplan_report_T.searches as (
+drop view if exists P_ukplan_report_T.searches;
+create view P_ukplan_report_T.searches as (
 -- All seraches on UK site in latest 4 full weeks
 with base as (
 	select    
