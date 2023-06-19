@@ -3,7 +3,7 @@ Report: Base Code for C2C Key Metrics Tableau Report
 Jira: UKPLAN-278
 Requestor: Emma Ashton (C2C Team)
 Developer: Gabriella Austin
-Descriptoin: The code creates two base tables that feed into the tableau dashboard. They contain the key metrics cut at different time periods, verticals and segments for user deepdives
+Description: The code creates two base tables that feed into the tableau dashboard. They contain the key metrics cut at different time periods, verticals and segments for user deepdives
 Date: 04/05/2023
 */
 
