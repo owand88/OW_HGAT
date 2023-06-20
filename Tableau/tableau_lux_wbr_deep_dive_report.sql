@@ -13,9 +13,9 @@
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
 ------------------------------------------------------------------- TRAFFIC TABLE BASE --------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
-drop table if exists lux_weekly_dashboard_trfc_base;
+drop table if exists p_robevans_t.lux_weekly_dashboard_trfc_base;
 
-create temp table lux_weekly_dashboard_trfc_base as
+create table p_robevans_t.lux_weekly_dashboard_trfc_base as
 
 	select
 	trfc.ITEM_ID
@@ -45,14 +45,13 @@ create temp table lux_weekly_dashboard_trfc_base as
 
 
 
-
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
 -------------------------------------------------------------- LISTING & TRAFFIC TABLE BASE ---------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-drop table if exists lux_weekly_dashboard_lstg_base;
+drop table if exists p_robevans_t.lux_weekly_dashboard_lstg_base;
 
-create temp table lux_weekly_dashboard_lstg_base as
+create table p_robevans_t.lux_weekly_dashboard_lstg_base as
 
 select
 lstg.ITEM_ID
@@ -63,10 +62,12 @@ lstg.ITEM_ID
 ,lstg.AGE_FOR_RTL_WEEK_ID
 ,lstg.SLR_ID
 ,lstg.focus_category
+,lstg.CATEG_LVL2_ID
 ,lstg.CATEG_LVL2_NAME
 ,lstg.PRICE_BUCKET
 ,lstg.item_Cond
 ,lstg.BRAND
+,lstg.MODEL
 ,lstg.B2C_C2C
 ,lstg.START_PRICE_LSTG_CURNCY_AMT
 ,lstg.START_PRICE_PLAN_RATE_USD_AMT
@@ -91,6 +92,7 @@ FROM
 		when ((cat.CATEG_LVL3_ID IN (169291)) OR (cat.CATEG_LVL4_ID IN (52357,163570,169285,45258,2996,45237,169271))) then 'Handbags'
 		when (cat.META_CATEG_ID = 281 and cat.CATEG_LVL2_ID NOT IN (260324)) then 'Jewellery'
 		Else 'Other' End as focus_category
+	,cat.CATEG_LVL2_ID
 	,cat.CATEG_LVL2_NAME
 	,CASE
 		WHEN Cast(lstg.START_PRICE_LSTG_CURNCY_AMT*LPR.CURNCY_PLAN_RATE AS DECIMAL(18,2))  < 100  THEN 'A. <£86 (<$100)'
@@ -121,6 +123,7 @@ FROM
 -- 		WHEN CAT.META_CATEG_ID = 281 AND CAT.CATEG_LVL2_ID NOT IN (260324) THEN COALESCE(JWL_BRAND.BRAND,'Unbranded')
 		WHEN CAT.META_CATEG_ID = 281 AND CAT.CATEG_LVL2_ID NOT IN (260324) THEN COALESCE(aspects.Jewelry_brand_granular,'Others')
 		ELSE 'Others' END AS BRAND
+	,coalesce(aspects.model_aspect,'Others') as MODEL
 	,lstg.B2C_C2C
 	,lstg.START_PRICE_LSTG_CURNCY_AMT
 	,lstg.START_PRICE_LSTG_CURNCY_AMT*lpr.CURNCY_PLAN_RATE as START_PRICE_PLAN_RATE_USD_AMT
@@ -154,15 +157,15 @@ FROM
 		OR (cat.META_CATEG_ID = 281 and cat.CATEG_LVL2_ID NOT IN (260324)))
 		and lstg.slr_CNTRY_ID = 3
 
-	Group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+	Group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
 ) lstg 
-LEFT JOIN lux_weekly_dashboard_trfc_base trfc
+LEFT JOIN p_robevans_t.lux_weekly_dashboard_trfc_base trfc
 	on lstg.item_id = trfc.item_id
 	and lstg.AGE_FOR_RTL_WEEK_ID = trfc.AGE_FOR_RTL_WEEK_ID
 
 Where 1=1
 
-Group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+Group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
 ;
 
 
@@ -170,9 +173,9 @@ Group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
 ----------------------------------------------------------------- TRANSACTION TABLE BASE ------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-drop table if exists lux_weekly_dashboard_trans_base;
+drop table if exists p_robevans_t.lux_weekly_dashboard_trans_base;
 
-create temp table lux_weekly_dashboard_trans_base as
+create table p_robevans_t.lux_weekly_dashboard_trans_base as
 select
 	ck.ITEM_ID
 	,ck.AUCT_END_DT
@@ -192,6 +195,7 @@ select
 		when (cat.META_CATEG_ID = 281 and cat.CATEG_LVL2_ID NOT IN (260324)) then 'Jewellery'
 			Else 'Other'
 		End as focus_category
+	,cat.CATEG_LVL2_ID
 	,cat.CATEG_LVL2_NAME
 	,CASE
 		WHEN Cast(ck.item_price*LPR.CURNCY_PLAN_RATE AS DECIMAL(18,2))  < 100  THEN 'A. <£86 (<$100)'
@@ -222,6 +226,7 @@ select
 -- 		WHEN CAT.META_CATEG_ID = 281 AND CAT.CATEG_LVL2_ID NOT IN (260324) THEN COALESCE(JWL_BRAND.BRAND,'Unbranded')
 		WHEN CAT.META_CATEG_ID = 281 AND CAT.CATEG_LVL2_ID NOT IN (260324) THEN COALESCE(aspects.Jewelry_brand_granular,'Others')
 		ELSE 'Others' END AS BRAND
+	,coalesce(aspects.model_aspect,'Others') as MODEL
 	,CASE 
 		WHEN deal.item_id IS NOT NULL OR NERP.ITEM_ID IS NOT NULL THEN 'Promo Manager & Sub Deals' 
 		WHEN Lower((CASE  WHEN ck.byr_cntry_id IN(0, -1,1, -999,225,679,1000) AND ck.slr_cntry_id IN(0, -1,1, -999,225,679,1000)  THEN 'Domestic' WHEN ck.byr_cntry_id=ck.slr_cntry_id AND ck.byr_cntry_id IN (3,77) THEN 'Domestic' ELSE 'CBT' end ))=Lower('CBT') THEN 'Exports' 
@@ -286,838 +291,269 @@ select
 		OR (cat.META_CATEG_ID = 281 and cat.CATEG_LVL2_ID NOT IN (260324)))
 		and ck.slr_CNTRY_ID in (3)
 
-GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
 ;
 
 
 
 
------------------------------------------------------------------------------------------------------------------------------------------------------------------------ 
----------------------------------------------------------------------- ASPECTS TABLE ----------------------------------------------------------------------------------
------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-DROP TABLE IF EXISTS LSTG_BASE;
-CREATE TEMPORARY TABLE LSTG_BASE AS  
-SELECT  ITEM_ID,AUCT_END_DT 
-FROM lux_weekly_dashboard_trans_base
-GROUP BY 1,2
-UNION 
-SELECT ITEM_ID, AUCT_END_DT
-FROM lux_weekly_dashboard_lstg_base
-GROUP BY 1,2;
-
-
-
-
-DROP TABLE IF EXISTS TEMP2;
-CREATE TEMPORARY TABLE TEMP2 AS  
-SELECT  
-  aspct.item_id
-   ,aspct.auct_end_dt
-   ,1 AS priority
-   ,Upper(tag_name) AS aspect
-   ,Cast(Trim(Lower(aspct.tag_value_txt)) AS VARCHAR(350)) AS aspct_vlu_nm 
-
-FROM ACCESS_VIEWS.DW_ATTR_LSTG_TAG_DTL AS aspct
-INNER JOIN LSTG_BASE AS item
-	ON  (aspct.item_id=item.item_id AND aspct.auct_end_dt=item.auct_end_dt) 
-
-WHERE ((aspct.auct_end_dt>=date_sub(To_Date('2016-09-16'),5))
-	AND Lower(tag_name) LIKE ANY ('brand','%modified item%','model')) 
-GROUP BY 1,2,3,4,5;
-  
-
-
-
-
-DROP TABLE IF EXISTS aspects_temp2;
-CREATE TEMPORARY TABLE aspects_temp2 AS  
- SELECT  
-  ITEM_ID, AUCT_END_DT, PRIORITY, ASPECT, ASPCT_VLU_NM
- FROM  
-( SELECT  
-  *
-   ,(Row_Number() Over (PARTITION BY item_id,auct_end_dt,aspect ORDER BY priority,aspct_vlu_nm DESC)) AS alias_1781 
- FROM temp2
-)alias_1782 
- WHERE alias_1782.alias_1781 = 1;
-
-
-
-DROP TABLE IF EXISTS listing_aspects_temp;
-CREATE TEMPORARY TABLE listing_aspects_temp AS  
- SELECT  
-  item_id
-   ,auct_end_dt
-   ,Coalesce(Max(CASE  WHEN Lower(aspect)=Lower('BRAND') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS BRAND
-   ,Coalesce(Max(CASE  WHEN Lower(aspect)=Lower('MODEL') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS MODEL
-   ,Coalesce(Max(CASE  WHEN Lower(aspect) like Lower('%modified item%') THEN aspct_vlu_nm ELSE NULL end ),'Unknown') AS MODIFIED_ITEM
- FROM aspects_temp2
- GROUP BY 1,2;
-
-
-DROP TABLE IF EXISTS listing_aspects;
-CREATE TEMPORARY TABLE listing_aspects AS  
- SELECT  
-  item_id
-   ,auct_end_dt
-   ,case when (brand is null) or (lower(brand) = 'unknown') or (lower(brand) = 'unbranded') then 'unbranded' else brand end as BRAND
-   ,MODEL
-   ,MODIFIED_ITEM
- FROM listing_aspects_temp
- GROUP BY 1,2,3,4,5;
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
 ------------------------------------------------------------ TOP BRANDS & MODELS TABLE --------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-Drop table if exists top_brands;
-Create temporary table top_brands as
 
-select distinct brand
-from
-(
-	select *
-	From (
-		select 
-		categ_lvl2_name
-		,brand
-		,gmv
-			,dense_rank() over(partition by categ_lvl2_name order by gmv desc) as brand_rank
-		From	
-			(select 
-			ck.categ_lvl2_name
-			,a.brand
-			,sum(ck.gmv) as gmv
+Drop table if exists p_robevans_t.lux_wbr_deepdive_top_brands;
+Create table p_robevans_t.lux_wbr_deepdive_top_brands as
 
-				FROM lux_weekly_dashboard_trans_base AS ck
-				inner JOIN listing_aspects A
-					ON A.ITEM_ID=ck.ITEM_ID
-					AND A.AUCT_END_DT=ck.AUCT_END_DT 
-			Where 1=1
-			and AGE_FOR_RTL_WEEK_ID between -52 and -1
+select brand
+From (
+	select 
+	focus_category
+	,brand
+	,latest_week_ty_gmv
+	,latest_week_ly_gmv
+	,ytd_ty_gmv
+	,ytd_ly_gmv
+	,dense_rank() over(partition by focus_category order by latest_week_ty_gmv desc) as latest_week_ty_gmv_rank
+	,dense_rank() over(partition by focus_category order by latest_week_ly_gmv desc) as latest_week_ly_gmv_rank
+	,dense_rank() over(partition by focus_category order by ytd_ty_gmv desc) as ytd_ty_gmv_rank
+	,dense_rank() over(partition by focus_category order by ytd_ly_gmv desc) as ytd_ly_gmv_rank
 
-			Group by 1,2)
-			)
-	where brand_rank <= 20
 
-	UNION ALL
-
-	select *
-	From (
-		select 
+	From	
+		(select 
 		focus_category
 		,brand
-		,gmv
-			,dense_rank() over(partition by focus_category order by gmv desc) as brand_rank
-		From	
-			(select 
-			ck.focus_category
-			,a.brand
-			,sum(ck.gmv) as gmv
+		,sum(case when AGE_FOR_RTL_WEEK_ID = -1 then gmv end) as latest_week_ty_gmv
+		,sum(case when AGE_FOR_RTL_WEEK_ID = -53 then gmv end) as latest_week_ly_gmv
+		,sum(case when retail_year = (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1) then gmv end) as ytd_ty_gmv
+		,sum(case when retail_year = (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 then gmv end) as ytd_ly_gmv
 
-				FROM lux_weekly_dashboard_trans_base AS ck
-				inner JOIN listing_aspects A
-					ON A.ITEM_ID=ck.ITEM_ID
-					AND A.AUCT_END_DT=ck.AUCT_END_DT 
-			Where 1=1
-			and AGE_FOR_RTL_WEEK_ID between -52 and -1
+		FROM p_robevans_t.lux_weekly_dashboard_trans_base
 
-			Group by 1,2)
-			)
-	where brand_rank <= 20
-)
+		Where 1=1
+		and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
+		and retail_week <= (select retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
+
+		Group by 1,2)
+		)
+where latest_week_ty_gmv_rank <= 20
+	or latest_week_ly_gmv_rank <= 20
+	or ytd_ty_gmv_rank <= 20
+	or ytd_ly_gmv_rank <= 20
+
+Group by 1
+
 ;
 
 
 
-Drop table if exists top_models;
-Create temporary table top_models as
+Drop table if exists p_robevans_t.lux_wbr_deepdive_top_models;
+Create table p_robevans_t.lux_wbr_deepdive_top_models as
 
-select distinct model
-FROM
-(
-	select *
-	From (
-		select 
-		categ_lvl2_name
-		,model
-		,gmv
-			,dense_rank() over(partition by categ_lvl2_name order by gmv desc) as model_rank
-		From	
-			(select 
-			ck.categ_lvl2_name
-			,a.model
-			,sum(ck.gmv) as gmv
+select model
+From (
+	select 
+	focus_category
+	,model
+	,latest_week_ty_gmv
+	,latest_week_ly_gmv
+	,ytd_ty_gmv
+	,ytd_ly_gmv
+	,dense_rank() over(partition by focus_category order by latest_week_ty_gmv desc) as latest_week_ty_gmv_rank
+	,dense_rank() over(partition by focus_category order by latest_week_ly_gmv desc) as latest_week_ly_gmv_rank
+	,dense_rank() over(partition by focus_category order by ytd_ty_gmv desc) as ytd_ty_gmv_rank
+	,dense_rank() over(partition by focus_category order by ytd_ly_gmv desc) as ytd_ly_gmv_rank
 
-				FROM lux_weekly_dashboard_trans_base AS ck
-				inner JOIN listing_aspects A
-					ON A.ITEM_ID=ck.ITEM_ID
-					AND A.AUCT_END_DT=ck.AUCT_END_DT 
-			Where 1=1
-			and AGE_FOR_RTL_WEEK_ID between -52 and -1
 
-			Group by 1,2)
-			)
-	where model_rank <= 20
-
-	UNION ALL
-
-	select *
-	From (
-		select 
+	From	
+		(select 
 		focus_category
 		,model
-		,gmv
-			,dense_rank() over(partition by focus_category order by gmv desc) as model_rank
-		From	
-			(select 
-			ck.focus_category
-			,a.model
-			,sum(ck.gmv) as gmv
+		,sum(case when AGE_FOR_RTL_WEEK_ID = -1 then gmv end) as latest_week_ty_gmv
+		,sum(case when AGE_FOR_RTL_WEEK_ID = -53 then gmv end) as latest_week_ly_gmv
+		,sum(case when retail_year = (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1) then gmv end) as ytd_ty_gmv
+		,sum(case when retail_year = (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 then gmv end) as ytd_ly_gmv
 
-				FROM lux_weekly_dashboard_trans_base AS ck
-				inner JOIN listing_aspects A
-					ON A.ITEM_ID=ck.ITEM_ID
-					AND A.AUCT_END_DT=ck.AUCT_END_DT 
-			Where 1=1
-			and AGE_FOR_RTL_WEEK_ID between -52 and -1
+		FROM p_robevans_t.lux_weekly_dashboard_trans_base
 
-			Group by 1,2)
-			)
-	where model_rank <= 20
-)
+		Where 1=1
+		and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
+		and retail_week <= (select retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
+
+		Group by 1,2)
+		)
+where latest_week_ty_gmv_rank <= 20
+	or latest_week_ly_gmv_rank <= 20
+	or ytd_ty_gmv_rank <= 20
+	or ytd_ly_gmv_rank <= 20
+
+Group by 1
+
 ;
 
 
 
 
-DROP TABLE IF EXISTS listing_aspects;
-CREATE TEMPORARY TABLE listing_aspects AS  
- SELECT  
-  item_id
-   ,auct_end_dt
-   ,case when a.brand = b.brand then a.brand else 'Other Brands' end as BRAND
-   ,case when a.model = m.model then a.model else 'Other Models' end as MODEL
-   ,MODIFIED_ITEM
- FROM listing_aspects_temp a
- LEFT JOIN top_brands b
- 	on a.brand = b.brand
-LEFT JOIN top_models m
-	on a.model = m.model
- GROUP BY 1,2,3,4,5;
+Drop table if exists p_robevans_t.lux_wbr_deepdive_top_sellers;
+Create table p_robevans_t.lux_wbr_deepdive_top_sellers as
+
+select seller_id
+From (
+	select 
+	focus_category
+	,seller_id
+	,latest_week_ty_gmv
+	,latest_week_ly_gmv
+	,ytd_ty_gmv
+	,ytd_ly_gmv
+	,dense_rank() over(partition by focus_category order by latest_week_ty_gmv desc) as latest_week_ty_gmv_rank
+	,dense_rank() over(partition by focus_category order by latest_week_ly_gmv desc) as latest_week_ly_gmv_rank
+	,dense_rank() over(partition by focus_category order by ytd_ty_gmv desc) as ytd_ty_gmv_rank
+	,dense_rank() over(partition by focus_category order by ytd_ly_gmv desc) as ytd_ly_gmv_rank
+
+
+	From	
+		(select 
+		focus_category
+		,seller_id
+		,sum(case when AGE_FOR_RTL_WEEK_ID = -1 then gmv end) as latest_week_ty_gmv
+		,sum(case when AGE_FOR_RTL_WEEK_ID = -53 then gmv end) as latest_week_ly_gmv
+		,sum(case when retail_year = (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1) then gmv end) as ytd_ty_gmv
+		,sum(case when retail_year = (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1 then gmv end) as ytd_ly_gmv
+
+		FROM p_robevans_t.lux_weekly_dashboard_trans_base
+
+		Where 1=1
+		and retail_year >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
+		and retail_week <= (select retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
+
+		Group by 1,2)
+		)
+where latest_week_ty_gmv_rank <= 20
+	or latest_week_ly_gmv_rank <= 20
+	or ytd_ty_gmv_rank <= 20
+	or ytd_ly_gmv_rank <= 20
+
+Group by 1
+
+;
+
+
+
+
 
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
 ------------------------------------------------------------------- FINAL LISTING TABLE -------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+drop table if exists p_robevans_t.lux_weekly_lstgs;
 
-drop table if exists lux_weekly_lstgs;
+Create table p_robevans_t.lux_weekly_lstgs as
 
-Create temp table lux_weekly_lstgs as
-
------------------Focus Category level weekly data-----------------------
 select
-	'Focus Category' as level
-	,'Weekly' as time_period
-	,'Total' as total_v_brand
+	'Listings' as table_name
 	,lstg.retail_year
 	,lstg.retail_week
+	,case when lstg.retail_week <= (select retail_week from ACCESS_VIEWS.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1) then 'YTD' else 'Other' end as ytd_weeks
 	,lstg.AGE_FOR_RTL_WEEK_ID
 	,focus_category as category
+	,case when focus_category = 'Sneakers' and price_bucket not in ('A. <£86 (<$100)') then 'Only Focus Category'
+		when focus_category = 'Jewellery' and price_bucket not in ('A. <£86 (<$100)','B. £86-£100 ($100-£100)','C. £100-£125','D. £125-£150','E. <£261 (<$300)') then 'Only Focus Category'
+		when focus_category = 'Watches' and price_bucket not in ('A. <£86 (<$100)','B. £86-£100 ($100-£100)','C. £100-£125','D. £125-£150','E. <£261 (<$300)','F. £261-£435 ($300-$500)') then 'Only Focus Category'
+		when focus_category = 'Handbags' and price_bucket not in ('A. <£86 (<$100)','B. £86-£100 ($100-£100)','C. £100-£125','D. £125-£150','E. <£261 (<$300)','F. £261-£435 ($300-$500)') then 'Only Focus Category'
+		else 'Non-Focus Category'
+		end as focus_category_flag
+	,lstg.categ_lvl2_name as l2
 	,PRICE_BUCKET
+	,coalesce((case when c.seller_id = lstg.slr_id then u.comp else 'Other Sellers' End),u.user_slctd_id) as seller_name
 	,lstg.item_Cond
 	,lstg.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,0 as BRAND
-	,0 as MODEL
+	,coalesce(a.BRAND, 'Others') as BRAND
+	,coalesce(b.MODEL, 'Others') as MODEL
 	,0 as mece_bucket
+	,0 as trade_type
 	,count(distinct lstg.item_id) as LL
-	,count(distinct lstg.SLR_ID) as listers
 	,sum(lstg.vi) as vi
 	,sum(lstg.imps) as imps
-	,0 as sellers
-	,0 as buyers
 	,0 as gmv
 	,0 as items_sold
 
-	FROM lux_weekly_dashboard_lstg_base AS lstg
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=lstg.ITEM_ID
-		AND A.AUCT_END_DT=lstg.AUCT_END_DT 
-		
+	FROM p_robevans_t.lux_weekly_dashboard_lstg_base AS lstg
+	LEFT JOIN p_robevans_t.lux_wbr_deepdive_top_brands a
+		on lstg.brand = a.brand
+	LEFT JOIN p_robevans_t.lux_wbr_deepdive_top_models b
+		on lstg.model = b.model
+	LEFT JOIN p_robevans_t.lux_wbr_deepdive_top_sellers c
+		on lstg.slr_id = c.seller_id
+	LEFT JOIN DW_USERS u
+		on lstg.slr_id = u.user_id
+	
 	WHERE 1=1
 		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
 		and AGE_FOR_RTL_WEEK_ID <= -1 
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	UNION ALL
-
------------------L2 level weekly data-----------------------
-	select
-	'L2' as level
-	,'Weekly' as time_period
-	,'Total' as total_v_brand
-	,lstg.retail_year
-	,lstg.retail_week
-	,lstg.AGE_FOR_RTL_WEEK_ID
-	,categ_lvl2_name as category
-	,PRICE_BUCKET
-	,lstg.item_Cond
-	,lstg.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,0 as BRAND
-	,0 as MODEL
-	,0 as mece_bucket
-	,count(distinct lstg.item_id) as LL
-	,count(distinct lstg.SLR_ID) as listers
-	,sum(lstg.vi) as vi
-	,sum(lstg.imps) as imps
-	,0 as sellers
-	,0 as buyers
-	,0 as gmv
-	,0 as items_sold
-
-	FROM lux_weekly_dashboard_lstg_base AS lstg
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=lstg.ITEM_ID
-		AND A.AUCT_END_DT=lstg.AUCT_END_DT
+	GROUP BY 
+		1,2,3,4,5,6,7,8,9,10,11,12,13,14
 		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and AGE_FOR_RTL_WEEK_ID <= -1 
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
 	
-	UNION ALL
+;	
 
------------------Focus Category level YTD data-----------------------
-select
-	'Focus Category' as level
-	,'YTD' as time_period
-	,'Total' as total_v_brand
-	,lstg.retail_year
-	,0 as retail_week
-	,0 as AGE_FOR_RTL_WEEK_ID
-	,focus_category as category
-	,PRICE_BUCKET
-	,lstg.item_Cond
-	,lstg.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,0 as BRAND
-	,0 as MODEL
-	,0 as mece_bucket
-	,count(distinct lstg.item_id) as LL
-	,count(distinct lstg.SLR_ID) as listers
-	,sum(lstg.vi) as vi
-	,sum(lstg.imps) as imps
-	,0 as sellers
-	,0 as buyers
-	,0 as gmv
-	,0 as items_sold
-
-	FROM lux_weekly_dashboard_lstg_base AS lstg
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=lstg.ITEM_ID
-		AND A.AUCT_END_DT=lstg.AUCT_END_DT 
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and AGE_FOR_RTL_WEEK_ID <= -1 
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	UNION ALL
-
------------------L2 level YTD data-----------------------
-	select
-	'L2' as level
-	,'YTD' as time_period
-	,'Total' as total_v_brand
-	,lstg.retail_year
-	,0 as retail_week
-	,0 as AGE_FOR_RTL_WEEK_ID
-	,categ_lvl2_name as category
-	,PRICE_BUCKET
-	,lstg.item_Cond
-	,lstg.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,0 as BRAND
-	,0 as MODEL
-	,0 as mece_bucket
-	,count(distinct lstg.item_id) as LL
-	,count(distinct lstg.SLR_ID) as listers
-	,sum(lstg.vi) as vi
-	,sum(lstg.imps) as imps
-	,0 as sellers
-	,0 as buyers
-	,0 as gmv
-	,0 as items_sold
-
-	FROM lux_weekly_dashboard_lstg_base AS lstg
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=lstg.ITEM_ID
-		AND A.AUCT_END_DT=lstg.AUCT_END_DT
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and AGE_FOR_RTL_WEEK_ID <= -1 
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	UNION ALL
-
-
------------------Focus Category Brand level Weekly data-----------------------
-	select
-	'Focus Category' as level
-	,'Weekly' as time_period
-	,'Brand' as total_v_brand
-	,lstg.retail_year
-	,lstg.retail_week
-	,lstg.AGE_FOR_RTL_WEEK_ID
-	,focus_category as category
-	,PRICE_BUCKET
-	,lstg.item_Cond
-	,lstg.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,A.BRAND
-	,A.MODEL
-	,0 as mece_bucket
-	,count(distinct lstg.item_id) as LL
-	,count(distinct lstg.SLR_ID) as listers
-	,sum(lstg.vi) as vi
-	,sum(lstg.imps) as imps
-	,0 as sellers
-	,0 as buyers
-	,0 as gmv
-	,0 as items_sold
-
-	FROM lux_weekly_dashboard_lstg_base AS lstg
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=lstg.ITEM_ID
-		AND A.AUCT_END_DT=lstg.AUCT_END_DT 
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and retail_week >= 1 and retail_week <= (select retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	UNION ALL
-
------------------L2 Brand level Weekly data-----------------------
-	select
-	'L2' as level
-	,'Weekly' as time_period
-	,'Brand' as total_v_brand
-	,lstg.retail_year
-	,lstg.retail_week
-	,lstg.AGE_FOR_RTL_WEEK_ID
-	,categ_lvl2_name as category
-	,PRICE_BUCKET
-	,lstg.item_Cond
-	,lstg.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,A.BRAND
-	,A.MODEL
-	,0 as mece_bucket
-	,count(distinct lstg.item_id) as LL
-	,count(distinct lstg.SLR_ID) as listers
-	,sum(lstg.vi) as vi
-	,sum(lstg.imps) as imps
-	,0 as sellers
-	,0 as buyers
-	,0 as gmv
-	,0 as items_sold
-
-	FROM lux_weekly_dashboard_lstg_base AS lstg
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=lstg.ITEM_ID
-		AND A.AUCT_END_DT=lstg.AUCT_END_DT
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and retail_week >= 1 and retail_week <= (select retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	UNION ALL
-
------------------Focus Category Brand level YTD data-----------------------
-	select
-	'Focus Category' as level
-	,'YTD' as time_period
-	,'Brand' as total_v_brand
-	,lstg.retail_year
-	,0 as retail_week
-	,0 as AGE_FOR_RTL_WEEK_ID
-	,focus_category as category
-	,PRICE_BUCKET
-	,lstg.item_Cond
-	,lstg.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,A.BRAND
-	,A.MODEL
-	,0 as mece_bucket
-	,count(distinct lstg.item_id) as LL
-	,count(distinct lstg.SLR_ID) as listers
-	,sum(lstg.vi) as vi
-	,sum(lstg.imps) as imps
-	,0 as sellers
-	,0 as buyers
-	,0 as gmv
-	,0 as items_sold
-
-	FROM lux_weekly_dashboard_lstg_base AS lstg
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=lstg.ITEM_ID
-		AND A.AUCT_END_DT=lstg.AUCT_END_DT 
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and retail_week >= 1 and retail_week <= (select retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	UNION ALL
-
------------------L2 Brand level YTD data-----------------------
-	select
-	'L2' as level
-	,'YTD' as time_period
-	,'Brand' as total_v_brand
-	,lstg.retail_year
-	,0 as retail_week
-	,0 as AGE_FOR_RTL_WEEK_ID
-	,categ_lvl2_name as category
-	,PRICE_BUCKET
-	,lstg.item_Cond
-	,lstg.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,A.BRAND
-	,A.MODEL
-	,0 as mece_bucket
-	,count(distinct lstg.item_id) as LL
-	,count(distinct lstg.SLR_ID) as listers
-	,sum(lstg.vi) as vi
-	,sum(lstg.imps) as imps
-	,0 as sellers
-	,0 as buyers
-	,0 as gmv
-	,0 as items_sold
-
-	FROM lux_weekly_dashboard_lstg_base AS lstg
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=lstg.ITEM_ID
-		AND A.AUCT_END_DT=lstg.AUCT_END_DT
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and retail_week >= 1 and retail_week <= (select retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	;
-	
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
 ---------------------------------------------------------------- FINAL TRANSACTION TABLE ------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------	
 
-drop table if exists lux_weekly_txns;
+drop table if exists p_robevans_t.lux_weekly_txns;
 
-Create temp table lux_weekly_txns as
+Create table p_robevans_t.lux_weekly_txns as
 
------------------Focus Category level weekly data-----------------------
 select
-	'Focus Category' as level
-	,'Weekly' as time_period
-	,'Total' as total_v_brand
+	'GMV' as table_name
 	,ck.retail_year
 	,ck.retail_week
+	,case when ck.retail_week <= (select retail_week from ACCESS_VIEWS.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1) then 'YTD' else 'Other' end as ytd_weeks
 	,ck.AGE_FOR_RTL_WEEK_ID
 	,focus_category as category
+	,case when focus_category = 'Sneakers' and price_bucket not in ('A. <£86 (<$100)') then 'Only Focus Category'
+		when focus_category = 'Jewellery' and price_bucket not in ('A. <£86 (<$100)','B. £86-£100 ($100-£100)','C. £100-£125','D. £125-£150','E. <£261 (<$300)') then 'Only Focus Category'
+		when focus_category = 'Watches' and price_bucket not in ('A. <£86 (<$100)','B. £86-£100 ($100-£100)','C. £100-£125','D. £125-£150','E. <£261 (<$300)','F. £261-£435 ($300-$500)') then 'Only Focus Category'
+		when focus_category = 'Handbags' and price_bucket not in ('A. <£86 (<$100)','B. £86-£100 ($100-£100)','C. £100-£125','D. £125-£150','E. <£261 (<$300)','F. £261-£435 ($300-$500)') then 'Only Focus Category'
+		else 'Non-Focus Category'
+		end as focus_category_flag
+	,ck.categ_lvl2_name as l2
 	,PRICE_BUCKET
+	,coalesce((case when c.seller_id = ck.seller_id then u.comp else 'Other Sellers' End),u.user_slctd_id) as seller_name
 	,ck.item_Cond
 	,ck.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,0 as BRAND
-	,0 as MODEL
+	,coalesce(a.BRAND, 'Others') as BRAND
+	,coalesce(b.MODEL, 'Others') as MODEL
 	,ck.mece_bucket
+	,ck.trade_type
 	,0 as LL
-	,0 as listers
 	,0 as vi
 	,0 as imps
-	,count(distinct ck.SELLER_ID) as sellers
-	,count(distinct ck.BUYER_ID) as buyers
 	,sum(ck.gmv) as gmv
-	,sum(ck.sold_items) as sold_items
+	,sum(ck.sold_items) as items_sold
 
-	FROM lux_weekly_dashboard_trans_base AS ck
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=ck.ITEM_ID
-		AND A.AUCT_END_DT=ck.AUCT_END_DT
-		
+	FROM p_robevans_t.lux_weekly_dashboard_trans_base AS ck
+	LEFT JOIN p_robevans_t.lux_wbr_deepdive_top_brands a
+		on ck.brand = a.brand
+	LEFT JOIN p_robevans_t.lux_wbr_deepdive_top_models b
+		on ck.model = b.model
+	LEFT JOIN p_robevans_t.lux_wbr_deepdive_top_sellers c
+		on ck.seller_id = c.seller_id
+	LEFT JOIN DW_USERS u
+		on ck.seller_id = u.user_id
+
 	WHERE 1=1
 		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
 		and AGE_FOR_RTL_WEEK_ID <= -1 
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+	GROUP BY
+		1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
 	
-	UNION ALL
+;	
 
------------------L2 level weekly data-----------------------
-	select
-	'L2' as level
-	,'Weekly' as time_period
-	,'Total' as total_v_brand
-	,ck.retail_year
-	,ck.retail_week
-	,ck.AGE_FOR_RTL_WEEK_ID
-	,categ_lvl2_name as category
-	,PRICE_BUCKET
-	,ck.item_Cond
-	,ck.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,0 as BRAND
-	,0 as MODEL
-	,ck.mece_bucket
-	,0 as LL
-	,0 as listers
-	,0 as vi
-	,0 as imps
-	,count(distinct ck.SELLER_ID) as sellers
-	,count(distinct ck.BUYER_ID) as buyers
-	,sum(ck.gmv) as gmv
-	,sum(ck.sold_items) as sold_items
-
-	FROM lux_weekly_dashboard_trans_base AS ck
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=ck.ITEM_ID
-		AND A.AUCT_END_DT=ck.AUCT_END_DT
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and AGE_FOR_RTL_WEEK_ID <= -1 
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	UNION ALL
-
------------------Focus Category level YTD data-----------------------
-select
-	'Focus Category' as level
-	,'YTD' as time_period
-	,'Total' as total_v_brand
-	,ck.retail_year
-	,0 as retail_week
-	,0 as AGE_FOR_RTL_WEEK_ID
-	,focus_category as category
-	,PRICE_BUCKET
-	,ck.item_Cond
-	,ck.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,0 as BRAND
-	,0 as MODEL
-	,ck.mece_bucket
-	,0 as LL
-	,0 as listers
-	,0 as vi
-	,0 as imps
-	,count(distinct ck.SELLER_ID) as sellers
-	,count(distinct ck.BUYER_ID) as buyers
-	,sum(ck.gmv) as gmv
-	,sum(ck.sold_items) as sold_items
-
-	FROM lux_weekly_dashboard_trans_base AS ck
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=ck.ITEM_ID
-		AND A.AUCT_END_DT=ck.AUCT_END_DT
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and AGE_FOR_RTL_WEEK_ID <= -1 
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	UNION ALL
-
------------------L2 level YTD data-----------------------
-	select
-	'L2' as level
-	,'YTD' as time_period
-	,'Total' as total_v_brand
-	,ck.retail_year
-	,0 as retail_week
-	,0 as AGE_FOR_RTL_WEEK_ID
-	,categ_lvl2_name as category
-	,PRICE_BUCKET
-	,ck.item_Cond
-	,ck.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,0 as BRAND
-	,0 as MODEL
-	,ck.mece_bucket
-	,0 as LL
-	,0 as listers
-	,0 as vi
-	,0 as imps
-	,count(distinct ck.SELLER_ID) as sellers
-	,count(distinct ck.BUYER_ID) as buyers
-	,sum(ck.gmv) as gmv
-	,sum(ck.sold_items) as sold_items
-
-	FROM lux_weekly_dashboard_trans_base AS ck
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=ck.ITEM_ID
-		AND A.AUCT_END_DT=ck.AUCT_END_DT
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and AGE_FOR_RTL_WEEK_ID <= -1 
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	UNION ALL
-
------------------Focus Category Brand level weekly data-----------------------
-select
-	'Focus Category' as level
-	,'Weekly' as time_period
-	,'Brand' as total_v_brand
-	,ck.retail_year
-	,ck.retail_week
-	,ck.AGE_FOR_RTL_WEEK_ID
-	,focus_category as category
-	,PRICE_BUCKET
-	,ck.item_Cond
-	,ck.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,A.BRAND
-	,A.MODEL
-	,ck.mece_bucket
-	,0 as LL
-	,0 as listers
-	,0 as vi
-	,0 as imps
-	,count(distinct ck.SELLER_ID) as sellers
-	,count(distinct ck.BUYER_ID) as buyers
-	,sum(ck.gmv) as gmv
-	,sum(ck.sold_items) as sold_items
-
-	FROM lux_weekly_dashboard_trans_base AS ck
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=ck.ITEM_ID
-		AND A.AUCT_END_DT=ck.AUCT_END_DT
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and AGE_FOR_RTL_WEEK_ID <= -1 
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	UNION ALL
-
------------------L2 Brand level weekly data-----------------------
-	select
-	'L2' as level
-	,'Weekly' as time_period
-	,'Brand' as total_v_brand
-	,ck.retail_year
-	,ck.retail_week
-	,ck.AGE_FOR_RTL_WEEK_ID
-	,categ_lvl2_name as category
-	,PRICE_BUCKET
-	,ck.item_Cond
-	,ck.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,A.BRAND
-	,A.MODEL
-	,ck.mece_bucket
-	,0 as LL
-	,0 as listers
-	,0 as vi
-	,0 as imps
-	,count(distinct ck.SELLER_ID) as sellers
-	,count(distinct ck.BUYER_ID) as buyers
-	,sum(ck.gmv) as gmv
-	,sum(ck.sold_items) as sold_items
-
-	FROM lux_weekly_dashboard_trans_base AS ck
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=ck.ITEM_ID
-		AND A.AUCT_END_DT=ck.AUCT_END_DT
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and AGE_FOR_RTL_WEEK_ID <= -1 
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	UNION ALL
-	
-	
------------------Focus Category Brand level YTD data-----------------------
-select
-	'Focus Category' as level
-	,'YTD' as time_period
-	,'Brand' as total_v_brand
-	,ck.retail_year
-	,0 as retail_week
-	,0 as AGE_FOR_RTL_WEEK_ID
-	,focus_category as category
-	,PRICE_BUCKET
-	,ck.item_Cond
-	,ck.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,A.BRAND
-	,A.MODEL
-	,ck.mece_bucket
-	,0 as LL
-	,0 as listers
-	,0 as vi
-	,0 as imps
-	,count(distinct ck.SELLER_ID) as sellers
-	,count(distinct ck.BUYER_ID) as buyers
-	,sum(ck.gmv) as gmv
-	,sum(ck.sold_items) as sold_items
-
-	FROM lux_weekly_dashboard_trans_base AS ck
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=ck.ITEM_ID
-		AND A.AUCT_END_DT=ck.AUCT_END_DT
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and AGE_FOR_RTL_WEEK_ID <= -1 
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-	UNION ALL
-
------------------L2 Brand level YTD data-----------------------
-	select
-	'L2' as level
-	,'YTD' as time_period
-	,'Brand' as total_v_brand
-	,ck.retail_year
-	,0 as retail_week
-	,0 as AGE_FOR_RTL_WEEK_ID
-	,categ_lvl2_name as category
-	,PRICE_BUCKET
-	,ck.item_Cond
-	,ck.B2C_C2C
-	,case when upper(A.MODIFIED_ITEM) in ('MODIFIED', 'CUSTOMIZED','YES','CUSTOM','CUSTOMISED') then 'Modified' else 'Unmodified' End as modified_flag
-	,A.BRAND
-	,A.MODEL
-	,ck.mece_bucket
-	,0 as LL
-	,0 as listers
-	,0 as vi
-	,0 as imps
-	,count(distinct ck.SELLER_ID) as sellers
-	,count(distinct ck.BUYER_ID) as buyers
-	,sum(ck.gmv) as gmv
-	,sum(ck.sold_items) as sold_items
-
-	FROM lux_weekly_dashboard_trans_base AS ck
-	LEFT JOIN listing_aspects A
-		ON A.ITEM_ID=ck.ITEM_ID
-		AND A.AUCT_END_DT=ck.AUCT_END_DT
-		
-	WHERE 1=1
-		AND RETAIL_YEAR >= (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1
-		and AGE_FOR_RTL_WEEK_ID <= -1 
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
-	
-;
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
 ------------------------------------------------------------------- COMBINED TABLE ------------------------------------------------------------------------------------
@@ -1127,174 +563,46 @@ drop table if exists P_ukplan_report_T.lux_weekly_final ;
 
 create table P_ukplan_report_T.lux_weekly_final as
 
-Select 'Listings' as table_name,*
-From lux_weekly_lstgs lstg	
+Select *
+From p_robevans_t.lux_weekly_lstgs lstg	
 
 UNION ALL
 
-select 'Transactions' as table_name,*
-from lux_weekly_txns ck
+select *
+from p_robevans_t.lux_weekly_txns ck
 		
 ;
-
-
------------------------------------------------------------------------------------------------------------------------------------------------------------------------ 
-------------------------------------------------------------------- BUDGETS DATA --------------------------------------------------------------------------------------
------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-drop table if exists P_ukplan_report_T.tableau_lux_wbr_deepdive_budgets;
-
-create table P_ukplan_report_T.tableau_lux_wbr_deepdive_budgets as
-
-select 
-ck.retail_year
-,ck.retail_week
-,max_week
-,max_year
-,ck.AGE_FOR_RTL_WEEK_ID
-,ck.category
-,sum(ck.gmv) as gmv
-,sum(bud.budget_gmv) as budget_gmv
-
-From
-	(select RETAIL_YEAR
-	,RETAIL_WEEK
-	,AGE_FOR_RTL_WEEK_ID
-	,category
-	,sum(gmv) as gmv
-	From P_ukplan_report_T.lux_weekly_txns
-	where level = 'Focus Category'
-	and time_period = 'Weekly'
-	and total_v_brand = 'Total'
-	and modified_flag = 'Unmodified'
-	and (
-		(category='Sneakers' and price_bucket <> 'A. <£86 (<$100)')
-		or (category='Watches' and price_bucket not in ('A. <£86 (<$100)','B. £86-£100 ($100-£100)','C. £100-£125','D. £125-£150','E. <£261 (<$300)','F. £261-£435 ($300-$500)'))
-		or (category='Handbags' and price_bucket not in ('A. <£86 (<$100)','B. £86-£100 ($100-£100)','C. £100-£125','D. £125-£150','E. <£261 (<$300)','F. £261-£435 ($300-$500)'))
-		or (category='Jewellery' and price_bucket not in ('A. <£86 (<$100)','B. £86-£100 ($100-£100)','C. £100-£125','D. £125-£150','E. <£261 (<$300)'))
-		)
-	Group by 1,2,3,4) ck
-left join
-	(select cal.RETAIL_YEAR
-		,cal.RETAIL_WEEK
-		,case when b.focused_vertical_lvl1 = 'Jewelry >=$300' then 'Jewellery'
-			when b.focused_vertical_lvl1 = 'Watches >=$500' then 'Watches'
-			when b.focused_vertical_lvl1 = 'Sneakers >=$100' then 'Sneakers'
-			when b.focused_vertical_lvl1 = 'Handbags >=$500' then 'Handbags'
-			else 'Other'
-			end as category
-		,sum(gmv) as budget_gmv
-	from P_CSI_TBS_T.FC_GLOBAL_WBR_FCST_BASE_Budget b
-	inner join DW_CAL_DT cal
-		on b.cal_dt = cal.cal_dt 
-		and cal.retail_year = 2023
-	where 1=1
-	and glbl_rprt_geo_name = 'UK'
-	and fc_lvl1 = 'Fashion'
-	Group by 1,2,3) bud
-		on ck.RETAIL_YEAR = bud.RETAIL_YEAR
-		and ck.RETAIL_WEEK = bud.RETAIL_WEEK
-		and ck.category = bud.category
-left join 
-	(select RETAIL_WEEK as max_week
-	,retail_year as max_year
-	From ACCESS_VIEWS.DW_CAL_DT
-	Where AGE_FOR_RTL_WEEK_ID = -1
-	Group by 1,2)
-
-Group by 1,2,3,4,5,6
-;
-
-
 
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
 ------------------------------------------------------------- LATEST WEEK TRANS DATA ----------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-drop table if exists P_ukplan_report_T.tableau_lux_wbr_deepdive_latest_week_data;
+drop table if exists P_ukplan_report_T.tableau_lux_wbr_deepdive_latest_week_trans_data;
 
-create table P_ukplan_report_T.tableau_lux_wbr_deepdive_latest_week_data as
+create table P_ukplan_report_T.tableau_lux_wbr_deepdive_latest_week_trans_data as
 
--- select ck.*
--- ,lstg.auct_titl
--- ,u.USER_SLCTD_ID as seller_name
+select ck.item_id
+,ck.brand
+,ck.categ_lvl2_name
+,ck.b2c_c2c
+,ck.item_cond
+,ck.trade_type
+,lstg.auct_titl
+,u.USER_SLCTD_ID as seller_name
+,sum(ck.gmv) as gmv
+,sum(ck.sold_items) as si
 
--- from P_ukplan_report_T.lux_weekly_dashboard_trans_base ck
--- LEFT JOIN ACCESS_VIEWS.DW_LSTG_ITEM lstg
--- 	on ck.item_id = lstg.item_id
--- LEFT JOIN ACCESS_VIEWS.DW_USERS u
--- 	on ck.seller_id = u.user_id
--- where AGE_FOR_RTL_WEEK_ID in (-1,-2,-53)
-
--- ;
-
-
-
-
-
-select
-	lstg.item_id
-	,lstg2.auct_titl
-	,lstg.retail_year
-	,lstg.retail_week
-	,lstg.age_for_rtl_week_id
-	,lstg.SLR_ID
-	,u.USER_SLCTD_ID as seller_name
-	,0 as buyer_id
-	,0 as trade_type
-	,lstg.focus_category
-	,lstg.CATEG_LVL2_NAME
-	,lstg.PRICE_BUCKET
-	,lstg.item_Cond
-	,lstg.BRAND
-	,0 as mece_bucket
-	,lstg.B2C_C2C
-	,sum(lstg.vi) as vi
-	,sum(lstg.imps) as imps
-	,0 as gmv
-	,0 as sold_items
-from
-	lux_weekly_dashboard_lstg_base lstg
-LEFT JOIN ACCESS_VIEWS.DW_LSTG_ITEM lstg2
-	on lstg.item_id = lstg2.item_id
+from p_robevans_t.lux_weekly_dashboard_trans_base ck
+LEFT JOIN ACCESS_VIEWS.DW_LSTG_ITEM lstg
+	on ck.item_id = lstg.item_id
 LEFT JOIN ACCESS_VIEWS.DW_USERS u
-	on lstg.slr_id = u.user_id
-Where
-	age_for_rtl_week_id in (-1,-2,-53)
-group by
-	1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
-	
-UNION ALL
+	on ck.seller_id = u.user_id
+where AGE_FOR_RTL_WEEK_ID = -1
 
-SELECT
-	item_id
-	,0 as auct_titl
-	,retail_year
-	,retail_week
-	,age_for_rtl_week_id
-	,seller_id
-	,0 as seller_name
-	,buyer_id
-	,trade_type
-	,focus_category
-	,CATEG_LVL2_NAME
-	,PRICE_BUCKET
-	,item_Cond
-	,BRAND
-	,mece_bucket
-	,B2C_C2C
-	,0 as vi
-	,0 as imps
-	,sum(gmv) as gmv
-	,sum(sold_items) as sold_items
-from
-	lux_weekly_dashboard_trans_base
-Where
-	age_for_rtl_week_id in (-1,-2,-53)
-group by
-	1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+group by 1,2,3,4,5,6,7,8
+;
 
 
-		
+
 
