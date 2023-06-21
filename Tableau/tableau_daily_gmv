@@ -1,0 +1,159 @@
+/* JIRA: https://jirap.corp.ebay.com/browse/UKPLAN-284
+
+Author: Oliver Wand
+Date: 7th June 2023
+
+Description: This looks at GMV data by Focus/Non-Focus Category, L2/L3, CBT/Domestic, B2C/C2C, Retail Year for the last rolling 7 days against the equivalent days last year.
+This report data will be used by managers to understand how we are tracking at a more granular level
+
+*/
+
+drop view if exists P_INVENTORYPLANNING_T.daily_gmv_report_l3;
+
+create VIEW P_INVENTORYPLANNING_T.daily_gmv_report_l3 as
+SELECT
+gmv_Dt
+,new_vertical
+,META_CATEG_ID
+,META_CATEG_NAME
+,categ_lvl2_id
+,categ_lvl2_name
+,categ_lvl3_id
+,categ_lvl3_name
+,segment
+,coalesce(focus_category,'Non Focus') as focus_category
+,focus_flag
+,LSTG_CNTRY
+,DOM_CBT
+,item_condition
+,max(ty_gmv) as ty_gmv
+,max(ty_bi) as ty_bi
+,max(ly_gmv) as ly_gmv
+,max(ly_bi) as ly_bi
+
+from (	
+	select 
+	ck.gmv_Dt
+    ,cat.new_vertical
+	,cat.META_CATEG_ID
+	,cat.META_CATEG_NAME
+	,cat.categ_lvl2_id
+	,cat.categ_lvl2_name
+	,cat.categ_lvl3_id
+	,cat.categ_lvl3_name
+	,case when hist.usegm_id = 206 then 'B2C' else 'C2C' end as segment
+    ,fcs.FOCUSED_VERTICAL_LVL1 as focus_category
+    ,case when fcs.FOCUSED_VERTICAL_LVL1 is not null then 1 else 0 end as focus_flag
+	,site.SITE_NAME as LSTG_CNTRY
+	,case when ck.byr_cntry_id = ck.SLR_CNTRY_ID then 'DOM' else 'CBT' end as DOM_CBT
+	,case cndtn.item_cndtn_id when 1000 then 'New'
+	  			when 1500 then 'New - Other'
+	  			when 1750 then 'New - With defects'
+	  			when 2000 then 'Refurb - Certified' 
+	  			when 2010 then 'Refurb - Excellent'
+	  			when 2020 then 'Refurb - Very Good'
+	  			when 2030 then 'Refurb - Good'
+	  			when 2500 then 'Refurb - Seller' 
+				when 3000 then 'Used'
+	  			when 4000 then 'Used - Very Good'
+	  			when 5000 then 'Used - Good'
+	  			when 6000 then 'Used - Acceptable'
+	  			when 7000 then 'Used - For parts / not working'
+	  			else 'Other' end as item_condition
+	,sum(ck.GMV_PLAN_USD) as ty_gmv
+	,sum(ck.quantity) as ty_bi
+	,null as ly_gmv
+	,null as ly_bi
+
+	from access_views.dw_checkout_trans as ck
+
+	inner join  access_views.dw_users  u on ck.seller_id = u.user_id
+
+	inner join access_views.dw_cal_dt cal on cal.cal_dt = ck.gmv_Dt 
+	and ck.gmv_Dt between current_date()  - 7 and current_date()  - 1
+	and ck.auct_end_dt >=current_date()  - 10
+
+	inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat 
+	on cat.leaf_categ_id = ck.leaf_categ_id 
+	and cat.site_id = ck.SITE_ID
+
+	left  join access_views.dw_usegm_hist hist on hist.user_id=ck.seller_id 
+	and hist.usegm_grp_id  = 48 
+	and ck.gmv_Dt between hist.beg_date and hist.end_date  
+
+	left join access_views.lstg_item_cndtn as cndtn	on ck.item_id = cndtn.item_id
+	
+	left join access_views.FOCUSED_VERT_TXN fcs on ck.ITEM_ID = fcs.LSTG_ID and ck.TRANSACTION_ID = fcs.CK_TRANS_ID and ck.GMV_DT = fcs.CK_DATE and fcs.CK_WACKO_YN = 'N'
+	
+	inner join ACCESS_VIEWS.DW_SITES site on ck.SITE_ID = site.SITE_CNTRY_ID
+	where 1=1
+	and ck.ck_wacko_yn = 'N'
+	and ck.sale_type not in (10,15)
+	and ck.slr_cntry_id = 3
+	group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+
+
+union
+
+	select 
+	ck.gmv_Dt + 364 as gmv_dt
+    ,cat.new_vertical
+	,cat.META_CATEG_ID
+	,cat.META_CATEG_NAME
+	,cat.categ_lvl2_id
+	,cat.categ_lvl2_name
+	,cat.categ_lvl3_id
+	,cat.categ_lvl3_name
+	,case when hist.usegm_id = 206 then 'B2C' else 'C2C' end as segment
+    ,fcs.FOCUSED_VERTICAL_LVL1 as focus_category
+    ,case when fcs.FOCUSED_VERTICAL_LVL1 is not null then 1 else 0 end as focus_flag
+	,site.SITE_NAME as LSTG_CNTRY
+	,case when ck.byr_cntry_id = ck.SLR_CNTRY_ID then 'DOM' else 'CBT' end as DOM_CBT
+	,case cndtn.item_cndtn_id when 1000 then 'New'
+	  			when 1500 then 'New - Other'
+	  			when 1750 then 'New - With defects'
+	  			when 2000 then 'Refurb - Certified' 
+	  			when 2010 then 'Refurb - Excellent'
+	  			when 2020 then 'Refurb - Very Good'
+	  			when 2030 then 'Refurb - Good'
+	  			when 2500 then 'Refurb - Seller' 
+				when 3000 then 'Used'
+	  			when 4000 then 'Used - Very Good'
+	  			when 5000 then 'Used - Good'
+	  			when 6000 then 'Used - Acceptable'
+	  			when 7000 then 'Used - For parts / not working'
+	  			else 'Other' end as item_condition
+	,null as ty_gmv
+	,null as ty_bi
+	,sum(ck.GMV_PLAN_USD) as ly_gmv
+	,sum(ck.quantity) as ly_bi	
+
+	from access_views.dw_checkout_trans as ck
+
+	inner join  access_views.dw_users  u on ck.seller_id = u.user_id
+
+	inner join access_views.dw_cal_dt cal on cal.cal_dt = ck.gmv_Dt 
+	and ck.gmv_Dt between current_date()  - 371 and current_date()  - 365
+	and ck.auct_end_dt >=current_date()  - 374
+
+	inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat 
+	on cat.leaf_categ_id = ck.leaf_categ_id 
+	and cat.site_id = ck.SITE_ID
+
+	left  join access_views.dw_usegm_hist hist on hist.user_id=ck.seller_id 
+	and hist.usegm_grp_id  = 48 
+	and ck.gmv_Dt between hist.beg_date and hist.end_date  
+
+	left join access_views.lstg_item_cndtn as cndtn	on ck.item_id = cndtn.item_id
+	
+	left join access_views.FOCUSED_VERT_TXN fcs on ck.ITEM_ID = fcs.LSTG_ID and ck.TRANSACTION_ID = fcs.CK_TRANS_ID and ck.GMV_DT = fcs.CK_DATE and fcs.CK_WACKO_YN = 'N'
+	
+	inner join ACCESS_VIEWS.DW_SITES site on ck.SITE_ID = site.SITE_CNTRY_ID
+	where 1=1
+	and ck.ck_wacko_yn = 'N'
+	and ck.sale_type not in (10,15)
+	and ck.slr_cntry_id = 3
+	group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+)
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14
+;

@@ -821,38 +821,71 @@ on raw.slr_id=u.user_id
 where raw.TCHPNT_DESC = 'Brand Outlet'
 --AND bo.seller_vertical = 'Fashion'
 ;
-
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--- Home Interiors (B2C Sellers - supplied by Mansie on 2022-07-29)
+-- Used Apparel ( 2023-05-10 Not to be confused with Prelove TBC - Oli)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+drop table if exists P_SANSEN_T.csat_ua;
+create table P_SANSEN_T.csat_ua as 
+
+SELECT distinct
+	raw.user_id
+	,LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date
+	,cal.MONTH_OF_YEAR_ID
+	,cal.AGE_FOR_MONTH_ID
+	,listing
+	,u.user_slctd_id as seller_name
+	,raw.Satisfied_with_eBay
+	,verbatim
+	,case when fs.seller_id is not null then "Focus Seller" else "Not Focus Seller" end as focus_seller
+
+FROM P_SANSEN_T.CSAT_RAW raw
+
+
+left join P_awang_ops_t.seller_ops_83 fs
+on raw.slr_id = fs.seller_id and fs.seller_vertical ='Fashion'
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10)
+	AND AGE_FOR_MONTH_ID <0
+	
+inner join access_views.dw_users u
+on raw.slr_id=u.user_id	
+	
+where raw.TCHPNT_DESC = 'Used Apparel'
+--AND bo.seller_vertical = 'Fashion'
+;
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Home
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 DROP TABLE IF EXISTS P_SANSEN_T.homint_csat ;
-CREATE TABLE P_SANSEN_T.homint_csat AS (
-SELECT 
-	raw.user_id,
-	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
-	cal.MONTH_OF_YEAR_ID,
-	cal.AGE_FOR_MONTH_ID,
-	listing,
-	u.user_slctd_id as seller_name,
-	raw.Satisfied_with_eBay,
-	verbatim
+CREATE TABLE P_SANSEN_T.homint_csat AS
+SELECT distinct
+	raw.user_id
+	,LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date
+	,cal.MONTH_OF_YEAR_ID
+	,cal.AGE_FOR_MONTH_ID
+	,listing
+	,u.user_slctd_id as seller_name
+	,raw.Satisfied_with_eBay
+	,verbatim
+	,raw.TCHPNT_DESC as focus_category
 
 FROM P_SANSEN_T.CSAT_RAW raw
 
 --INNER JOIN select * from P_UK_BC_T.HomeInterior hi
-inner join P_macheung_T.csat_home_interiors hi--Use seller list provided by Mansie on 2022-07-29
-on raw.slr_id=hi.seller_id 
 	
 inner join access_views.dw_users u
-on hi.seller_id=u.user_id
+on raw.user_id=u.user_id
+
 
 inner join access_views.dw_cal_dt cal 
     on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10)
 	AND AGE_FOR_MONTH_ID <0
 -- where raw.TCHPNT_DESC in ('Home Interiors', 'Furniture') -- technically these two should be separated out, included Furniture based on feedback from Chris Gardner to Sanjutka
-where raw.TCHPNT_DESC in ('Home Interiors', 'Furniture','Home DIY', 'Home Gardening')
-group by 1,2,3,4,5,6,7,8
-); 
+where 1=1
+and raw.TCHPNT_DESC in ('Home Interiors', 'Furniture','Home DIY', 'Home Gardening')
+and b2c_c2c_flag = 'B2C'
+; 
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Gardening & DIY (updated 6/2/23)

@@ -1,0 +1,208 @@
+------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------
+--UKPLAN-384
+--P&A GMB China to UK Imports
+-- ---------------------------------------------------------------------------------------
+-- Task: 
+--	UK Buyers only
+--	Sellers group by –GC, EU, US and rest of world – which will give us a view on the Brexit impact as well!
+--	GMB Weekly trend ---extend to 2019 to see the impact of covid
+--	At P&A vertical level - 
+
+--- ---------------------------------------------------------------------------------------
+---------------------------------------------
+-- email:
+---•	Portion of overall GMB in the UK that is GC? Or if reporting is easier this way, that is all of broader Asia region? – specially from sellers registered in this region, so GMB for UK but not GMV.
+---•	Trend of this portion over the past 12 months…is it growing dramatically as it is in the US? On these first two bullets feel free to just send me a link to a report if it has it.
+---•	CSAT of GC/Asia import inventory for UK vs. domestic-seller inventory
+
+----------------------------------------------------------------------------------------------------------------------------
+
+------ DROP TABLE IF EXISTS  P_InventoryPlanning_T.pa_china_uk_imports ;
+CREATE   TABLE  P_InventoryPlanning_T.pa_china_uk_imports AS 
+
+SELECT
+RETAIL_YEAR
+,RETAIL_WEEK
+--,CN2.REV_ROLLUP
+,BSNS_VRTCL_NAME
+, CK.SLR_CNTRY_ID 
+--,ck.SLR_CNTRY_ID IN (3, 71, 77, 101, 5, 8, 16, 22, 23, 29, 34, 53, 56, 57, 66, 70, 79, 80, 86, 93, 94, 99, 105, 115, 120, 121, 122, 124, 130, 137, 138, 228, 146, 154, 163, 167, 168, 175, 229, 181, 182, 186, 192, 193, 209, 214, 222 )  THEN 'EU' ELSE 'OTHER' END AS EU
+,CASE	WHEN SLR_CNTRY_ID IN (45) THEN 'CN'		
+  		WHEN SLR_CNTRY_ID IN (-999, -1, 0, 1, 225, 679,1000,84,217,165) THEN 'US'	
+--		WHEN ck.SLR_CNTRY_ID IN (3)  THEN 'UK' 
+		WHEN ck.SLR_CNTRY_ID IN (3, 71, 77, 101, 5, 8, 16, 22, 23, 29, 34, 53, 56, 57, 66, 70, 79, 80, 86, 93, 94, 99, 105, 115, 120, 121, 122, 124, 130, 137, 138, 228, 146, 154, 163, 167, 168, 175, 229, 181, 182, 186, 192, 193, 209, 214, 222 )    THEN 'EU' 
+  		/*WHEN SLR_CNTRY_ID IN (2) THEN 'CA'	
+  		WHEN SLR_CNTRY_ID IN (77) THEN 'DE'   	
+  		WHEN SLR_CNTRY_ID IN (3) THEN 'UK'	
+  		WHEN SLR_CNTRY_ID IN (15) THEN 'AU'	
+  		WHEN CK.SLR_CNTRY_ID in (71) THEN 'FR'	
+  		WHEN CK_APP_ID.SLR_CNTRY_ID in (101) THEN 'IT'	
+  		WHEN CK.SLR_CNTRY_ID in (186) THEN 'ES'	*/
+  		WHEN CK.SLR_CNTRY_ID in (16,23,34,53,55,56,57,66,70,80,93,94,99,115,121,122,130,146,154,163,164,167,181,182,192,193) THEN 'ROE'	
+  		ELSE 'ROW' 	
+		END AS Seller_country	
+	,CN2.REV_ROLLUP
+, case when  slr_cntry_id = 3 and BYR_CNTRY_ID=3 and HIST.USEGM_ID = 206  then 'UK Dom B2C'
+		when slr_cntry_id <>3 and   BYR_CNTRY_ID=3 and HIST.USEGM_ID = 206  then 'Imports'
+			when slr_cntry_id = 3  and HIST.USEGM_ID = 206 then  'B2C_CBT'
+			else 'C2C' end as Bucket
+---, CASE WHEN HIST.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END AS B2C_C2C
+,case when HIST.USEGM_ID = 206 /*and u.USER_DSGNTN_ID =2 */then 'B2C' when  HIST.USEGM_ID = 207  then  'C2C'  else 'Other' end as B2C_C2C_flag
+---,case when U.USER_DSGNTN_ID =2 then 'B2C' when USER_DSGNTN_ID <>  2  then  'C2C'  else 'Other' end as B2C_C2C_FLAG
+
+--,case when  slr_cntry_id = 3 then 'UK seller' else 'Other' end as Seller_country
+--,case when slr_cntry_id = 3 and BYR_CNTRY_ID=3 then 'UK Domestic' else 'Other' end as UK_Dom
+,case when ck.site_id = 3 then 'UK Site' else 'Other' end as site
+,SUM(gmv_plan_usd) AS GMB
+---,sum(gmv20_plan) AS GMV      
+,sum(QUANTITY) as BI
+		FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS AS CK -- select * from  ACCESS_VIEWS.DW_CHECKOUT_TRANS where gmv_dt >='2023-02-01' and site_id =3 limit 100
+		INNER JOIN DW_COUNTRIES AS CN 
+			ON CN.CNTRY_ID = CK.BYR_CNTRY_ID 
+			AND CN.REV_ROLLUP  IN ('DE', 'UK', 'FR', 'IT', 'ES')
+		INNER JOIN DW_COUNTRIES AS CN2 
+			ON CN2.CNTRY_ID = CK.SLR_CNTRY_ID 
+		--	AND CN2.REV_ROLLUP  IN ('DE', 'UK', 'FR', 'IT', 'ES') 
+			--AND CN.REV_ROLLUP = CN2.REV_ROLLUP
+		left join  ACCESS_VIEWS.DW_SITES site on ck.SITE_ID = site.SITE_CNTRY_ID  AND site.SITE_ID =3
+		INNER JOIN   P_CSI_TBS_T.CATEGORY_MAPPING AS CATEG 
+			ON CATEG.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+			AND CATEG.SITE_ID = CK.SITE_ID 
+			AND categ.BSNS_VRTCL_NAME NOT IN ('Real Estate', 'Unknown', 'Vehicles') AND CATEG.SITE_ID =3 
+		INNER JOIN DW_CAL_DT AS CAL 
+			ON CAL.CAL_DT = CK.GMV_DT
+			AND RETAIL_YEAR >= 2019 
+			AND AGE_FOR_RTL_WEEK_ID <= -1
+	INNER JOIN DW_USEGM_HIST AS HIST 
+			ON HIST.USER_ID = CK.SELLER_ID 
+			AND HIST.USEGM_GRP_ID = 48 
+			AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE 
+			---AND HIST.USEGM_ID = 206 
+			left outer JOIN DW_USERs U ON U.USER_ID= ck.seller_id 
+---	INNER JOIN PRS_RESTRICTED_V.USER_DNA_DIM AS RB  		ON RB.USER_ID = CK.BUYER_ID 
+		WHERE 1=1
+			AND GMV_DT>=  '2019-01-01'   and auct_end_dt >=   '2019-01-01'   
+			and bsns_vrtcl_name in ('Parts & Accessories')
+			AND CK.CK_WACKO_YN  =  'N'
+			AND CK.SALE_TYPE NOT IN (10,15)
+			AND  BYR_CNTRY_ID=3 
+		     GROUP BY 1,2,3,4,5,6,7,8,9;
+		
+
+
+
+-----------------
+-- CSAT
+-- •	CSAT of GC/Asia import inventory for UK vs. domestic-seller inventory
+-------------------------------------------------------
+---DRO-P- -TA-B-L-E- -IF EXISTS P_INVENTORYPLANNING_T_T.CSAT_RAW_GMB;
+CREATE TABLE P_INVENTORYPLANNING_T.CSAT_RAW_GMB AS
+(
+SELECT S.SLR_CNTRY_ID,
+	s.EU_B2C_C2C_FLAG as b2c_c2c_flag,
+	t.USER_ID, -- join to buyer id
+	t.USER_SRVY_CMPLTD_DT,
+	t.LSTG_TITLE_TXT as Listing,
+	t.LSTG_ID, -- join to item_id
+	s.SLR_ID as slr_id,
+	--USER_SLCTD_ID as seller_name,
+	t.TCHPNT_ID,
+	t.TCHPNT_DESC,
+	q.QSTN_ID,
+	CASE WHEN q.QSTN_ID in (36001) THEN rsp.QSTN_RSPNS_VALUE_TXT ELSE NULL END AS Satisfied_with_eBay, --satisfaction rating
+	vr.VRBTM_RSPNS_TXT as verbatim --verbatim free form text from user
+
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t -- CSAT table for focus categories -- SELECT * FROM  idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE  LIMIT 1000; 
+
+JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q -- user responses to the questions
+ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID -- join to get responses by survey ID
+
+INNER JOIN (
+			SELECT SLR_ID, BUYER_ID, SLR_CNTRY_ID, BYR_CNTRY_ID, ITEM_ID, TRANSACTION_ID, CREATED_DT, CK_TRANS_DT, EU_B2C_C2C_FLAG
+			FROM PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT CK
+			INNER JOIN   P_CSI_TBS_T.CATEGORY_MAPPING AS CATEG 
+			ON CATEG.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+			AND CATEG.SITE_ID = CK.SITE_ID 
+			AND categ.BSNS_VRTCL_NAME NOT IN ('Real Estate', 'Unknown', 'Vehicles') AND CATEG.SITE_ID =3 -- SELECT * FROM  PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT 	WHERE SLR_CNTRY_ID in (3,45)  AND BYR_CNTRY_ID in (3) AND CK_TRANS_DT >= '2022-01-01' LIMIT 1000; 
+			AND CK.SLR_CNTRY_ID in (3,45) 
+			AND CK.BYR_CNTRY_ID in (3)
+			--and SLR_CNTRY_ID=BYR_CNTRY_ID
+			AND CK_TRANS_DT >= '2022-01-01'
+			)s -- transaction table
+ON s.BUYER_ID = t.USER_ID
+AND s.item_id = t.LSTG_ID
+
+JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp -- all possible questions and responses
+ON rsp.QSTN_ID = q.QSTN_ID -- getting the question ID to join to response table
+AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN qs -- all questions and question IDs
+ON qs.QSTN_ID = q.QSTN_ID
+
+LEFT JOIN (
+           SELECT USER_SRVY_RSPNS_ID,QSTN_ID,VRBTM_RSPNS_TXT FROM IDM_NPS_V.NPS_TCHPNT_SRVY_VRBTM_RSPNS
+          ) VR
+ON t.USER_SRVY_RSPNS_ID= VR.USER_SRVY_RSPNS_ID 
+AND vr.qstn_id = 37000
+
+WHERE 1=1 
+	AND USER_SRVY_CMPLTD_DT IS NOT NULL
+	AND LSTG_ID not in (-99)
+	AND t.TCHPNT_ID in (92) --92 is the latest touchpoint ID for buyers 
+	AND q.QSTN_ID in ( 36001, 37000) --Numeric Value assigned to each of the questions
+	AND t.USER_SRVY_CMPLTD_DT >= '2023-01-01'
+	and t.USER_CNTRY_ID=3
+group by 1,2,3,4,5,6,7,8,9,10,11,12
+);
+
+select distinct slr_cntry_id
+from P_INVENTORYPLANNING_T.CSAT_RAW_GMB
+order by 1
+limit 1000;;
+
+
+DROP TABLE IF EXISTS P_INVENTORYPLANNING_T.CSAT_PA_china_gmb;
+CREATE TABLE P_INVENTORYPLANNING_T.CSAT_PA_china_gmb AS
+(
+SELECT 
+	raw.slr_cntry_id,
+	raw.user_id,
+	LEFT(raw.USER_SRVY_CMPLTD_DT, 10) as srvy_date,
+	cal.MONTH_OF_YEAR_ID,
+	cal.AGE_FOR_MONTH_ID,
+	---raw.bsns_vrtcl_name as vertical,
+	listing,
+	cat.categ_lvl2_name,
+	cat.categ_lvl3_name,
+	cat.categ_lvl4_name,
+	u.user_slctd_id as seller_name,
+	case when fs.seller_id is not null then "P&A Focus Seller" else "Not P&A Focus Seller" end as focus_seller,
+	raw.Satisfied_with_eBay,
+	verbatim
+
+FROM P_INVENTORYPLANNING_T.CSAT_RAW_GMB raw
+
+inner join prs_restricted_v.slng_lstg_super_fact lstg
+on raw.lstg_id=lstg.item_id
+
+inner join (select categ_lvl2_id, categ_lvl2_name, categ_lvl3_id, categ_lvl3_name, categ_lvl4_id, categ_lvl4_name, leaf_categ_id, site_id
+			from access_views.dw_category_groupings   where bsns_vrtcl_name = 'Parts & Accessories' and site_id =3
+			group by 1,2,3,4,5,6,7,8) as cat
+on lstg.leaf_categ_id = cat.leaf_categ_id and cat.site_id=3
+
+inner join access_views.dw_cal_dt cal 
+    on cal.cal_dt = LEFT(raw.USER_SRVY_CMPLTD_DT, 10)
+	AND AGE_FOR_MONTH_ID <0
+	
+left join access_views.dw_users u
+on raw.slr_id = u.user_id
+
+left join P_awang_ops_t.seller_ops_83 fs
+on raw.slr_id = fs.seller_id and fs.seller_vertical ='Parts & Accessories'
+
+--where raw.bsns_vrtcl_name = 'Parts & Accessories'
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13
+);
+
+select * from  P_INVENTORYPLANNING_T.CSAT_PA_china_gmb limit 1000; 

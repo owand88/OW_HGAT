@@ -1,0 +1,105 @@
+/*
+JIRA: https://jirap.corp.ebay.com/browse/UKPLAN-331
+
+Objective: Understand which sellers are not being directly managed by eBay
+*/
+
+drop table if exists P_INVENTORYPLANNING_T.FSH_UKPLAN331;
+create table P_INVENTORYPLANNING_T.FSH_UKPLAN331 as
+
+
+select 
+cal.RETAIL_YEAR
+,cal.RETAIL_WEEK
+,sellers.USER_ID as SELLER_ID
+,sellers.USER_NAME as SELLER_NAME
+,fcs.initiative_name as FS_CATEGORY
+,cat.NEW_VERTICAL as VERTICAL_NAME
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_ID
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_ID
+,cat.CATEG_LVL3_NAME
+,case lstg.item_cndtn_id when 1000 then 'New'
+	  			when 1500 then 'New - Other'
+	  			when 1750 then 'New - With defects'
+	  			when 2000 then 'Refurb - Certified' 
+	  			when 2010 then 'Refurb - Excellent'
+	  			when 2020 then 'Refurb - Very Good'
+	  			when 2030 then 'Refurb - Good'
+	  			when 2500 then 'Refurb - Seller' 
+				when 3000 then 'Used'
+	  			when 4000 then 'Used - Very Good'
+	  			when 5000 then 'Used - Good'
+	  			when 6000 then 'Used - Acceptable'
+	  			when 7000 then 'Used - For parts / not working'
+	  			else 'Other' end as item_condition
+
+,0 as gmv
+,0 as si
+,count(distinct lstg.ITEM_ID) as ttl_listings
+from PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+	INNER JOIN P_INVENTORYPLANNING_T.dw_category_groupings_adj CAT ON CAT.LEAF_CATEG_ID = lstg.LEAF_CATEG_ID and cat.site_id = 3
+	INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON lstg.AUCT_START_DT <= cal.CAL_DT
+					AND lstg.AUCT_END_DT >= cal.CAL_DT
+INNER JOIN P_INVENTORYPLANNING_T.UKPLAN331_SELLERS sellers on lstg.SLR_ID = sellers.user_id
+
+LEFT JOIN  P_awang_ops_T.seller_ops_83 fcs on lstg.SLR_ID = fcs.seller_ID and seller_vertical = 'Fashion'
+
+
+where 1=1
+and lstg.ITEM_SITE_ID = 3
+and lstg.SLR_CNTRY_ID = 3
+
+and cal.AGE_FOR_RTL_WEEK_ID between -7 and -1
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12
+
+union all 
+
+--GMV and Sold Items YTD
+select cal.RETAIL_YEAR
+,cal.RETAIL_WEEK
+,sellers.USER_ID as SELLER_ID
+,sellers.USER_NAME as SELLER_NAME
+,fcs.initiative_name as FS_CATEGORY
+,cat.NEW_VERTICAL as VERTICAL_NAME
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_ID
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_ID
+,cat.CATEG_LVL3_NAME
+,case ck.item_cndtn_id when 1000 then 'New'
+	  			   		 when 1500 then 'New - Other'
+	  			   		 when 1750 then 'New - With defects'
+	  			   		 when 2000 then 'Refurb - Certified' 
+	  			   		 when 2010 then 'Refurb - Excellent'
+	  			   		 when 2020 then 'Refurb - Very Good'
+	  			   		 when 2030 then 'Refurb - Good'
+	  			   		 when 2500 then 'Refurb - Seller' 
+				   		 when 3000 then 'Used'
+	  			   		 when 4000 then 'Used - Very Good'
+	  			   		 when 5000 then 'Used - Good'
+	  			   		 when 6000 then 'Used - Acceptable'
+	  			   		 when 7000 then 'Used - For parts / not working'
+	  			   		 else 'Other' end as item_condition
+,sum(ck.GMV20_PLAN) as gmv
+,sum(ck.QUANTITY) as si
+,0 as ttl_listings
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck
+inner join ACCESS_VIEWS.DW_CAL_DT cal on ck.GMV_DT = cal.CAL_DT
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.SITE_ID = 3
+INNER JOIN P_INVENTORYPLANNING_T.UKPLAN331_SELLERS sellers on ck.SELLER_ID = sellers.user_id
+
+LEFT JOIN  P_awang_ops_T.seller_ops_83 fcs on ck.SELLER_ID = fcs.seller_ID and seller_vertical = 'Fashion'
+where 1=1
+and cal.AGE_FOR_RTL_WEEK_ID between -7 and -1
+and ck.RPRTD_WACKO_YN = 'N'
+and ck.LSTG_SITE_ID = 3
+and ck.SLR_CNTRY_ID = 3
+-- and ck.BYR_CNTRY_ID = 3
+and ck.B2C_C2C = 'B2C'
+
+group by 1,2,3,4,5,6,7,8,9,10,11,12
+
+;

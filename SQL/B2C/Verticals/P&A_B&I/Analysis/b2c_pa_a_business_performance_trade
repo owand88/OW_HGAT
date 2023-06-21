@@ -1,0 +1,303 @@
+-----------------------------------------------------------------------------
+--Refresh Schedule: Sunday -- 20:00 MST
+---------------------------------------------------------------------------
+--- 2023 06 01 
+-- 2023 Q2
+-- P&A Monday Business Performance
+
+-- 1. Sub-Category Performance
+-- 2. Top 20 Sellers
+-- 3. Coupon and Promotions GMV
+
+-- Top 20 P&A Sellers
+-- --GMV
+-- --ASP
+-- --SI
+-- --AVG DAILY LISTING
+-----------------------------------------------------------------------
+-- 1a. SUB-CATEGORY GMV
+----------------------------------------------------------------------------
+drop table if exists   P_ukplan_report_T.business_performance_pa_category_STEP ;-- select * FROM  P_ukplan_report_T.business_performance_pa_category where retail_week >=18 and INVENTORY_PROP ='Motorcycle Parts Focus'  ;
+create table P_ukplan_report_T.business_performance_pa_category_STEP as 
+(
+SELECT 
+RETAIL_YEAR,
+RETAIL_WEEK,
+CASE 
+WHEN bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl2_id in (107059)) then 'Car Tuning and Styling Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl3_id in (179448,179421)) then 'Car Care and Paint Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33743)) then 'Tyres & Wheels Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (180035)) then 'Tyres & Wheels Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33637,33694,33612,33707,33579,33726,33549,33559,33572,9886,33605,262215,33599,180143,33542,33687,262440,262064)) then 'Car Parts Focus Shared'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=3 and cat.categ_lvl2_id in (6030)) then 'Green Parts Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl2_id in (10063,25622,96382,122304)) then 'Motorcycle Parts Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl3_id in (183504,261272,177075)) then 'Motorcycle Parts Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl2_id in (179487)) then 'Engine Oil & Lubricant Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl3_id in (183745,179474)) then 'Garage Equipment & Tool Focus' ELSE  'OTHER'
+END AS INVENTORY_PROP,
+SUM(CK.QUANTITY) AS BI,
+SUM(GMV_PLAN_USD) AS GMV 
+FROM  DW_CHECKOUT_TRANS ck 
+INNER JOIN ( select CURNCY_ID, CURNCY_PLAN_RATE from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID     
+INNER JOIN ( select meta_categ_id, meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_id,
+LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+        AND USEGM_ID = 206 
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5)AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+		
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+       AND RETAIL_YEAR >=2022
+		and age_for_rtl_week_id <= -1 
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+WHERE 1=1
+and  SLR_CNTRY_ID = 3 --UK sellers
+and  BYR_CNTRY_ID = 3 --UK buyers
+and ck.site_id = 3 
+AND RPRTD_WACKO_YN = 'N'
+        AND AUCT_END_DT >= '2017-12-20'
+        AND CREATED_DT >= '2017-12-20'    
+and bsns_vrtcl_name in ('Parts & Accessories')
+    GROUP BY 1,2,3) ;	
+
+drop table if exists   P_ukplan_report_T.business_performance_pa_category ;
+CREATE TABLE   P_ukplan_report_T.business_performance_pa_category AS 
+SELECT * FROM   P_ukplan_report_T.business_performance_pa_category_STEP
+UNION ALL 
+select RETAIL_YEAR, RETAIL_WEEK, CASE WHEN 1=1 THEN 'C&T' ELSE 'ERROR' END AS INVENTORY_PROP, 
+SUM(BI) BI, 
+SUM(GMV) GMV
+FROM  P_ukplan_report_T.business_performance_pa_category_STEP 
+where INVENTORY_PROP not in ('Tyres & Wheels Focus','Motorcycle Parts Focus')
+GROUP BY 1,2,3 ; 
+
+drop table if exists   P_INVENTORYPLANNING_T.business_performance_pa_category ;
+create table 
+P_INVENTORYPLANNING_T.business_performance_pa_category AS
+SELECT * FROM  P_ukplan_report_T.business_performance_pa_category ; 
+---------------------------------------------------------
+-- 1b. RESULT TABLE FOR CATEGORY GMV
+------------------------
+
+DROP TABLE IF EXISTS  P_ukplan_report_T.business_performance_pa_category_output;
+create table  P_ukplan_report_T.business_performance_pa_category_output as 
+--- RW TABLE
+SELECT * , GMV_YOY-1 AS GMV_YOY_PC FROM (
+SELECT INVENTORY_PROP,
+CASE WHEN A.RETAIL_WEEK = RW.RETAIL_WEEK THEN 'RW' ELSE 'OTHER' END AS TIME_PERIOD,
+CONCAT ('RW', CASE WHEN 1=1 THEN  (  SELECT DISTINCT RETAIL_WEEK FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID =  -1  )ELSE  0 END ) AS RW_LABEL,
+SUM( CASE WHEN  A.RETAIL_WEEK=RW.RETAIL_WEEK AND  A.RETAIL_YEAR=TY.RETAIL_YEAR THEN GMV ELSE 0 END ) AS  GMV_TY,
+SUM( CASE WHEN  A.RETAIL_WEEK=RW.RETAIL_WEEK AND  A.RETAIL_YEAR=LY.RETAIL_YEAR THEN GMV ELSE 0 END ) AS  GMV_LY,
+SUM( CASE WHEN  A.RETAIL_WEEK=RW.RETAIL_WEEK AND  A.RETAIL_YEAR=TY.RETAIL_YEAR THEN GMV ELSE 0 END ) /SUM( CASE WHEN  A.RETAIL_WEEK=RW.RETAIL_WEEK AND  A.RETAIL_YEAR=LY.RETAIL_YEAR THEN GMV ELSE 0 END ) AS GMV_YOY
+FROM P_ukplan_report_T.business_performance_pa_category A 
+LEFT  JOIN ( SELECT DISTINCT RETAIL_WEEK FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID =  -1 )  RW ON A.RETAIL_WEEK=RW.RETAIL_WEEK
+LEFT JOIN ( SELECT DISTINCT RETAIL_YEAR FROM DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID =  0 AND  AGE_FOR_RTL_WEEK_ID =  -1  )  TY ON A.RETAIL_YEAR=TY.RETAIL_YEAR
+LEFT JOIN ( SELECT DISTINCT RETAIL_YEAR FROM DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID =-1 AND  AGE_FOR_RTL_WEEK_ID <=  -1  )  LY ON A.RETAIL_YEAR=LY.RETAIL_YEAR
+WHERE   A.RETAIL_WEEK  IN ( SELECT DISTINCT RETAIL_WEEK FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID =  -1 ) 
+GROUP BY 1 ,2,3 )
+
+UNION ALL 
+
+-- QTW TABLE
+SELECT * , GMV_YOY-1 AS GMV_YOY_PC FROM (
+SELECT INVENTORY_PROP,
+CASE WHEN A.RETAIL_WEEK = RW.RETAIL_WEEK THEN 'QTW' ELSE 'OTHER' END AS TIME_PERIOD,
+CONCAT ('RW', CASE WHEN 1=1 THEN  (  SELECT DISTINCT RETAIL_WEEK FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID =  -1  )ELSE  0 END ) AS RW_LABEL,
+SUM( CASE WHEN  A.RETAIL_WEEK=RW.RETAIL_WEEK AND  A.RETAIL_YEAR=TY.RETAIL_YEAR THEN GMV ELSE 0 END ) AS  GMV_TY,
+SUM( CASE WHEN  A.RETAIL_WEEK=RW.RETAIL_WEEK AND  A.RETAIL_YEAR=LY.RETAIL_YEAR THEN GMV ELSE 0 END ) AS  GMV_LY,
+SUM( CASE WHEN  A.RETAIL_WEEK=RW.RETAIL_WEEK AND  A.RETAIL_YEAR=TY.RETAIL_YEAR THEN GMV ELSE 0 END ) /SUM( CASE WHEN  A.RETAIL_WEEK=RW.RETAIL_WEEK AND  A.RETAIL_YEAR=LY.RETAIL_YEAR THEN GMV ELSE 0 END ) AS GMV_YOY
+
+FROM P_ukplan_report_T.business_performance_pa_category A 
+LEFT  JOIN ( SELECT DISTINCT RETAIL_WEEK FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID <=  -1  AND AGE_FOR_RTL_QTR_ID =0 )  RW ON A.RETAIL_WEEK=RW.RETAIL_WEEK
+LEFT JOIN ( SELECT DISTINCT RETAIL_YEAR FROM DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID =  0 AND  AGE_FOR_RTL_WEEK_ID =  -1  )  TY ON A.RETAIL_YEAR=TY.RETAIL_YEAR
+LEFT JOIN ( SELECT DISTINCT RETAIL_YEAR FROM DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID =-1 AND  AGE_FOR_RTL_WEEK_ID <=  -1  )  LY ON A.RETAIL_YEAR=LY.RETAIL_YEAR
+WHERE   A.RETAIL_WEEK  IN (SELECT DISTINCT RETAIL_WEEK FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID <=  -1  AND AGE_FOR_RTL_QTR_ID =0  ) 
+GROUP BY 1 ,2,3 )
+
+UNION ALL 
+-- YTD TABLE 
+SELECT * , GMV_YOY-1 AS GMV_YOY_PC FROM (
+SELECT INVENTORY_PROP,
+CASE WHEN A.RETAIL_WEEK = RW.RETAIL_WEEK THEN 'YTD' ELSE 'OTHER' END AS TIME_PERIOD,
+CONCAT ('RW', CASE WHEN 1=1 THEN  (  SELECT DISTINCT RETAIL_WEEK FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID =  -1  )ELSE  0 END ) AS RW_LABEL,
+SUM( CASE WHEN  A.RETAIL_WEEK=RW.RETAIL_WEEK AND  A.RETAIL_YEAR=TY.RETAIL_YEAR THEN GMV ELSE 0 END ) AS  GMV_TY,
+SUM( CASE WHEN  A.RETAIL_WEEK=RW.RETAIL_WEEK AND  A.RETAIL_YEAR=LY.RETAIL_YEAR THEN GMV ELSE 0 END ) AS  GMV_LY,
+SUM( CASE WHEN  A.RETAIL_WEEK=RW.RETAIL_WEEK AND  A.RETAIL_YEAR=TY.RETAIL_YEAR THEN GMV ELSE 0 END ) /SUM( CASE WHEN  A.RETAIL_WEEK=RW.RETAIL_WEEK AND  A.RETAIL_YEAR=LY.RETAIL_YEAR THEN GMV ELSE 0 END ) AS GMV_YOY
+
+FROM P_ukplan_report_T.business_performance_pa_category A 
+LEFT  JOIN ( SELECT DISTINCT RETAIL_WEEK FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID <=  -1  AND AGE_FOR_RTL_YEAR_ID =0 )  RW ON A.RETAIL_WEEK=RW.RETAIL_WEEK
+LEFT JOIN ( SELECT DISTINCT RETAIL_YEAR FROM DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID =  0 AND  AGE_FOR_RTL_WEEK_ID =  -1  )  TY ON A.RETAIL_YEAR=TY.RETAIL_YEAR
+LEFT JOIN ( SELECT DISTINCT RETAIL_YEAR FROM DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID =-1 AND  AGE_FOR_RTL_WEEK_ID <=  -1  )  LY ON A.RETAIL_YEAR=LY.RETAIL_YEAR
+WHERE   A.RETAIL_WEEK  IN (SELECT DISTINCT RETAIL_WEEK FROM DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID <=  -1  AND AGE_FOR_RTL_YEAR_ID =0  ) 
+GROUP BY 1 ,2,3 ) ;
+-- 27 
+SELECT * FROM  P_ukplan_report_T.business_performance_pa_category_output; 
+
+
+drop table if exists   P_INVENTORYPLANNING_T.business_performance_pa_category_output ;
+create table 
+P_INVENTORYPLANNING_T.business_performance_pa_category_output AS
+SELECT * FROM  P_ukplan_report_T.business_performance_pa_category_output ; 
+------------------------------------------
+-- 2a. Top 20 sellers
+
+drop table if exists    P_ukplan_report_T.top_seller_pa ;-- select * FROM P_ICHAN_T.PA_BUSINESS_PERFORMANCE ;
+create table  P_ukplan_report_T.top_seller_pa as 
+(
+SELECT 
+RETAIL_YEAR,
+RETAIL_WEEK,
+CASE 
+WHEN age_for_rtl_week_id = -1 THEN 'RW'
+WHEN age_for_rtl_week_id = -53  THEN 'RW' 
+ELSE 'OTHER' END AS LABEL_RW,
+SELLER_ID,
+USER_SLCTD_ID,
+SUM(CK.QUANTITY) AS BI,
+SUM(GMV_PLAN_USD) AS GMV 
+FROM  DW_CHECKOUT_TRANS ck 
+INNER JOIN ( select CURNCY_ID, CURNCY_PLAN_RATE from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID     
+INNER JOIN ( select meta_categ_id, meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_id,
+LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+        AND USEGM_ID = 206 
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5)AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+		
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+       AND RETAIL_YEAR >=2022
+		and age_for_rtl_week_id <= -1 
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+left outer JOIN DW_USERs U ON U.USER_ID= CK.SELLER_ID 
+WHERE 1=1
+and  SLR_CNTRY_ID = 3 --UK sellers
+and  BYR_CNTRY_ID = 3 --UK buyers
+and ck.site_id = 3 
+AND RPRTD_WACKO_YN = 'N'
+        AND AUCT_END_DT >= '2017-12-20'
+        AND CREATED_DT >= '2017-12-20'    
+and bsns_vrtcl_name in ('Parts & Accessories')
+GROUP BY 1,2,3,4,5) ;	
+
+-- 2b.top 20 sellers list 
+drop table if exists   P_ukplan_report_T.top_seller_pa_rw ;
+CREATE TABLE P_ukplan_report_T.top_seller_pa_rw as
+SELECT * from ( select  ROW_NUMBER() OVER(ORDER BY GMV desc ) AS rank, *  from ( select *  FROM P_ukplan_report_T.top_seller_pa WHERE LABEL_RW  ='RW' AND RETAIL_YEAR =2023 ))  where rank <=20 ; 
+select * from  P_ukplan_report_T.top_seller_pa_rw  ;
+
+
+
+-- 2c.Pull average daily listing of top 20 sellers
+
+Drop table if exists   P_ichan_T.top_seller_pa_ll ;-- select distinct retail_week from   p_ichan_t.listings_oem limit 100 
+create table  P_ichan_T.top_seller_pa_ll  as (select * from (
+select 
+Retail_year,
+Retail_week,
+slr_id,
+COUNT(DISTINCT lst.ITEM_ID ) AS TOTAL_LL
+from  DW_LSTG_ITEM lst 
+INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 --and cASE WHEN ck.GMv_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.GMV_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+INNER JOIN ( SELECT DISTINCT RANK, SELLER_ID FROM   P_ukplan_report_T.top_seller_pa_rw  ) T ON lst.slr_id=T.SELLER_ID
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID   
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 
+ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2021   and Lst.AUCT_END_DT >='2022-01-01' 
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and lst.SLR_CNTRY_ID =3
+and lst.AUCT_end_dt >= '2019-01-01'
+and bsns_vrtcl_name =  'Parts & Accessories' 
+GROUP BY 1,2,3 ) where retail_year >=2022  ) ;
+ 
+--select * from   P_ichan_T.top_seller_pa_ll where retail_week =19 ; 
+ 
+ --2d. Output table 
+ 
+ DROP TABLE  IF EXISTS    P_ukplan_report_T.top_seller_pa_output;
+ CREATE TABLE  P_ukplan_report_T.top_seller_pa_output  AS 
+Select 
+RANK,
+A.SELLER_ID,
+A.USER_SLCTD_ID,
+SUM(Case when a.retail_year =2023 and   LABEL_RW  ='RW' THEN  GMV ELSE 0 END )  GMV_ty,
+SUM(Case when a.retail_year =2022 and   LABEL_RW  ='RW' THEN  GMV ELSE 0 END )  GMV_Ly,
+SUM(Case when a.retail_year =2023 and   LABEL_RW  ='RW' THEN  BI ELSE 0 END )  BI_ty,
+SUM(Case when a.retail_year =2022 and   LABEL_RW  ='RW'  THEN BI ELSE 0 END )  BI_Ly,
+
+SUM(Case when list.retail_year =2023  THEN  total_ll ELSE 0 END )  ll_ty,
+SUM(Case when list.retail_year =2022  THEN total_ll ELSE 0 END ) ll_Ly
+FROM P_ukplan_report_T.top_seller_pa A
+INNER JOIN ( SELECT DISTINCT RANK, SELLER_ID, retail_week FROM   P_ukplan_report_T.top_seller_pa_rw  ) T ON A.SELLER_ID=T.SELLER_ID
+inner join ( select * from   P_ichan_T.top_seller_pa_ll ) list  on a.SELLER_ID=list.slr_id and t.retail_week=list.retail_week
+
+WHERE LABEL_RW  ='RW' 
+GROUP BY 1,2,3  ; 
+
+-- select *  FROM  P_ichan_T.top_seller_pa_ll a where retail_week =18 and slr_id = 1193121968
+--select * from   P_ichan_T.top_seller_pa_ll where retail_week <=19
+
+drop table if exists   P_INVENTORYPLANNING_T.top_seller_pa_output ;
+create table 
+P_INVENTORYPLANNING_T.top_seller_pa_output AS
+SELECT * FROM  P_ukplan_report_T.top_seller_pa_output ; 
+--------------------------
+-- 3. coupon 
+drop table  if exists P_INVENTORYPLANNING_T.pa_global_promotions_sme;
+create table P_INVENTORYPLANNING_T.pa_global_promotions_sme as 
+(
+Select 
+Retail_year,
+Retail_week,
+Vertical,
+--Inventory_Prop,
+--Inventory_prop_flag,
+PROMOTION_NAME,
+--coupon_desc,
+--discount_offer,
+--start_date,
+--end_date,
+--Categ_lvl2_name,
+--Categ_lvl3_name,
+--Seller_id,
+--SELLER,
+case when a.PROMOTION_NAME=b.coupon_name then 'Seller Coupon' else PROMOTION_TYPE end as Promotion,
+--PROMOTION_NAME,
+SUM(PROMOTION_GMV) PROMOTION_GMV
+FROM P_SLR_TRACKER_T.seller_union_all_hist a 
+LEFT join ( select distinct coupon_name from P_SLR_TRACKER_T.PP_CouponHist_1_coupon_sum1  where promotion_type ='seller coupon' and  retail_year >=2022 ) b on a.PROMOTION_NAME=b.coupon_name
+
+WHERE 1=1
+and Retail_year>= 2022
+and vertical ='Parts & Accessories'
+and  promotion_type not in  ('SME')
+/*
+--'SME',
+'RPP',
+'DAILY DEALS',
+'COUPON',
+'CODED COUPONS') */
+GROUP BY 1,2,3,4,5
+);
+
+---------END OF CODE

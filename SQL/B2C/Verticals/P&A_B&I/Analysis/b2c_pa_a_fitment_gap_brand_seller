@@ -1,0 +1,95 @@
+----------------------------------------------------------------------------------------------------------------------
+--UKPLAN-351
+--Fitment Gap by Brand for Sellers
+--Sprint 2023W19
+--Task:Provide the total fitment enabled listings and total fitment gaps by brands for a list if sellers
+--Objective (multi-line):Identify Fitment gap by brand
+
+-- Can you please send the total fitment enabled listings and total fitment gaps by brands for the following sellers?
+----------------------------------------------------------------------------------------------------------------------
+
+Drop table if exists  P_INVENTORYPLANNING_T.fitment_gap_brand_seller ; 
+CREATE TABLE P_INVENTORYPLANNING_T.fitment_gap_brand_seller as 
+select 
+retail_year,
+retail_week,
+slr_id,
+USER_SLCTD_ID,
+ITEM_COND,
+BRAND_ASPCT,
+COUNT( DISTINCT ITEM_ID) ENABLED_LISTING,
+SUM( FITMENT_ADOPTD_FLAG) ADOPTED_FITMENT,
+SUM ( CASE WHEN  FITMENT_ADOPTD_FLAG =0 THEN 1 ELSE 0 END) FITMENT_GAP
+from  P_SLR_TRACKER_T.FITMENT_LP_BASE
+ where  1=1
+ and  retail_year =2023 
+ and retail_week =18
+ AND SLR_ID IN (
+ 312205855,
+224974159,
+210277438,
+1193174283,
+1273327220,
+347548400,
+2416714819,
+ 
+ 283609349,
+1040771999,
+206636239,
+777151520,
+1629389649,
+90962233,
+664684062,
+537029600,
+341473215,
+902234074,
+1071316341,
+224974159,
+165802584,
+155259340,
+1211861547,
+312205855,
+169644112,
+1010442666,
+861696370,
+1004452121,
+1235174518,
+59275107,
+1069206168,
+121427919,
+1013122163,
+210277438,
+1867388646,
+668506186,
+194277221,
+1214106427,
+1239535406,
+387081267,
+1956492052,
+186168221,
+1273327220,
+1193174283,
+514577553,
+90271927,
+283023800,
+139918766,
+347548400,
+394783990,
+996408966,
+636331127,
+121161204,
+1008128048,
+211037983,
+1101058061,
+298149890,
+1298902059,
+859879129,
+1059583904,
+1043637340,
+963786828,
+786749920,
+1820037894,
+989356001,
+1022276836,
+1818001374,
+1099514921) GROUP BY 1,2,3,4,5,6;

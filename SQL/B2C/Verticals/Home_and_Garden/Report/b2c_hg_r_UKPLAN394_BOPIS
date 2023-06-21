@@ -1,0 +1,88 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-394
+
+Objective: Understand BOPIS (buy online pick up in store) performance
+
+
+*/
+
+-- find bopis sellers in YTD 
+
+DROP TABLE IF EXISTS BOPIS_SELLERS;
+CREATE TEMPORARY TABLE BOPIS_SELLERS AS
+SELECT distinct SELLER_ID
+from ACCESS_VIEWS.DW_CHECKOUT_TRANS ck
+inner join ACCESS_VIEWS.DW_CAL_DT cal on ck.GMV_DT = cal.cal_dt and cal.AGE_FOR_RTL_YEAR_ID = 0
+where 1=1
+and ck.SITE_ID = 3 --UK listing 
+and ck.SLR_CNTRY_ID = 3 -- UK seller 
+and ck.BOPIS_IND = 'Y'
+;
+
+DROP TABLE IF EXISTS P_INVENTORYPLANNING_T.UKPLAN394_BOPIS_RPT;
+CREATE TABLE P_INVENTORYPLANNING_T.UKPLAN394_BOPIS_RPT AS
+select cal.RETAIL_YEAR
+,cal.RETAIL_WEEK
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,ck.SELLER_ID
+,user.USER_SLCTD_ID as SELLER_NAME
+,sum(GMV_PLAN_USD) as GMV
+,sum(case when ck.BOPIS_IND = 'Y' then ck.GMV_PLAN_USD end) as BOPIS_GMV 
+,sum(ck.QUANTITY) as SI
+,sum(case when ck.BOPIS_IND = 'Y' then ck.QUANTITY end) as BOPIS_SI
+,count(distinct TRANSACTION_ID) as TRANSACTIONS
+,count(distinct case when ck.BOPIS_IND = 'Y' then ck.TRANSACTION_ID end) as BOPIS_TRANSACTIONS
+from ACCESS_VIEWS.DW_CHECKOUT_TRANS ck
+inner join ACCESS_VIEWS.DW_CAL_DT cal on ck.GMV_DT = cal.cal_dt and cal.AGE_FOR_RTL_YEAR_ID = 0 and cal.AGE_FOR_RTL_WEEK_ID <= -1
+INNER  JOIN ACCESS_VIEWS.DW_USEGM_HIST HIST ON HIST.USER_ID=ck.Seller_ID 
+				AND HIST.USEGM_GRP_ID  = 48 AND	HIST.USEGM_ID = 206 -- B2C sellers only, in this context it makes no difference but anyway...
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and ck.SITE_ID = cat.SITE_ID
+INNER JOIN ACCESS_VIEWS.DW_USERS user on ck.SELLER_ID = user.USER_ID and user.USER_SITE_ID = 3 -- to get seller name
+inner join bopis_sellers bopis on ck.SELLER_ID = bopis.seller_id
+
+where 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				and ck.site_id = 3
+				and ck.slr_cntry_id = 3
+				and ck.CREATED_DT >='2018-01-01'
+				and ck.RPRTD_WACKO_YN = 'N'
+group by 1,2,3,4,5,6,7
+
+;
+
+-- pull latest transactions. I'm only looking at past 4 weeks. If it explodes worth reducing down
+
+DROP TABLE IF EXISTS P_INVENTORYPLANNING_T.UKPLAN394_BOPIS_LatestTransactions;
+CREATE TABLE P_INVENTORYPLANNING_T.UKPLAN394_BOPIS_LatestTransactions AS
+select distinct
+user.USER_SLCTD_ID as SELLER_NAME
+,cal.cal_dt as SALE_DATE
+,ck.item_id
+,ck.TRANSACTION_ID
+,ck.GMV_PLAN_USD as GMV
+,ck.QUANTITY
+,ck.ITEM_PRICE
+,ck.PICKUP_STORE_ID
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+
+from ACCESS_VIEWS.DW_CHECKOUT_TRANS ck
+inner join ACCESS_VIEWS.DW_CAL_DT cal on ck.GMV_DT = cal.cal_dt and cal.AGE_FOR_RTL_WEEK_ID between -4 and -1
+INNER  JOIN ACCESS_VIEWS.DW_USEGM_HIST HIST ON HIST.USER_ID=ck.Seller_ID 
+				AND HIST.USEGM_GRP_ID  = 48 AND	HIST.USEGM_ID = 206 -- B2C sellers only, in this context it makes no difference but anyway...
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and ck.SITE_ID = cat.SITE_ID
+INNER JOIN ACCESS_VIEWS.DW_USERS user on ck.SELLER_ID = user.USER_ID and user.USER_SITE_ID = 3 -- to get seller name
+inner join bopis_sellers bopis on ck.SELLER_ID = bopis.seller_id
+
+where 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				and ck.site_id = 3
+				and ck.slr_cntry_id = 3
+				and ck.CREATED_DT >='2018-01-01'
+				and ck.RPRTD_WACKO_YN = 'N'
+				and ck.bopis_ind = 'Y'
+order by SALE_DATE desc, GMV
+;

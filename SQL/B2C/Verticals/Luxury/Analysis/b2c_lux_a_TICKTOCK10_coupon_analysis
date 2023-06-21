@@ -1,0 +1,530 @@
+-- Author: 			Robbie Evans
+-- Stakeholder: 	Alice Bridson, Keith Metcalfe
+-- Purpose: 		Provide an in-depth review of the Watches TICKTOCK10 coupon that ran in weeks 11 and 12, answering key business questions
+-- Date Created: 	12/05/2023
+
+
+
+------------------------------------------------------All coupon data----------------------------------------
+
+select *
+from P_OLWAND_T.Coupon_Redemptions
+where incntv_cd = 'TICKTOCK10'
+;
+
+----------------------------------------------------------Table of Coupon buyers with their spend during the coupon------------------------------------
+
+drop table if exists buyers_class;
+create temp table buyers_class as
+
+Select byr.BUYER_ID
+, byr.gmb_usd
+, latest_watches_dt
+, latest_ebay_dt
+-- , lux_latest_watches_dt
+, ag_latest_watches_dt
+
+From (select buyer_id, sum(gmb_usd) as gmb_usd
+	from P_OLWAND_T.Coupon_Redemptions
+	where incntv_cd = 'TICKTOCK10'
+	Group by 1) byr
+LEFT JOIN
+	(select ck.BUYER_ID
+		, max(case when cat.CATEG_LVL3_ID = 260325 then ck.gmv_dt End) as latest_watches_dt
+		, max(ck.gmv_dt) as latest_ebay_dt
+-- 		, max(case when cat.CATEG_LVL3_ID = 260325 and ck.ITEM_PRICE*lpr.CURNCY_PLAN_RATE >= 500 then ck.gmv_dt End) as lux_latest_watches_dt
+		, max(case when cat.CATEG_LVL3_ID = 260325 and ck.ITEM_PRICE >= 1500 then ck.gmv_dt End) as ag_latest_watches_dt
+	from DW_CHECKOUT_TRANS ck
+	inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat
+		on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID
+		and cat.SITE_ID = 3
+	inner join DW_CAL_DT cal
+		on ck.gmv_dt = cal.CAL_DT
+		and cal.cal_dt between '2021-03-16' and '2023-03-15'
+	inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+		ON ck.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+	inner join 
+		(select buyer_id
+		from P_OLWAND_T.Coupon_Redemptions
+		where incntv_cd = 'TICKTOCK10'
+		Group by 1) byr
+			on ck.BUYER_ID = byr.buyer_id
+	Where 1=1
+		and ck.SITE_ID = 3
+	Group by 1
+	) CK
+		on byr.buyer_id = ck.BUYER_ID
+
+;
+
+
+
+-------------------------------------Overall New vs Reactivated Watches Shoppers----------------------------
+
+select
+case when latest_watches_dt is null and latest_ebay_dt is null then 'New to eBay'
+	when latest_watches_dt is null and latest_ebay_dt is not null then 'New to Watches'
+	when latest_watches_dt is not null and ag_latest_watches_dt is null  then 'Current Watches, New to AG Watches'
+	when ag_latest_watches_dt is not null then 'Current AG Watches'
+	else 'Returning'
+	End as buyer_class
+	,count(distinct buyer_id) as buyers
+	,sum(gmb_usd) as gmb
+From buyers_class
+group by 1
+
+
+select
+case when latest_watches_dt is null and latest_ebay_dt is null then 'New to eBay'
+	when latest_watches_dt is null and latest_ebay_dt <= '2022-03-16' then 'New to Watches, Reactivated to eBay'
+	when latest_watches_dt is null and latest_ebay_dt > '2022-03-16' then 'New to Watches, Current eBay'
+	when latest_watches_dt <= '2022-03-16' and ag_latest_watches_dt is null  then 'Reactivated to Watches, New to AG Watches'
+	when latest_watches_dt > '2022-03-16' and ag_latest_watches_dt is null  then 'Current Watches, New to AG Watches'
+	when ag_latest_watches_dt <= '2022-03-16' then 'Reactivated AG Watches'
+	when ag_latest_watches_dt > '2022-03-16' then 'Current AG Watches'
+	else 'Returning'
+	End as buyer_class
+	,count(distinct buyer_id) as buyers
+	,sum(gmb_usd) as gmb
+From buyers_class
+group by 1
+
+;
+
+
+-------------------------------------Detailed New vs Reactivated Watches Shoppers----------------------------
+
+select
+case when latest_watches_dt is null and latest_ebay_dt is null then 'New to eBay'
+	when latest_watches_dt is null and latest_ebay_dt <= '2022-03-15' then 'Reactivated to eBay, New to Watches'
+	when latest_watches_dt is null and latest_ebay_dt > '2022-03-15' then 'Current eBay, New to Watches'
+	when latest_watches_dt <= '2022-03-15' and latest_ebay_dt <= '2022-03-15' then 'Reactivated to eBay, Reactivated to Watches'
+	when latest_watches_dt <= '2022-03-15' and latest_ebay_dt > '2022-03-15' then 'Current eBay, Reactivated to Watches'
+	else 'Current Watches'
+	End as class
+	,count(distinct buyer_id) as buyers
+	,sum(gmb_usd) as gmb_usd
+From buyers_class
+Group by 1
+
+;
+
+
+-------------------------------------Coupon Shoppers Before and After Coupon Period----------------------------
+
+select cal.RETAIL_YEAR
+,cal.RETAIL_WEEK
+,case when cat.CATEG_LVL2_ID = 260324 and ck.ITEM_PRICE >= 1500 then 'AG Watches'
+	when cat.CATEG_LVL2_ID = 260324 and ck.ITEM_PRICE < 1500 then 'Non-AG Watches'
+	Else 'Other Categories'
+	end as category
+,count(distinct byr.buyer_id) as buyers
+,sum(ck.gmv_plan_usd) as gmv
+,sum(ck.QUANTITY) as bi
+
+From DW_CHECKOUT_TRANS ck
+INNER JOIN buyers_class byr
+	on ck.BUYER_ID = byr.buyer_id
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat
+	on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID
+	and cat.SITE_ID = 3
+inner join DW_CAL_DT cal
+	on ck.gmv_dt = cal.CAL_DT
+	and retail_year in (2022,2023)
+	and RETAIL_WEEK between 5 and 18
+-- inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+-- 	ON ck.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+	
+Where 1=1
+and ck.SITE_ID = 3
+and ck.item_price >= 435
+
+Group by 1,2,3
+;
+
+
+
+
+
+
+
+
+select 
+RETAIL_YEAR
+,case when cal.retail_week between 11 and 12 then 'During Coupon'
+	when cal.RETAIL_WEEK between 1 and 10 then 'Pre Coupon'
+	else 'Post Coupon'
+	End as period
+,case when ck.ITEM_PRICE >= 1500 then '>£1500'
+	else '<£1500'
+	end as ag_flag
+,case when cat.CATEG_LVL2_ID = 260324 then 'Watches'
+	else 'Other'
+	End as watches_flag
+,case when ck.ITEM_PRICE < 1500 then 'A. <£1500'
+	when ck.ITEM_PRICE <= 2000 then 'A. £1500-£2000'
+	when ck.ITEM_PRICE <= 2500 then 'B. £2000-£2500'
+	when ck.ITEM_PRICE <= 3000 then 'C. £2500-£3000'
+	when ck.ITEM_PRICE <= 4000 then 'D. £3000-£4000'
+	when ck.ITEM_PRICE <= 5000 then 'E. £4000-£5000'
+	when ck.ITEM_PRICE <= 7500 then 'F. £5000-£7500'
+	when ck.ITEM_PRICE <= 10000 then 'G. £7500-£10000'
+	else 'H. > £10000'
+	End as price_tranche
+,case when byr.buyer_id is not null then 'Coupon Buyers'
+	else 'Non-Coupon Buyers'
+	End as coupon_buyer_flag
+,count(distinct case when retail_year = 2023 then byr.buyer_id End) as buyers_2023
+,count(distinct case when retail_year = 2022 then byr.buyer_id End) as buyers_2023
+,sum(case when retail_year = 2023 then ck.gmv_plan_usd end) as gmb_2023
+,sum(case when retail_year = 2022 then ck.gmv_plan_usd end) as gmb_2022
+,sum(case when retail_year = 2023 then ck.QUANTITY end) as bi_2023
+,sum(case when retail_year = 2022 then ck.QUANTITY end) as bi_2022
+,count(distinct ck.buyer_id) as buyers
+,sum(ck.gmv_plan_usd) as gmv
+,sum(ck.QUANTITY) as bi
+
+From DW_CHECKOUT_TRANS ck
+LEFT JOIN buyers_class byr
+	on ck.BUYER_ID = byr.buyer_id
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat
+	on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID
+	and cat.SITE_ID = 3
+inner join DW_CAL_DT cal
+	on ck.gmv_dt = cal.CAL_DT
+	and retail_year in (2022,2023)
+	and RETAIL_WEEK between 5 and 18
+-- inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+-- 	ON ck.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+	
+Where 1=1
+and ck.SITE_ID = 3
+and ck.SLR_CNTRY_ID = 3
+-- and cat.CATEG_LVL2_ID = 260324
+
+Group by 1,2,3,4,5,6
+;
+
+
+
+
+
+
+
+
+
+-------------------------------------Coupon Shoppers Before and After Coupon Period - By Price Tranche----------------------------
+
+select cal.RETAIL_YEAR
+,cal.RETAIL_WEEK
+,case when ck.ITEM_PRICE <= 2000 then 'A. £1500-£2000'
+	when ck.ITEM_PRICE <= 2500 then 'B. £2000-£2500'
+	when ck.ITEM_PRICE <= 3000 then 'C. £2500-£3000'
+	when ck.ITEM_PRICE <= 4000 then 'D. £3000-£4000'
+	when ck.ITEM_PRICE <= 5000 then 'E. £4000-£5000'
+	when ck.ITEM_PRICE <= 7500 then 'F. £5000-£7500'
+	when ck.ITEM_PRICE <= 10000 then 'G. £7500-£10000'
+	else 'H. > £10000'
+	End as price_tranche
+,count(distinct ck.buyer_id) as buyers
+,sum(ck.gmv_plan_usd) as gmv
+,sum(ck.QUANTITY) as bi
+
+From DW_CHECKOUT_TRANS ck
+INNER JOIN buyers_class byr
+	on ck.BUYER_ID = byr.buyer_id
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat
+	on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID
+	and cat.SITE_ID = 3
+inner join DW_CAL_DT cal
+	on ck.gmv_dt = cal.CAL_DT
+	and retail_year in (2022,2023)
+	and RETAIL_WEEK between 1 and 18
+-- inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+-- 	ON ck.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+	
+Where 1=1
+and ck.SITE_ID = 3
+and cat.CATEG_LVL2_ID = 260324
+and ck.ITEM_PRICE >= 1500
+
+Group by 1,2,3
+;
+
+
+
+-------------------------------------Coupon Shoppers Listings Before and After Coupon Period----------------------------
+
+
+-- select cal.RETAIL_YEAR
+-- ,cal.RETAIL_WEEK
+-- ,case when cat.CATEG_LVL2_ID = 260324 and lstg.START_PRICE_LSTG_CURNCY*lpr.CURNCY_PLAN_RATE >= 500 then 'Lux Watches'
+-- 	when cat.CATEG_LVL2_ID = 260324 and lstg.START_PRICE_LSTG_CURNCY*lpr.CURNCY_PLAN_RATE < 500 then 'Non-Lux Watches'
+-- 	Else 'Other Categories'
+-- 	end as category
+select
+retail_week
+,case when cal.retail_week between 11 and 12 then 'During Coupon'
+	when cal.RETAIL_WEEK between 1 and 10 then 'Pre Coupon'
+	else 'Post Coupon'
+	End as  period
+,CASE
+		WHEN Cast(lstg.START_PRICE_LSTG_CURNCY*LPR.CURNCY_PLAN_RATE AS DECIMAL(18,2))  < 300  THEN 'A. <£261 (<$300)'
+		WHEN Cast(lstg.START_PRICE_LSTG_CURNCY*LPR.CURNCY_PLAN_RATE AS DECIMAL(18,2))  < 500 THEN 'B. £261-£435 ($300-$500)'
+		WHEN Cast(lstg.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 500 THEN 'C. £435-£500 ($500-£500)'
+		WHEN Cast(lstg.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 750 THEN 'D. £500-£750'
+		WHEN Cast(lstg.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 1000 THEN 'E. £750-£1000'
+		WHEN Cast(lstg.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 1500 THEN 'F. £1000-£1500'
+		WHEN Cast(lstg.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 2500 THEN 'G. £1500-£2500'
+		WHEN Cast(lstg.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 5000 THEN 'H. £2500-£5000'
+		WHEN Cast(lstg.START_PRICE_LSTG_CURNCY AS DECIMAL(18,2))  < 10000 THEN 'I. £5000-£10,000'
+		ELSE 'J. £10,000+' END AS
+	PRICE_BUCKET
+,count(distinct byr.buyer_id) as buyers
+,count(distinct lstg.ITEM_ID) as listings
+
+From DW_LSTG_ITEM lstg
+INNER JOIN buyers_class byr
+	on lstg.SLR_ID = byr.buyer_id
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat
+	on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID
+	and cat.SITE_ID = 3
+inner join DW_CAL_DT cal
+	on lstg.AUCT_START_DT = cal.CAL_DT
+	and cal.retail_year = 2023
+	and cal.RETAIL_WEEK between 5 and 18
+inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+	ON lstg.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+	
+Where 1=1
+and lstg.ITEM_SITE_ID = 3
+and cat.CATEG_LVL2_ID = 260324 
+-- and lstg.START_PRICE_LSTG_CURNCY*lpr.CURNCY_PLAN_RATE >= 500
+and lstg.START_PRICE_LSTG_CURNCY >= 1500
+
+
+Group by 1,2,3
+;
+
+
+
+
+-----------------------------------------------------Listings Pre and Post Coupon-------------------------------------------------------
+select
+RETAIL_YEAR
+,case when cal.retail_week between 11 and 12 then 'During Coupon'
+	when cal.RETAIL_WEEK between 1 and 10 then 'Pre Coupon'
+	else 'Post Coupon'
+	End as  period
+,case when byr.buyer_id is not null then 'Coupon Buyer Selling' else 'Non-Coupon Buyer Selling' End as coupon_buyer_as_seller_flag
+,case when lstg.START_PRICE_LSTG_CURNCY <= 2000 then 'A. £1500-£2000'
+	when lstg.START_PRICE_LSTG_CURNCY <= 2500 then 'B. £2000-£2500'
+	when lstg.START_PRICE_LSTG_CURNCY <= 3000 then 'C. £2500-£3000'
+	when lstg.START_PRICE_LSTG_CURNCY <= 4000 then 'D. £3000-£4000'
+	when lstg.START_PRICE_LSTG_CURNCY <= 5000 then 'E. £4000-£5000'
+	when lstg.START_PRICE_LSTG_CURNCY <= 7500 then 'F. £5000-£7500'
+	when lstg.START_PRICE_LSTG_CURNCY <= 10000 then 'G. £7500-£10000'
+	else 'H. > £10000' end as
+	PRICE_BUCKET
+,count(distinct case when cal.RETAIL_YEAR = 2023 then lstg.SLR_ID end) as sellers_2023
+,count(distinct case when cal.RETAIL_YEAR = 2022 then lstg.SLR_ID end) as sellers_2022
+,count(distinct case when cal.RETAIL_YEAR = 2023 then lstg.ITEM_ID End) as listings_2023
+,count(distinct case when cal.RETAIL_YEAR = 2022 then lstg.ITEM_ID End) as listings_2022
+
+
+From DW_LSTG_ITEM lstg
+LEFT JOIN buyers_class byr
+	on lstg.SLR_ID = byr.buyer_id
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat
+	on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID
+	and cat.SITE_ID = 3
+inner join DW_CAL_DT cal
+	on lstg.AUCT_START_DT <= cal.CAL_DT
+	and lstg.AUCT_END_DT >= cal.CAL_DT
+	and cal.retail_year in (2022,2023)
+	and cal.RETAIL_WEEK between 5 and 18
+inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+	ON lstg.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+	
+Where 1=1
+and lstg.ITEM_SITE_ID = 3
+and cat.CATEG_LVL2_ID = 260324 
+and lstg.START_PRICE_LSTG_CURNCY >= 1500
+and lstg.SLR_CNTRY_ID = 3
+
+
+Group by 1,2,3,4
+
+
+
+
+
+-----------------------------------------------------Traffic Pre and Post Coupon-------------------------------------------------------
+
+select
+case when cal.retail_week between 11 and 12 then 'During Coupon'
+	when cal.RETAIL_WEEK between 1 and 10 then 'Pre Coupon'
+	else 'Post Coupon'
+	End as  period
+,lstg.lux_flag
+,lstg.watches_flag
+,cal.RETAIL_WEEK
+,sum(trfc.TTL_VI_CNT) as vi
+,sum(trfc.SRP_IMPRSN_CNT) as imp
+
+FROM PRS_RESTRICTED_V.SLNG_TRFC_SUPER_FACT trfc
+inner join DW_CAL_DT cal
+	on trfc.CAL_DT = cal.CAL_DT
+	and cal.RETAIL_YEAR = 2023
+	and cal.RETAIL_WEEK between 5 and 18
+INNER JOIN
+	(	Select lstg.item_id
+		,case when lstg.START_PRICE_LSTG_CURNCY >= 1500 then '>£1500' else '<£1500' end as lux_flag
+		,case when cat.CATEG_LVL2_ID = 260324 then 'Watches' else 'Other' end as watches_flag
+		
+		From DW_LSTG_ITEM lstg
+		inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat
+			on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID
+			and cat.SITE_ID = 3
+		inner join DW_CAL_DT cal
+			on lstg.AUCT_START_DT <= cal.CAL_DT
+			and lstg.AUCT_END_DT >= cal.CAL_DT
+			and cal.retail_year in (2023)
+			and cal.RETAIL_WEEK between 5 and 18
+		inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+			ON lstg.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+
+		Where 1=1
+		and lstg.ITEM_SITE_ID = 3
+		and lstg.SLR_CNTRY_ID = 3
+		
+		Group by 1,2,3
+	) lstg 
+		on trfc.ITEM_ID = lstg.ITEM_ID
+
+Group by 1,2,3,4
+;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--------------------------------------------------Items Bought Before Coupon that were then returned once coupon launched------------------------------
+
+
+select
+returned_flag
+,count(distinct item_id) as items
+,count(distinct buyer_id) as coupon_buyers
+
+From
+	(
+	Select 
+	ck.item_id
+	,ck.buyer_id
+	,case when ck.item_id = rtrn.item_id then 'Y' else 'N' end as returned_flag
+
+	From
+		(
+		Select 
+		psa.item_id
+		,psa.BUYER_ID
+
+		From P_PSA_ANALYTICS_T.psa_hub_data psa
+		inner join buyers_class byr
+			on psa.BUYER_ID = byr.buyer_id
+
+		where 1=1
+		and upper(HUB_REV_ROLLUP) = 'UK'
+		and upper(HUB_CATEGORY) = 'WATCHES'
+		and IS_RETURN_FLAG_YN_IND = 'N'
+		and RETAIL_YEAR = 2023
+		and RETAIL_WEEK in (7,8,9,10)
+
+		Group by 1,2
+		) ck 
+		LEFT JOIN
+			(
+			Select 
+			psa.item_id
+			,psa.buyer_id
+
+			From P_PSA_ANALYTICS_T.psa_hub_data psa
+			inner join buyers_class byr
+				on psa.BUYER_ID = byr.buyer_id
+
+			where 1=1
+			and upper(HUB_REV_ROLLUP) = 'UK'
+			and upper(HUB_CATEGORY) = 'WATCHES'
+			and IS_RETURN_FLAG_YN_IND = 'Y'
+			and psa.RETURN_RY = 2023
+			and RETURN_RW in (11,12,13,14)
+
+			Group by 1,2
+			) rtrn
+				on ck.item_id = rtrn.item_id
+				and ck.buyer_id = rtrn.buyer_id
+
+	)
+
+Group by 1
+;
+
+
+
+
+
+
+
+
+
+Select 
+cal.retail_week
+,ck.item_id
+,ck.BUYER_ID
+,ck.gmv_dt
+,bbe.RTRN_OPEN_DT
+,cal2.RETAIL_WEEK
+,bbe.RTRN_RSN_TYPE_DESC
+,bbe.CNCL_YN_IND
+,bbe.CNCL_START_DT
+,cal3.retail_week
+,ck.ITEM_PRICE
+
+From DW_CHECKOUT_TRANS ck
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat
+	on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID
+	and cat.SITE_ID = 3
+inner join buyers_class byr
+	on ck.BUYER_ID = byr.buyer_id
+INNER JOIN DW_CAL_DT cal
+	on ck.gmv_dt = cal.CAL_DT
+	and RETAIL_YEAR = 2023
+	and RETAIL_WEEK in (7,8,9,10)
+left join prs_restricted_v.ebay_trans_rltd_event bbe
+		on ck.item_id=bbe.item_id and ck.transaction_id=bbe.trans_id
+left join po_cncl_rqst_rsn_lkp cr_lkp
+		on bbe.cncl_rqst_rsn_cd=cr_lkp.rqst_rsn_cd
+left join DW_CAL_DT cal2
+	on bbe.RTRN_OPEN_DT = cal2.CAL_DT
+left join DW_CAL_DT cal3
+	on bbe.CNCL_START_DT = cal3.CAL_DT
+
+where 1=1
+and cat.CATEG_LVL2_ID = 260324
+and ck.ITEM_PRICE >= 1000
+and ck.SLR_CNTRY_ID = 3
+and ck.SITE_ID = 3
+
+Group by 1,2,3,4,5,6,7,8,9,10,11
+
