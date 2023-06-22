@@ -18,8 +18,10 @@ select cat.*
       when site_id = 3 and cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
       when site_id = 3 and cat.categ_lvl2_id in (63, 29223) then 'Collectibles'
 	  when site_id = 3 and cat.meta_categ_id in (11450) then 'Fashion'
+	  when site_id = 3 and cat.categ_lvl4_id in (3937, 31387, 260326) then 'Fashion'  -- This has been added as per Keith Metcalfe's request (UKPLAN-418)
       else cat.bsns_vrtcl_name end as new_vertical
 
 from access_views.dw_category_groupings cat
 where sap_category_id not in (5,7,41,23,-999)
 ;
+
