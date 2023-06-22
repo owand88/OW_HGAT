@@ -578,18 +578,29 @@ from p_robevans_t.lux_weekly_txns ck
 ------------------------------------------------------------- LATEST WEEK TRANS DATA ----------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-drop table if exists P_ukplan_report_T.tableau_lux_wbr_deepdive_latest_week_trans_data;
+drop table if exists P_ukplan_report_T.tableau_lux_wbr_deepdive_latest_wk_trans_data;
 
-create table P_ukplan_report_T.tableau_lux_wbr_deepdive_latest_week_trans_data as
+create table P_ukplan_report_T.tableau_lux_wbr_deepdive_latest_wk_trans_data as
 
-select ck.item_id
-,ck.brand
+select 
+ck.retail_week
+,ck.age_for_rtl_week_id
+,ck.item_id
+,lstg.auct_titl
+,coalesce(u.comp,u.USER_SLCTD_ID) as seller_name
+,ck.focus_category
+,case when focus_category = 'Sneakers' and price_bucket not in ('A. <£86 (<$100)') then 'Only Focus Category'
+		when focus_category = 'Jewellery' and price_bucket not in ('A. <£86 (<$100)','B. £86-£100 ($100-£100)','C. £100-£125','D. £125-£150','E. <£261 (<$300)') then 'Only Focus Category'
+		when focus_category = 'Watches' and price_bucket not in ('A. <£86 (<$100)','B. £86-£100 ($100-£100)','C. £100-£125','D. £125-£150','E. <£261 (<$300)','F. £261-£435 ($300-$500)') then 'Only Focus Category'
+		when focus_category = 'Handbags' and price_bucket not in ('A. <£86 (<$100)','B. £86-£100 ($100-£100)','C. £100-£125','D. £125-£150','E. <£261 (<$300)','F. £261-£435 ($300-$500)') then 'Only Focus Category'
+		else 'Non-Focus Category'
+		end as focus_category_flag
 ,ck.categ_lvl2_name
 ,ck.b2c_c2c
-,ck.item_cond
 ,ck.trade_type
-,lstg.auct_titl
-,u.USER_SLCTD_ID as seller_name
+,ck.brand
+,ck.model
+,ck.item_cond
 ,sum(ck.gmv) as gmv
 ,sum(ck.sold_items) as si
 
@@ -600,9 +611,6 @@ LEFT JOIN ACCESS_VIEWS.DW_USERS u
 	on ck.seller_id = u.user_id
 where AGE_FOR_RTL_WEEK_ID = -1
 
-group by 1,2,3,4,5,6,7,8
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13
 ;
-
-
-
 
