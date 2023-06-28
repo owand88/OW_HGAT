@@ -1,0 +1,177 @@
+/***********************************************************************************************************************************************
+Report: Top low ABP SI by L2
+Jira: UKPLAN-425
+Requestor: Cristian VT
+Developer: Gabriella Austin
+Description: Top five top selling < £10 items by L2 categories 
+Date: 28/06/2023
+***********************************************************************************************************************************************/
+
+
+------------------>> Create Base SI/GMV Table <<------------------
+DROP TABLE IF EXISTS BASE_GMV;
+CREATE TEMPORARY TABLE BASE_GMV AS (
+SELECT	
+	CASE 
+		WHEN cal.RETAIL_YEAR <= 2020 AND cal.RETAIL_WEEK = 1 THEN cal.RETAIL_YEAR - 1
+		ELSE cal.RETAIL_YEAR END AS RETAIL_YEAR
+	,CASE 
+		WHEN cal.RETAIL_YEAR <= 2020 AND cal.RETAIL_WEEK = 1 THEN 52
+	  	WHEN cal.RETAIL_YEAR <= 2020 AND cal.RETAIL_WEEK BETWEEN 2 AND 53 THEN cal.RETAIL_WEEK - 1
+		ELSE cal.RETAIL_WEEK END AS RETAIL_WEEK
+	,cal.AGE_FOR_RTL_WEEK_ID
+	,tran.SLR_ID
+	,tran.ITEM_ID
+	,tran.AUCT_START_DT
+	,tran.SLR_CNTRY_ID
+	,tran.BYR_CNTRY_ID
+	,cat.BSNS_VRTCL_NAME AS Vertical
+	,cat.META_CATEG_NAME
+	,cat.CATEG_LVL2_NAME                                  	
+	,tran.QUANTITY 
+	,tran.GMV_LC_AMT --> want low abp in pounds
+
+FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran 
+
+INNER JOIN 	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+ON 			lstg.ITEM_ID = tran.ITEM_ID
+
+INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT cal 
+ON 			cal.CAL_DT = tran.GMV_DT
+
+INNER JOIN 	(	SELECT *											
+				FROM access_views.dw_category_groupings 									
+				WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+			) as cat										
+ON 			lstg.LEAF_CATEG_ID = cat.leaf_categ_id 										
+AND 		cat.site_id = 3
+
+WHERE 		1=1
+AND 		tran.GMV_DT BETWEEN '2018-12-30' and current_date - 1
+AND 		tran.AUCT_END_DT >= '2018-12-30'                                                      	
+AND 		tran.CK_WACKO_YN ='N'                                                                                                                          	
+AND 		tran.ISCORE = 1	
+AND 		tran.AUCT_TYPE_CD not IN (10,12,15)
+AND 		tran.EU_B2C_C2C_FLAG = 'C2C'
+AND			tran.SITE_ID = 3
+AND  		cal.AGE_FOR_RTL_WEEK_ID <= -1
+AND 		cal.AGE_FOR_RTL_YEAR_ID >= -1
+
+ORDER BY 	1,2,3,4,5,6
+);
+
+
+
+------------------>> Create Base VI Table <<------------------
+DROP TABLE IF EXISTS BASE_VI;
+CREATE TEMPORARY TABLE BASE_VI AS (
+SELECT
+	CASE 
+		WHEN cal.RETAIL_YEAR <= 2020 AND cal.RETAIL_WEEK = 1 THEN cal.RETAIL_YEAR - 1
+		ELSE cal.RETAIL_YEAR END AS RETAIL_YEAR
+	,cal.AGE_FOR_RTL_YEAR_ID
+	,CASE 
+		WHEN cal.RETAIL_YEAR <= 2020 AND cal.RETAIL_WEEK = 1 THEN 52
+	  	WHEN cal.RETAIL_YEAR <= 2020 AND cal.RETAIL_WEEK BETWEEN 2 AND 53 THEN cal.RETAIL_WEEK - 1
+		ELSE cal.RETAIL_WEEK END AS RETAIL_WEEK
+	,cal.AGE_FOR_RTL_WEEK_ID
+	,lstg.SLR_ID
+	,lstg.ITEM_ID
+	,cat.BSNS_VRTCL_NAME AS Vertical
+	,cat.META_CATEG_NAME
+	,cat.CATEG_LVL2_NAME
+	,trfc.TTL_VI_CNT as TTL_VI
+
+FROM 		PRS_restricted_V.SLNG_TRFC_SUPER_FACT trfc
+
+LEFT JOIN  	PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg 
+ON 			trfc.ITEM_ID = lstg.ITEM_ID 
+
+INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT cal 
+ON 			cal.CAL_DT = trfc.CAL_DT
+
+INNER JOIN 	(	SELECT *											
+				FROM access_views.dw_category_groupings 									
+				WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+			) as cat										
+ON 			trfc.LEAF_CATEG_ID = cat.leaf_categ_id 										
+AND 		cat.site_id = 3 
+
+WHERE  		1=1
+AND 		lstg.ISCORE = 1          
+AND  		trfc.CAL_DT BETWEEN '2018-12-30' and (current_date - 1)       
+AND  		trfc.CAL_DT >= '2018-12-30'
+AND 		trfc.SITE_ID = 3
+AND 		lstg.EU_B2C_C2C_FLAG = 'C2C'
+AND  		cal.AGE_FOR_RTL_WEEK_ID <= -1
+AND 		cal.AGE_FOR_RTL_YEAR_ID >= -1
+
+ORDER BY 	1,2,3,4,5,6
+);
+
+
+---------------- CREATE SUMMARY ----------------
+SELECT 	
+	 gmv.ITEM_ID
+	,gmv.SLR_ID
+	,gmv.SLR_CNTRY_ID
+	,cntry.CNTRY_DESC as SLR_CNTRY_DESC
+	,gmv.Vertical
+	,gmv.META_CATEG_NAME
+	,gmv.CATEG_LVL2_NAME                                    	
+	,gmv.SI_12mth
+	,gmv.GMB_LC_12mth
+	,gmv.ABP
+	,vi.VI as VI_12mth
+	,gmv.SI_12mth/vi.VI AS CVR_12mth
+
+
+FROM 	(
+				SELECT 
+					 ITEM_ID
+					,SLR_ID
+					,SLR_CNTRY_ID
+					,Vertical
+					,META_CATEG_NAME
+					,CATEG_LVL2_NAME                                    	
+					,SUM(QUANTITY) as SI_12mth
+					,SUM(GMV_LC_AMT) as GMB_LC_12mth
+					,SUM(GMV_LC_AMT)/SUM(QUANTITY) as ABP
+
+				FROM 	BASE_GMV 
+
+				WHERE 	1=1
+				AND 	BYR_CNTRY_ID = 3 --> interested in ABP so buyer must be UK based
+				AND		AGE_FOR_RTL_WEEK_ID >= -52 --> get the previous 12m sales
+
+				GROUP BY 1,2,3,4,5,6
+		)  gmv
+	
+
+LEFT JOIN 	 ( -- join to get CVR
+				SELECT 
+					 ITEM_ID
+					,SLR_ID                                	
+					,SUM(TTL_VI) as VI
+
+				FROM 	BASE_VI 
+				WHERE 	1=1
+				AND		AGE_FOR_RTL_WEEK_ID >= -52 --> get the previous 12m sales
+				
+				GROUP BY 1,2
+			) vi
+			
+ON  		vi.ITEM_ID = gmv.ITEM_ID	
+AND  		vi.SLR_ID = gmv.SLR_ID
+
+LEFT JOIN 	ACCESS_VIEWS.DW_COUNTRIES cntry -- join to get seller country (i believe this is what is meant by item location in the jira request)
+ON  		cntry.CNTRY_ID = gmv.SLR_CNTRY_ID		
+
+WHERE 	1=1 
+AND 	gmv.ABP <= 10
+
+QUALIFY (ROW_NUMBER() OVER (PARTITION BY gmv.CATEG_LVL2_NAME ORDER BY gmv.SI_12mth DESC)) <= 5 --> top 5
+
+
+
+
