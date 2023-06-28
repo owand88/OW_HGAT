@@ -1,0 +1,318 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-343
+
+Author: Oliver Wand
+Date: 8th June 2023
+
+
+Objective:
+
+*/
+--sellers
+drop table if exists TM_Sellers;
+create TEMPORARY table TM_Sellers as
+with PTO_sellers as (
+select seller_id
+,seller_name
+,count(distinct luminareportExport_dt) as PTO_Coupons
+,min(luminareportExport_dt) as first_coupon_dt
+,max(luminareportExport_dt) as last_coupon_dt
+from (
+select distinct seller_id
+,seller_name
+,luminareportExport_dt
+from  P_InventoryPlanning_T.LUMINA_TECH_EB_BM_PTO
+where seller_id is not null
+union
+select distinct seller_id
+,seller_name
+,luminareportExport_dt
+from P_INVENTORYPLANNING_T.lumina_MOBILE_EB_BM_PTO
+where seller_id is not null
+)
+group by 1,2
+)
+
+select a.seller_id
+,a.seller_name
+,case when pto.seller_id is not null then 'PTO' else 'TOP200' end as SELLER_TYPE
+,PTO_Coupons
+,first_coupon_dt
+,last_coupon_dt
+
+from (
+select seller_id
+,seller_name
+
+from PTO_sellers pto
+
+union
+/* find top 200 refurb b2c sellers
+this is based on highest gmv in rolling 1 retail year
+*/
+
+select seller_id
+,seller_name
+from (
+select tran.SELLER_ID
+,user.USER_SLCTD_ID as seller_name
+,sum(GMV20_PLAN) as gmv
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+inner join ACCESS_VIEWS.DW_CAL_DT cal on tran.gmv_dt = cal.cal_dt
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and tran.SITE_ID = cat.SITE_ID
+inner join ACCESS_VIEWS.dw_users user on tran.SELLER_ID = user.USER_ID and tran.SITE_ID = user.USER_CNTRY_ID
+where 1=1
+and tran.SITE_ID = 3
+and tran.SLR_CNTRY_ID = 3
+and tran.B2C_C2C = 'B2C'
+and tran.RPRTD_WACKO_YN = 'N'
+-- and tran.CNDTN_ROLLUP_ID = 3 -- Used
+and tran.ITEM_CNDTN_ID between 2000 and 2500 --refurb
+and cal.AGE_FOR_RTL_WEEK_ID between -52 and -1
+group by 1,2
+qualify row_number() over (order by gmv desc) <= 200
+) ) a
+left join PTO_Sellers pto on a.seller_id = pto.seller_id
+;
+
+select *
+from TM_Sellers
+limit 10
+;
+
+drop table if exists P_OLWAND_T.UKPLAN343_CSAT_PTO;
+create table P_OLWAND_T.UKPLAN343_CSAT_PTO as
+with sales_standards as
+( select fcs.seller_id
+,fcs.seller_name
+,CONCAT(cal.RETAIL_YEAR,'M',lpad(cal.RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+,sum(case when FINAL_CLAIM_TYPE_NAME like ('%INR') then 1 else 0 end) as INRs
+,sum(case when FINAL_CLAIM_TYPE_NAME like ('%SNAD') then 1 else 0 end) as SNADs
+,count(distinct tran.TRANSACTION_ID) as TRANSACTIONS
+,sum(tran.GMV20_PLAN) as gmv
+,sum(tran.QUANTITY) as si
+,sum(pto.gmv_usd) as pto_gmv
+,sum(pto.SI) as pto_si
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+inner join ACCESS_VIEWS.DW_CAL_DT cal on cal.CAL_DT = tran.GMV_DT  and cal.AGE_FOR_RTL_YEAR_ID >= -1
+inner join TM_Sellers fcs on tran.SELLER_ID = fcs.seller_id
+left join access_views.cps_embg_super_fact cps on tran.ITEM_ID = cps.ITEM_ID and tran.TRANSACTION_ID = cps.TRXN_ID
+left join P_InventoryPlanning_T.Tech_PTO_red PTO on tran.ITEM_ID = pto.item_id and tran.TRANSACTION_ID = pto.TRANSACTION_ID
+group by 1,2,3 )
+
+-- csat
+, buyer_satisfaction as
+(
+select fcs.seller_id
+,fcs.seller_name
+,CONCAT(cal.RETAIL_YEAR,'M',lpad(cal.RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 5 then 1 else 0 end) as 5_V_SATISFIED
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 4 then 1 else 0 end) as 4_SATISFIED
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 3 then 1 else 0 end) as 3_NEUTRAL
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 2 then 1 else 0 end) as 2_DISSATISFIED
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 1 then 1 else 0 end) as 1_V_DISSATISFIED
+,count(t.lstg_id) as ttl_listings
+
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t -- CSAT table for focus categories
+
+INNER JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID -- join to get responses by survey ID
+INNER JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp ON rsp.QSTN_ID = q.QSTN_ID -- getting the question ID to join to response table
+												AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+INNER JOIN ACCESS_VIEWS.dw_cal_dt cal on cast(t.USER_SRVY_CMPLTD_DT as date) = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1  and AGE_FOR_RTL_MONTH_ID <= -1
+INNER JOIN (select distinct fcs.seller_id
+					,fcs.seller_name
+					,tran.ITEM_ID
+					from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+					inner join ACCESS_VIEWS.dw_cal_dt cal on tran.GMV_DT = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1  and AGE_FOR_RTL_MONTH_ID <= -1
+					inner join TM_Sellers fcs on tran.SELLER_ID = fcs.seller_id) fcs on t.LSTG_ID = fcs.item_id
+WHERE 1=1 
+	AND USER_SRVY_CMPLTD_DT IS NOT NULL
+	AND t.LSTG_ID > 0
+	AND t.TCHPNT_ID = 92 --92 is the latest touchpoint ID for buyers 
+	AND q.QSTN_ID in (36001,37000) --Numeric Value assigned to each of the questions
+	AND t.USER_SRVY_CMPLTD_DT >= '2021-01-01'
+	and t.USER_CNTRY_ID=3					
+group by 1,2,3				
+)
+
+,tech_cal as
+(select *
+from TM_Sellers fcs
+left join (select distinct RETAIL_YEAR
+,RTL_MONTH_OF_RTL_YEAR_ID as RETAIL_MONTH
+,AGE_FOR_RTL_YEAR_ID
+,CONCAT(RETAIL_YEAR,'M',lpad(RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+from ACCESS_VIEWS.dw_cal_dt where AGE_FOR_RTL_YEAR_ID>= -1 and AGE_FOR_RTL_MONTH_ID <= -1) cal on 1=1
+)
+select fcs.*
+	,sas.INRs
+	,sas.SNADs
+	,sas.TRANSACTIONS
+	,sas.gmv
+	,sas.si
+	,sas.pto_gmv
+	,sas.pto_si
+	,bus.5_V_SATISFIED
+	,bus.4_SATISFIED
+	,bus.3_NEUTRAL
+	,bus.2_DISSATISFIED
+	,bus.1_V_DISSATISFIED
+	,bus.ttl_listings as csat_ttl_listings
+	,bus.5_V_SATISFIED/csat_ttl_listings as csat_score
+from tech_cal fcs
+left join sales_standards sas    on fcs.seller_id = sas.seller_id and fcs.retail_year_month = sas.retail_year_month
+left join buyer_satisfaction bus on fcs.seller_id = bus.seller_id and fcs.retail_year_month = bus.retail_year_month
+
+;
+drop table if exists buyer_satisfaction;
+create TEMPORARY TABLE buyer_satisfaction as
+select fcs.seller_id
+,fcs.seller_name
+,CONCAT(cal.RETAIL_YEAR,'M',lpad(cal.RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 5 then 1 else 0 end) as 5_V_SATISFIED
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 4 then 1 else 0 end) as 4_SATISFIED
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 3 then 1 else 0 end) as 3_NEUTRAL
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 2 then 1 else 0 end) as 2_DISSATISFIED
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 1 then 1 else 0 end) as 1_V_DISSATISFIED
+,count(t.lstg_id) as ttl_listings
+
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t -- CSAT table for focus categories
+
+INNER JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID -- join to get responses by survey ID
+INNER JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp ON rsp.QSTN_ID = q.QSTN_ID -- getting the question ID to join to response table
+												AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+INNER JOIN ACCESS_VIEWS.dw_cal_dt cal on cast(t.USER_SRVY_CMPLTD_DT as date) = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1  and AGE_FOR_RTL_MONTH_ID <= -1
+INNER JOIN (select distinct fcs.seller_id
+					,fcs.seller_name
+					,tran.ITEM_ID
+					,tran.TRANSACTION_ID
+					from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+					inner join ACCESS_VIEWS.dw_cal_dt cal on tran.GMV_DT = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1  and AGE_FOR_RTL_MONTH_ID <= -1 
+					inner join TM_Sellers fcs on tran.SELLER_ID = fcs.seller_id) fcs on t.LSTG_ID = fcs.item_id and t.ck_trans_id = fcs.TRANSACTION_ID
+group by 1,2,3				
+;
+
+select *
+from buyer_satisfaction;
+
+select 
+fcs.seller_id
+,fcs.seller_name
+,CONCAT(cal.RETAIL_YEAR,'M',lpad(cal.RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+,t.*
+,q.*
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t -- CSAT table for focus categories
+
+INNER JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID -- join to get responses by survey ID
+INNER JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp ON rsp.QSTN_ID = q.QSTN_ID -- getting the question ID to join to response table
+												AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+INNER JOIN ACCESS_VIEWS.dw_cal_dt cal on cast(t.USER_SRVY_CMPLTD_DT as date) = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1  and AGE_FOR_RTL_MONTH_ID <= -1
+INNER JOIN (select distinct fcs.seller_id
+					,fcs.seller_name
+					,tran.ITEM_ID
+					,tran.TRANSACTION_ID
+					from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+					inner join ACCESS_VIEWS.dw_cal_dt cal on tran.GMV_DT = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1  and AGE_FOR_RTL_MONTH_ID <= -1 
+					inner join TM_Sellers fcs on tran.SELLER_ID = fcs.seller_id) fcs on t.LSTG_ID = fcs.item_id and t.ck_trans_id = fcs.TRANSACTION_ID
+WHERE 1=1 
+	AND USER_SRVY_CMPLTD_DT IS NOT NULL
+	AND t.LSTG_ID > 0
+	AND t.TCHPNT_ID = 92 --92 is the latest touchpoint ID for buyers 
+	AND q.QSTN_ID in (36001,37000) --Numeric Value assigned to each of the questions
+	AND t.USER_SRVY_CMPLTD_DT >= '2021-01-01'
+	and t.USER_CNTRY_ID=3
+	and fcs.seller_id = 170329121
+;
+
+select *
+from P_InventoryPlanning_T.Tech_PTO_coupon_period limit 10
+;
+select *
+from P_InventoryPlanning_T.Tech_PTO_red limit 10
+;
+select *
+from P_OLWAND_T.UKPLAN343_CSAT_PTO limit 10;
+
+drop table if exists overall_buyer_satisfaction;
+create TEMPORARY TABLE overall_buyer_satisfaction as
+select fcs.seller_id
+,fcs.seller_name
+,CONCAT(cal.RETAIL_YEAR,'M',lpad(cal.RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 5 then 1 else 0 end) as 5_V_SATISFIED
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 4 then 1 else 0 end) as 4_SATISFIED
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 3 then 1 else 0 end) as 3_NEUTRAL
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 2 then 1 else 0 end) as 2_DISSATISFIED
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 1 then 1 else 0 end) as 1_V_DISSATISFIED
+,count(t.lstg_id) as ttl_listings
+
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t -- CSAT table for focus categories
+
+INNER JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID -- join to get responses by survey ID
+INNER JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp ON rsp.QSTN_ID = q.QSTN_ID -- getting the question ID to join to response table
+												AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+INNER JOIN ACCESS_VIEWS.dw_cal_dt cal on cast(t.USER_SRVY_CMPLTD_DT as date) = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1  and AGE_FOR_RTL_MONTH_ID <= -1
+INNER JOIN (select distinct tran.ITEM_ID
+					,tran.TRANSACTION_ID
+					from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+					inner join ACCESS_VIEWS.dw_cal_dt cal on tran.GMV_DT = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1  and AGE_FOR_RTL_MONTH_ID <= -1
+					where 1=1
+					and 
+					)  fcs on t.LSTG_ID = fcs.item_id and t.ck_trans_id = fcs.TRANSACTION_ID
+group by 1,2,3				
+group by 1,2,3				
+;
+-- Retail Month
+drop table if exists P_OLWAND_T.UKPLAN343_CSAT_PTO_OVERALL;
+create table P_OLWAND_T.UKPLAN343_CSAT_PTO_OVERALL as
+select cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,CONCAT(cal.RETAIL_YEAR,'M',lpad(cal.RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+,count(distinct PTO.SELLER_ID) as PTO_Seller
+,sum(tran.GMV20_PLAN) as gmv
+,sum(tran.QUANTITY) as si
+,sum(pto.gmv_usd) as pto_gmv
+,sum(pto.SI) as pto_SI
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+inner join ACCESS_VIEWS.DW_CAL_DT cal on cal.CAL_DT = tran.GMV_DT  and cal.AGE_FOR_RTL_YEAR_ID >= -1 and cal.AGE_FOR_RTL_WEEK_ID <= -1
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and tran.SITE_ID = cat.SITE_ID
+left join P_InventoryPlanning_T.Tech_PTO_red PTO on tran.ITEM_ID = pto.item_id and tran.TRANSACTION_ID = pto.TRANSACTION_ID
+where 1=1
+and tran.SITE_ID = 3
+and tran.SLR_CNTRY_ID = 3
+and tran.B2C_C2C = 'B2C'
+and tran.RPRTD_WACKO_YN = 'N'
+-- and tran.CNDTN_ROLLUP_ID = 3 -- Used
+and tran.ITEM_CNDTN_ID between 2000 and 2500 --refurb
+group by 1,2,3,4
+;
+-- Retail Week
+drop table if exists P_OLWAND_T.UKPLAN343_CSAT_PTO_OVERALL;
+create table P_OLWAND_T.UKPLAN343_CSAT_PTO_OVERALL as
+select cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,CONCAT(cal.RETAIL_YEAR,'W',lpad(cal.RETAIL_WEEK,2,'0')) as RETAIL_YEAR_WEEK
+,count(distinct PTO.SELLER_ID) as PTO_Seller
+,sum(tran.GMV20_PLAN) as gmv
+,sum(tran.QUANTITY) as si
+,sum(pto.gmv_usd) as pto_gmv
+,sum(pto.SI) as pto_SI
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+inner join ACCESS_VIEWS.DW_CAL_DT cal on cal.CAL_DT = tran.GMV_DT  and cal.AGE_FOR_RTL_YEAR_ID >= -1 and cal.AGE_FOR_RTL_WEEK_ID <= -1
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and tran.SITE_ID = cat.SITE_ID
+left join P_InventoryPlanning_T.Tech_PTO_red PTO on tran.ITEM_ID = pto.item_id and tran.TRANSACTION_ID = pto.TRANSACTION_ID
+where 1=1
+and tran.SITE_ID = 3
+and tran.SLR_CNTRY_ID = 3
+and tran.B2C_C2C = 'B2C'
+and tran.RPRTD_WACKO_YN = 'N'
+-- and tran.CNDTN_ROLLUP_ID = 3 -- Used
+and tran.ITEM_CNDTN_ID between 2000 and 2500 --refurb
+group by 1,2,3,4
+;
+

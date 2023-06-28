@@ -17,7 +17,7 @@ select
 	,cal.RETAIL_WEEK
 	,cal.WEEK_BEG_DT as week_start_date
 	,cal.WEEK_END_DT as week_end_date
-	,cal.QTR_OF_YEAR_ID as quarter_id
+	,cal.RTL_QTR_OF_RTL_YEAR_ID as quarter_id
 	,cat.new_vertical as adjusted_vertical
 	,nvl(focus.focused_vertical_lvl1,'') as focus_category_vertical
 	,cat.meta_categ_id
@@ -96,7 +96,7 @@ select
 	,cal.RETAIL_WEEK
 	,cal.WEEK_BEG_DT as week_start_date
 	,cal.WEEK_END_DT as week_end_date
-	,cal.QTR_OF_YEAR_ID as quarter_id
+	,cal.RTL_QTR_OF_RTL_YEAR_ID as quarter_id
 	,cat.new_vertical as adjusted_vertical
 	,nvl(focus.focused_vertical_lvl1,'') as focus_category_vertical
 	,cat.meta_categ_id
