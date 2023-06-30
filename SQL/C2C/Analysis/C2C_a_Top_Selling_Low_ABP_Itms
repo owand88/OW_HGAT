@@ -22,12 +22,13 @@ SELECT
 	,cal.AGE_FOR_RTL_WEEK_ID
 	,tran.SLR_ID
 	,tran.ITEM_ID
+	,tran.EU_B2C_C2C_FLAG
 	,tran.AUCT_START_DT
 	,tran.SLR_CNTRY_ID
 	,tran.BYR_CNTRY_ID
-	,cat.BSNS_VRTCL_NAME AS Vertical
-	,cat.META_CATEG_NAME
-	,cat.CATEG_LVL2_NAME                                  	
+	,CASE WHEN tran.EU_B2C_C2C_FLAG = 'C2C' THEN cat.BSNS_VRTCL_NAME ELSE cat_adj.BSNS_VRTCL_NAME END AS Vertical
+	,CASE WHEN tran.EU_B2C_C2C_FLAG = 'C2C' THEN cat.META_CATEG_NAME ELSE cat_adj.META_CATEG_NAME END AS META_CATEG_NAME
+	,CASE WHEN tran.EU_B2C_C2C_FLAG = 'C2C' THEN cat.CATEG_LVL2_NAME ELSE cat_adj.CATEG_LVL2_NAME END AS CATEG_LVL2_NAME                       	
 	,tran.QUANTITY 
 	,tran.GMV_LC_AMT --> want low abp in pounds
 
@@ -40,11 +41,15 @@ INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT cal
 ON 			cal.CAL_DT = tran.GMV_DT
 
 INNER JOIN 	(	SELECT *											
-				FROM access_views.dw_category_groupings 									
-				WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+				FROM ACCESS_VIEWS.DW_CATEGORY_GROUPINGS 									
+				WHERE SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)									
 			) as cat										
-ON 			lstg.LEAF_CATEG_ID = cat.leaf_categ_id 										
-AND 		cat.site_id = 3
+ON 			lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID 										
+AND 		cat.SITE_ID = 3
+
+INNER JOIN 	P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat_adj 
+ON 			lstg.LEAF_CATEG_ID =  cat_adj.LEAF_CATEG_ID
+AND 		cat_adj.SITE_ID = 3
 
 WHERE 		1=1
 AND 		tran.GMV_DT BETWEEN '2018-12-30' and current_date - 1
@@ -52,7 +57,6 @@ AND 		tran.AUCT_END_DT >= '2018-12-30'
 AND 		tran.CK_WACKO_YN ='N'                                                                                                                          	
 AND 		tran.ISCORE = 1	
 AND 		tran.AUCT_TYPE_CD not IN (10,12,15)
-AND 		tran.EU_B2C_C2C_FLAG = 'C2C'
 AND			tran.SITE_ID = 3
 AND  		cal.AGE_FOR_RTL_WEEK_ID <= -1
 AND 		cal.AGE_FOR_RTL_YEAR_ID >= -1
@@ -77,9 +81,10 @@ SELECT
 	,cal.AGE_FOR_RTL_WEEK_ID
 	,lstg.SLR_ID
 	,lstg.ITEM_ID
-	,cat.BSNS_VRTCL_NAME AS Vertical
-	,cat.META_CATEG_NAME
-	,cat.CATEG_LVL2_NAME
+	,lstg.EU_B2C_C2C_FLAG
+	,CASE WHEN lstg.EU_B2C_C2C_FLAG = 'C2C' THEN cat.BSNS_VRTCL_NAME ELSE cat_adj.BSNS_VRTCL_NAME END AS Vertical
+	,CASE WHEN lstg.EU_B2C_C2C_FLAG = 'C2C' THEN cat.META_CATEG_NAME ELSE cat_adj.META_CATEG_NAME END AS META_CATEG_NAME
+	,CASE WHEN lstg.EU_B2C_C2C_FLAG = 'C2C' THEN cat.CATEG_LVL2_NAME ELSE cat_adj.CATEG_LVL2_NAME END AS CATEG_LVL2_NAME     
 	,trfc.TTL_VI_CNT as TTL_VI
 
 FROM 		PRS_restricted_V.SLNG_TRFC_SUPER_FACT trfc
@@ -91,18 +96,21 @@ INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT cal
 ON 			cal.CAL_DT = trfc.CAL_DT
 
 INNER JOIN 	(	SELECT *											
-				FROM access_views.dw_category_groupings 									
-				WHERE sap_category_id NOT IN (5,7,41,23,-999)									
+				FROM ACCESS_VIEWS.DW_CATEGORY_GROUPINGS 									
+				WHERE SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)									
 			) as cat										
-ON 			trfc.LEAF_CATEG_ID = cat.leaf_categ_id 										
-AND 		cat.site_id = 3 
+ON 			trfc.LEAF_CATEG_ID = cat.LEAF_CATEG_ID 										
+AND 		cat.SITE_ID = 3
+
+INNER JOIN 	P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat_adj 
+ON 			trfc.LEAF_CATEG_ID =  cat_adj.LEAF_CATEG_ID
+AND 		cat_adj.SITE_ID = 3
 
 WHERE  		1=1
 AND 		lstg.ISCORE = 1          
 AND  		trfc.CAL_DT BETWEEN '2018-12-30' and (current_date - 1)       
 AND  		trfc.CAL_DT >= '2018-12-30'
 AND 		trfc.SITE_ID = 3
-AND 		lstg.EU_B2C_C2C_FLAG = 'C2C'
 AND  		cal.AGE_FOR_RTL_WEEK_ID <= -1
 AND 		cal.AGE_FOR_RTL_YEAR_ID >= -1
 
@@ -110,20 +118,23 @@ ORDER BY 	1,2,3,4,5,6
 );
 
 
----------------- CREATE SUMMARY ----------------
+---------------- CREATE 12mth SUMMARY ----------------
+DROP TABLE IF EXISTS SUM_52WK;
+CREATE TEMPORARY TABLE SUM_52WK AS (
 SELECT 	
 	 gmv.ITEM_ID
 	,gmv.SLR_ID
 	,gmv.SLR_CNTRY_ID
 	,cntry.CNTRY_DESC as SLR_CNTRY_DESC
+	,gmv.EU_B2C_C2C_FLAG
 	,gmv.Vertical
 	,gmv.META_CATEG_NAME
 	,gmv.CATEG_LVL2_NAME                                    	
-	,gmv.SI_12mth
-	,gmv.GMB_LC_12mth
+	,gmv.SI_52WK
+	,gmv.GMB_LC_52WK
 	,gmv.ABP
-	,vi.VI as VI_12mth
-	,gmv.SI_12mth/vi.VI AS CVR_12mth
+	,vi.VI as VI_52WK
+	,gmv.SI_52WK/vi.VI AS CVR_52WK
 
 
 FROM 	(
@@ -131,11 +142,12 @@ FROM 	(
 					 ITEM_ID
 					,SLR_ID
 					,SLR_CNTRY_ID
+					,EU_B2C_C2C_FLAG
 					,Vertical
 					,META_CATEG_NAME
 					,CATEG_LVL2_NAME                                    	
-					,SUM(QUANTITY) as SI_12mth
-					,SUM(GMV_LC_AMT) as GMB_LC_12mth
+					,SUM(QUANTITY) as SI_52WK
+					,SUM(GMV_LC_AMT) as GMB_LC_52WK
 					,SUM(GMV_LC_AMT)/SUM(QUANTITY) as ABP
 
 				FROM 	BASE_GMV 
@@ -144,7 +156,7 @@ FROM 	(
 				AND 	BYR_CNTRY_ID = 3 --> interested in ABP so buyer must be UK based
 				AND		AGE_FOR_RTL_WEEK_ID >= -52 --> get the previous 12m sales
 
-				GROUP BY 1,2,3,4,5,6
+				GROUP BY 1,2,3,4,5,6,7
 		)  gmv
 	
 
@@ -170,8 +182,90 @@ ON  		cntry.CNTRY_ID = gmv.SLR_CNTRY_ID
 WHERE 	1=1 
 AND 	gmv.ABP <= 10
 
-QUALIFY (ROW_NUMBER() OVER (PARTITION BY gmv.CATEG_LVL2_NAME ORDER BY gmv.SI_12mth DESC)) <= 5 --> top 5
+-- QUALIFY (ROW_NUMBER() OVER (PARTITION BY gmv.CATEG_LVL2_NAME ORDER BY gmv.SI_52WK DESC)) <= 5 --> top 5
+);
 
 
 
+
+
+---------------- CREATE 3mth SUMMARY ----------------
+DROP TABLE IF EXISTS SUM_12WK;
+CREATE TEMPORARY TABLE SUM_12WK AS (
+SELECT 	
+	 gmv.ITEM_ID
+	,gmv.SLR_ID
+	,gmv.SLR_CNTRY_ID
+	,cntry.CNTRY_DESC as SLR_CNTRY_DESC
+	,gmv.EU_B2C_C2C_FLAG
+	,gmv.Vertical
+	,gmv.META_CATEG_NAME
+	,gmv.CATEG_LVL2_NAME                                    	
+	,gmv.SI_12WK
+	,gmv.GMB_LC_12WK
+	,gmv.ABP
+	,vi.VI as VI_12WK
+	,gmv.SI_12WK/vi.VI AS CVR_12WK
+
+
+FROM 	(
+				SELECT 
+					 ITEM_ID
+					,SLR_ID
+					,SLR_CNTRY_ID
+					,EU_B2C_C2C_FLAG
+					,Vertical
+					,META_CATEG_NAME
+					,CATEG_LVL2_NAME                                    	
+					,SUM(QUANTITY) as SI_12WK
+					,SUM(GMV_LC_AMT) as GMB_LC_12WK
+					,SUM(GMV_LC_AMT)/SUM(QUANTITY) as ABP
+
+				FROM 	BASE_GMV 
+
+				WHERE 	1=1
+				AND 	BYR_CNTRY_ID = 3 
+				AND		AGE_FOR_RTL_WEEK_ID >= -12 
+
+				GROUP BY 1,2,3,4,5,6,7
+		)  gmv
+	
+
+LEFT JOIN 	 ( 
+				SELECT 
+					 ITEM_ID
+					,SLR_ID                                	
+					,SUM(TTL_VI) as VI
+
+				FROM 	BASE_VI 
+				WHERE 	1=1
+				AND		AGE_FOR_RTL_WEEK_ID >= -12 
+				
+				GROUP BY 1,2
+			) vi
+			
+ON  		vi.ITEM_ID = gmv.ITEM_ID	
+AND  		vi.SLR_ID = gmv.SLR_ID
+
+LEFT JOIN 	ACCESS_VIEWS.DW_COUNTRIES cntry 
+ON  		cntry.CNTRY_ID = gmv.SLR_CNTRY_ID		
+
+WHERE 	1=1 
+AND 	gmv.ABP <= 10
+
+QUALIFY (ROW_NUMBER() OVER (PARTITION BY gmv.CATEG_LVL2_NAME ORDER BY gmv.SI_12WK DESC)) <= 5 --> top 5
+);
+
+
+---------------- FINAL OUTPUT ----------------
+SELECT 
+	S12.*
+	,S52.SI_52WK
+	,S52.GMB_LC_52WK
+
+FROM 		SUM_12WK S12
+
+LEFT JOIN 	SUM_52WK S52
+ON 			S12.ITEM_ID = S52.ITEM_ID
+AND 		S12.SLR_ID = S52.SLR_ID
 
