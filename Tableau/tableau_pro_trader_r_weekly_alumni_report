@@ -42,6 +42,8 @@ on t1.gmv_dt = t3.CAL_DT
 
 where 1=1
 
+and t2.seller_id is not null
+and t2.seller_id != ''
 and t1.slr_cntry_id = 3
 and t1.ck_wacko_yn = 'N'
 and t1.iscore = 1
@@ -86,6 +88,8 @@ and t2.auct_end_dt >= t4.cal_dt
 
 where 1=1 
 
+and t1.seller_id is not null
+and t1.seller_id != ''
 and t2.item_site_id = 3
 and t2.wacko_yn = 'N'
 and t2.auct_type_code NOT IN (10,15)  --10: CreditPartialSale, 15: AWCredit --> This exclusion logic was taken from "GitHub/uk-planning/Home_Garden/b2c_hg_a_Large Merchant Migration Listings" scrip
@@ -107,7 +111,7 @@ SELECT
 FROM P_DLSS_V.GMV_ON_PROMO_TXN as t1
 
 WHERE 1=1
-and t1.seller_id in (select distinct seller_id from P_InventoryPlanning_T.protrader_alumni_weekly_report_sellers )
+and t1.seller_id in (select distinct seller_id from P_InventoryPlanning_T.protrader_alumni_weekly_report_sellers where seller_id is not null and seller_id != '' )
 and t1.retail_year >= 2023
 --and t1.seller_id = 306693225
 --and t1.seller_id in (784524240, 16662420)
