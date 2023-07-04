@@ -107,7 +107,7 @@ SELECT
 FROM P_DLSS_V.GMV_ON_PROMO_TXN as t1
 
 WHERE 1=1
---and t1.seller_id in (select distinct seller_id from P_InventoryPlanning_T.protrader_alumni_weekly_report_sellers )
+and t1.seller_id in (select distinct seller_id from P_InventoryPlanning_T.protrader_alumni_weekly_report_sellers )
 and t1.retail_year >= 2023
 --and t1.seller_id = 306693225
 --and t1.seller_id in (784524240, 16662420)
