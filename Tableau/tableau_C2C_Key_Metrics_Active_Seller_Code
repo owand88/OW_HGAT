@@ -1,0 +1,705 @@
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Report: Base Code for Active Seller Data in the C2C Key Metrics Tableau Report 
+Jira: UKPLAN-278
+Requestor: Emma Ashton (C2C Team)
+Developer: Gabriella Austin
+Descriptoin: The code creates a base table that feeds into the tableau dashboard
+Date: 20/06/2023
+Context: Need to pick up a sellers segemtn as at the end of a time period. The main table for this is DNA_CUST_SELLER_SGMNTN_HIST, however it groups 
+NORS under Occasionals. Therefore we need to use the transaction table to identify the date range that a sellers was NORS and substitue this range into 
+the history table
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+
+
+
+
+/********************************************************************************************************************************************************
+Step 1. Create base transaction table for all C2C sellers. 
+NOTE: Limited to GMV_DT >= 2019 with the assumption that we will only need more recent data for the tableau. For any active seller counts prior to 1029 this code will not work unless the where condition is updated 
+********************************************************************************************************************************************************/
+
+DROP TABLE IF EXISTS BASE_GMV;
+CREATE TEMPORARY TABLE BASE_GMV AS (
+SELECT	
+	cal.RETAIL_YEAR
+	,cal.AGE_FOR_RTL_YEAR_ID
+	,cal.QTR_OF_CAL_ID
+	,cal.AGE_FOR_RTL_QTR_ID
+	,CONCAT(cal.RETAIL_YEAR,'Q',lpad(cal.RTL_QTR_OF_RTL_YEAR_ID,2,'0')) as RETAIL_QUARTER
+	,cal.RETAIL_WEEK
+	,cal.AGE_FOR_RTL_WEEK_ID
+	,tran.SLR_ID
+	,tran.ITEM_ID
+	,tran.AUCT_START_DT
+	,tran.GMV_DT
+	,ck.CREATED_TIME
+	,CASE 
+		WHEN tran.SELLER_SEGMENT_DETAIL = 'Regular' THEN 'Regular'
+		WHEN tran.SELLER_SEGMENT_DETAIL in ('Large Merchant', 'Merchant', 'Entrepreneur') THEN 'Entrepreneur'
+		WHEN tran.SELLER_SEGMENT_DETAIL = 'Occasional' THEN 'Occasional'
+		WHEN tran.SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') THEN 'NORS'
+		WHEN tran.SELLER_SEGMENT_DETAIL in ('FTL') THEN 'New'
+		ELSE 'other' END as Segment
+
+FROM 		PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran 
+
+INNER JOIN 	ACCESS_VIEWS.DW_CAL_DT cal 
+ON 			cal.CAL_DT = tran.GMV_DT
+
+LEFT JOIN 	ACCESS_VIEWS.DW_CHECKOUT_TRANS CK
+ON  		ck.ITEM_ID = tran.ITEM_ID
+AND 		ck.TRANSACTION_ID = tran.TRANSACTION_ID
+
+WHERE 		1=1  
+AND 		tran.GMV_DT >= '2019-01-01'
+AND 		tran.CK_WACKO_YN ='N'                                                                                                                          	
+AND 		tran.ISCORE = 1	
+AND 		tran.SLR_CNTRY_ID = 3
+AND 		tran.AUCT_TYPE_CD NOT IN (10,12,15)
+AND 		tran.EU_B2C_C2C_FLAG = 'C2C'
+AND			tran.SITE_ID = 3
+AND 		cal.AGE_FOR_RTL_WEEK_ID < 0
+
+ORDER BY 	1,2,3,4,5,6
+);
+
+
+-- Get date ranges for each transaction by seller i.e. the "from date" would be the date of the current transaciotn and the "to date" would be the date of the next transaction (or 364 days). 
+DROP TABLE IF EXISTS DT_RANGE;
+CREATE TEMPORARY TABLE DT_RANGE AS 
+(
+SELECT DISTINCT
+	SLR_ID
+	,GMV_DT 
+	,COALESCE ( 
+				CASE WHEN LEAD(GMV_DT,1) OVER (PARTITION BY SLR_ID ORDER BY GMV_DT) - 1 > GMV_DT +364 THEN GMV_DT + 364 ELSE LEAD(GMV_DT,1) OVER (PARTITION BY SLR_ID ORDER BY GMV_DT) -1 END, --> to date is the earliest of the next transaction or current transaction + 364 days (segments look back 12 months)
+				CASE WHEN GMV_DT + 364 > CURRENT_DATE THEN CURRENT_DATE ELSE GMV_DT + 364 END 
+			  ) as GMV_TO  
+	,SEGMENT
+
+FROM 	(
+		SELECT 
+			ROW_NUMBER() OVER (PARTITION BY SLR_ID, GMV_DT ORDER BY CREATED_TIME DESC) as Filter --> to stop dupes, if a seller has 2 transactions on the same day choose the one which was created most recently
+			,*  
+		FROM BASE_GMV 
+		)	
+
+WHERE 		Filter = 1
+ORDER BY	SLR_ID, GMV_DT 
+)
+;
+
+
+/********************************************************************************************************************************************************
+SECTION 1 
+Active seller counts as at the end of each RW in the current year
+********************************************************************************************************************************************************/
+
+-- join both the history segment table (primary table) and trans table to the calendar table to get the segments from both tables as at the last day of the week
+DROP TABLE IF EXISTS RW_JOIN;
+CREATE TEMPORARY TABLE RW_JOIN AS (
+SELECT  
+	COALESCE(hist.CAL_DT,nors.CAL_DT) as CAL_DT -- need to use coalesce as there is a one week lag in new sellers being added to the history table, and therefore this data needs to be pulled from the trans table
+	,COALESCE(hist.RETAIL_YEAR,nors.RETAIL_YEAR) as RETAIL_YEAR
+	,COALESCE(hist.AGE_FOR_RTL_YEAR_ID,nors.AGE_FOR_RTL_YEAR_ID) as AGE_FOR_RTL_YEAR_ID
+	,COALESCE(hist.RETAIL_WEEK,nors.RETAIL_WEEK) as RETAIL_WEEK
+	,COALESCE(hist.AGE_FOR_RTL_WEEK_ID,nors.AGE_FOR_RTL_WEEK_ID) as AGE_FOR_RTL_WEEK_ID
+	,COALESCE(hist.SLR_ID,nors.SLR_ID) as SLR_ID
+	,hist.CUST_SLR_SGMNTN_BEG_DT
+	,hist.CUST_SLR_SGMNTN_END_DT
+	,hist.SEGMENT_2
+	,nors.GMV_DT 
+	,nors.GMV_TO
+	,nors.SEGMENT
+
+FROM (
+			SELECT 
+				cal.CAL_DT
+				,cal.RETAIL_YEAR
+				,cal.AGE_FOR_RTL_YEAR_ID
+				,cal.RETAIL_WEEK
+				,cal.AGE_FOR_RTL_WEEK_ID
+				,hist.SLR_ID
+				,CASE 
+					WHEN hist.CUST_SGMNTN_CD IN (1,2,3,7,8,9,13,14,15,19,20,21,25,26,27,31,32,33) THEN 'Entrepreneur'  
+					WHEN hist.CUST_SGMNTN_CD IN (4,10,16,22,28,34) THEN 'Regular'
+					WHEN hist.CUST_SGMNTN_CD IN (5,11,17,23,29,35) THEN 'Occasional'
+					ELSE 'OTHER' END AS SEGMENT_2 									--> logic provided by Ashutosh
+				,hist.CUST_SLR_SGMNTN_BEG_DT
+				,hist.CUST_SLR_SGMNTN_END_DT
+
+			FROM 		ACCESS_VIEWS.DW_CAL_DT cal
+
+			LEFT JOIN 	PRS_RESTRICTED_V.DNA_CUST_SELLER_SGMNTN_HIST hist
+			ON 			cal.cal_dt BETWEEN hist.CUST_SLR_SGMNTN_BEG_DT AND hist.CUST_SLR_SGMNTN_END_DT 
+			AND 		hist.CUST_SGMNTN_GRP_CD BETWEEN 36 AND 41 -- only Customer Seller Segmentation (CSS) data
+			AND 		SLR_ID IN (SELECT DISTINCT SLR_ID FROM BASE_GMV WHERE AGE_FOR_RTL_YEAR_ID >= -1)  -- only want to include sellers that had a sale this retail year
+
+			WHERE 		1=1
+			AND 		cal.CAL_DT in (SELECT DISTINCT WEEK_END_DT FROM ACCESS_VIEWS.DW_CAL_DT WHERE (AGE_FOR_RTL_YEAR_ID = 0 AND AGE_FOR_RTL_WEEK_ID <= -1) OR AGE_FOR_RTL_YEAR_ID = -1)	-- get the distinct dates at the end of each retail week	
+			
+	) hist
+
+FULL OUTER JOIN ( 
+
+			SELECT 
+				cal.CAL_DT
+				,cal.RETAIL_YEAR
+				,cal.AGE_FOR_RTL_YEAR_ID
+				,cal.RETAIL_WEEK
+				,cal.AGE_FOR_RTL_WEEK_ID
+				,nors.SLR_ID
+				,nors.GMV_DT 
+				,nors.GMV_TO
+				,nors.SEGMENT
+
+			FROM 		ACCESS_VIEWS.DW_CAL_DT cal
+
+			LEFT JOIN 	(SELECT * FROM DT_RANGE WHERE SEGMENT = 'NORS') nors -- the only cohort we want to include is NORS as this is what is missing in the history table and what we therefore need to replace
+			ON 			cal.CAL_DT BETWEEN nors.GMV_DT AND nors.GMV_TO
+			AND 		SLR_ID IN (SELECT DISTINCT SLR_ID FROM BASE_GMV WHERE AGE_FOR_RTL_YEAR_ID >= -1) 
+
+			WHERE 		1=1
+			AND 		cal.CAL_DT in (SELECT DISTINCT WEEK_END_DT FROM ACCESS_VIEWS.DW_CAL_DT WHERE (AGE_FOR_RTL_YEAR_ID = 0 AND AGE_FOR_RTL_WEEK_ID <= -1) OR AGE_FOR_RTL_YEAR_ID = -1)
+
+
+		) nors
+
+ON 		nors.cal_dt = hist.cal_dt
+AND 	nors.slr_id = hist.slr_id
+);
+
+
+-- Choose the segment to be shown - if a NORS segment from the trans table exists then choose it, else the choose the segment from the history table
+DROP TABLE IF EXISTS RW_CHOOSE;
+CREATE TEMPORARY TABLE RW_CHOOSE AS (
+SELECT  
+	a.CAL_DT
+	,a.RETAIL_YEAR
+	,a.RETAIL_WEEK
+	,a.SLR_ID
+	,COALESCE(a.GMV_DT,a.CUST_SLR_SGMNTN_BEG_DT) as FROM_DT 
+	,COALESCE(a.GMV_TO,a.CUST_SLR_SGMNTN_END_DT) AS TO_DT
+	,COALESCE(a.SEGMENT,a.SEGMENT_2) AS SEGEMNT_COMB -- choose the segment from the trans table first because those are the NORS sellers, else choose the data from the hist table
+
+FROM 		RW_JOIN A  
+
+INNER JOIN 	(SELECT DISTINCT SLR_ID, RETAIL_YEAR, RETAIL_WEEK FROM BASE_GMV WHERE AGE_FOR_RTL_YEAR_ID >= -1) B --> need to make sure that only seller sthat have sold in a specific retail week are included each week
+ON 			A.SLR_ID =  B.SLR_ID
+AND 		A.RETAIL_YEAR = B.RETAIL_YEAR 
+AND 		A.RETAIL_WEEK = B.RETAIL_WEEK
+
+ORDER BY 1
+);
+
+
+-- Get the count of sellers in each segment at the end of the retail week
+DROP TABLE IF EXISTS RW_FINAL_TABLE;
+CREATE TEMPORARY TABLE RW_FINAL_TABLE AS (
+SELECT 
+	CAL_DT
+	,RETAIL_YEAR
+	,RETAIL_WEEK
+	,SEGEMNT_COMB
+	,COUNT(DISTINCT SLR_ID) AS SLR_COUNT
+
+FROM RW_CHOOSE
+GROUP BY 1,2,3,4
+);
+
+-- SELECT * FROM RW_FINAL_TABLE
+
+
+/********************************************************************************************************************************************************
+SECTION 2 
+Active seller counts at the end of each retail quarter
+Note: Had to split out into two different select statements due to spark overload errors (too many joins) when combine in one join
+********************************************************************************************************************************************************/
+
+DROP TABLE IF EXISTS QUARTER_JOIN;
+CREATE TEMPORARY TABLE QUARTER_JOIN AS (
+SELECT  
+	COALESCE(hist.CAL_DT,nors.CAL_DT) as CAL_DT -- need to use coalesce as there is a one week lag in new sellers being added to the history table, and therefore this data needs to be pulled from the trans table
+	,COALESCE(hist.RETAIL_YEAR,nors.RETAIL_YEAR) as RETAIL_YEAR
+	,COALESCE(hist.AGE_FOR_RTL_YEAR_ID,nors.AGE_FOR_RTL_YEAR_ID) as AGE_FOR_RTL_YEAR_ID
+	,COALESCE(hist.RETAIL_QUARTER,nors.RETAIL_QUARTER) as RETAIL_QUARTER
+	,COALESCE(hist.AGE_FOR_RTL_QTR_ID,nors.AGE_FOR_RTL_QTR_ID) as AGE_FOR_RTL_QTR_ID
+	,COALESCE(hist.RETAIL_WEEK,nors.RETAIL_WEEK) as RETAIL_WEEK
+	,COALESCE(hist.AGE_FOR_RTL_WEEK_ID,nors.AGE_FOR_RTL_WEEK_ID) as AGE_FOR_RTL_WEEK_ID
+	,COALESCE(hist.SLR_ID,nors.SLR_ID) as SLR_ID
+	,hist.CUST_SLR_SGMNTN_BEG_DT
+	,hist.CUST_SLR_SGMNTN_END_DT
+	,hist.SEGMENT_2
+	,nors.GMV_DT 
+	,nors.GMV_TO
+	,nors.SEGMENT
+
+FROM (
+			SELECT 
+				cal.CAL_DT
+				,cal.RETAIL_YEAR
+				,cal.AGE_FOR_RTL_YEAR_ID
+				,cal.AGE_FOR_RTL_QTR_ID
+				,CONCAT(cal.RETAIL_YEAR,'Q',lpad(cal.RTL_QTR_OF_RTL_YEAR_ID,2,'0')) as RETAIL_QUARTER
+				,cal.RETAIL_WEEK
+				,cal.AGE_FOR_RTL_WEEK_ID
+				,hist.SLR_ID
+				,CASE 
+					WHEN hist.CUST_SGMNTN_CD IN (1,2,3,7,8,9,13,14,15,19,20,21,25,26,27,31,32,33) THEN 'Entrepreneur'  
+					WHEN hist.CUST_SGMNTN_CD IN (4,10,16,22,28,34) THEN 'Regular'
+					WHEN hist.CUST_SGMNTN_CD IN (5,11,17,23,29,35) THEN 'Occasional'
+					ELSE 'OTHER' END AS SEGMENT_2 									
+				,hist.CUST_SLR_SGMNTN_BEG_DT
+				,hist.CUST_SLR_SGMNTN_END_DT
+
+			FROM 		ACCESS_VIEWS.DW_CAL_DT cal
+
+			LEFT JOIN 	PRS_RESTRICTED_V.DNA_CUST_SELLER_SGMNTN_HIST hist
+			ON 			cal.cal_dt BETWEEN hist.CUST_SLR_SGMNTN_BEG_DT AND hist.CUST_SLR_SGMNTN_END_DT 
+			AND 		hist.CUST_SGMNTN_GRP_CD BETWEEN 36 AND 41 
+			AND  		hist.SLR_ID IN (SELECT DISTINCT SLR_ID FROM BASE_GMV WHERE AGE_FOR_RTL_YEAR_ID = 0)
+
+			WHERE 		1=1
+			AND 		cal.CAL_DT = (SELECT MAX(CAL_DT) FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID = 0 AND AGE_FOR_RTL_WEEK_ID <= -1)
+			OR 			cal.CAL_DT IN (SELECT DISTINCT QTR_END_DT FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID = 0 AND QTR_END_DT <= (SELECT DISTINCT MAX(CAL_DT) FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID= -1) )
+			
+			ORDER BY 8,1
+						
+	) hist
+
+FULL OUTER JOIN ( 
+
+			SELECT 
+				cal.CAL_DT
+				,cal.RETAIL_YEAR
+				,cal.AGE_FOR_RTL_YEAR_ID
+				,cal.AGE_FOR_RTL_QTR_ID
+				,CONCAT(cal.RETAIL_YEAR,'Q',lpad(cal.RTL_QTR_OF_RTL_YEAR_ID,2,'0')) as RETAIL_QUARTER
+				,cal.RETAIL_WEEK
+				,cal.AGE_FOR_RTL_WEEK_ID
+				,nors.SLR_ID
+				,nors.GMV_DT 
+				,nors.GMV_TO
+				,nors.SEGMENT
+
+			FROM 		ACCESS_VIEWS.DW_CAL_DT cal
+
+			LEFT JOIN 	(SELECT * FROM DT_RANGE WHERE SEGMENT = 'NORS') nors 
+			ON 			cal.CAL_DT BETWEEN nors.GMV_DT AND nors.GMV_TO
+			AND  		nors.SLR_ID IN (SELECT DISTINCT SLR_ID FROM BASE_GMV WHERE AGE_FOR_RTL_YEAR_ID = 0)
+
+			WHERE 		1=1
+			AND 		cal.CAL_DT = (SELECT MAX(CAL_DT) FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID = 0 AND AGE_FOR_RTL_WEEK_ID <= -1)
+			OR 			cal.CAL_DT IN (SELECT DISTINCT QTR_END_DT FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID = 0 AND QTR_END_DT <= (SELECT DISTINCT MAX(CAL_DT) FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID= -1) )
+
+
+		) nors
+
+ON 		nors.CAL_DT = hist.CAL_DT
+AND 	nors.SLR_ID = hist.SLR_ID
+
+
+
+
+UNION ALL 
+
+
+
+
+SELECT  
+	COALESCE(hist.CAL_DT,nors.CAL_DT) as CAL_DT -- need to use coalesce as there is a one week lag in new sellers being added to the history table, and therefore this data needs to be pulled from the trans table
+	,COALESCE(hist.RETAIL_YEAR,nors.RETAIL_YEAR) as RETAIL_YEAR
+	,COALESCE(hist.AGE_FOR_RTL_YEAR_ID,nors.AGE_FOR_RTL_YEAR_ID) as AGE_FOR_RTL_YEAR_ID
+	,COALESCE(hist.RETAIL_QUARTER,nors.RETAIL_QUARTER) as RETAIL_QUARTER
+	,COALESCE(hist.AGE_FOR_RTL_QTR_ID,nors.AGE_FOR_RTL_QTR_ID) as AGE_FOR_RTL_QTR_ID
+	,COALESCE(hist.RETAIL_WEEK,nors.RETAIL_WEEK) as RETAIL_WEEK
+	,COALESCE(hist.AGE_FOR_RTL_WEEK_ID,nors.AGE_FOR_RTL_WEEK_ID) as AGE_FOR_RTL_WEEK_ID
+	,COALESCE(hist.SLR_ID,nors.SLR_ID) as SLR_ID
+	,hist.CUST_SLR_SGMNTN_BEG_DT
+	,hist.CUST_SLR_SGMNTN_END_DT
+	,hist.SEGMENT_2
+	,nors.GMV_DT 
+	,nors.GMV_TO
+	,nors.SEGMENT
+
+FROM (
+			SELECT 
+				cal.CAL_DT
+				,cal.RETAIL_YEAR
+				,cal.AGE_FOR_RTL_YEAR_ID
+				,cal.AGE_FOR_RTL_QTR_ID
+				,CONCAT(cal.RETAIL_YEAR,'Q',lpad(cal.RTL_QTR_OF_RTL_YEAR_ID,2,'0')) as RETAIL_QUARTER
+				,cal.RETAIL_WEEK
+				,cal.AGE_FOR_RTL_WEEK_ID
+				,hist.SLR_ID
+				,CASE 
+					WHEN hist.CUST_SGMNTN_CD IN (1,2,3,7,8,9,13,14,15,19,20,21,25,26,27,31,32,33) THEN 'Entrepreneur'  
+					WHEN hist.CUST_SGMNTN_CD IN (4,10,16,22,28,34) THEN 'Regular'
+					WHEN hist.CUST_SGMNTN_CD IN (5,11,17,23,29,35) THEN 'Occasional'
+					ELSE 'OTHER' END AS SEGMENT_2 									
+				,hist.CUST_SLR_SGMNTN_BEG_DT
+				,hist.CUST_SLR_SGMNTN_END_DT
+
+			FROM 		ACCESS_VIEWS.DW_CAL_DT cal
+
+			LEFT JOIN 	PRS_RESTRICTED_V.DNA_CUST_SELLER_SGMNTN_HIST hist
+			ON 			cal.cal_dt BETWEEN hist.CUST_SLR_SGMNTN_BEG_DT AND hist.CUST_SLR_SGMNTN_END_DT 
+			AND 		hist.CUST_SGMNTN_GRP_CD BETWEEN 36 AND 41 
+			AND  		hist.SLR_ID IN (SELECT DISTINCT SLR_ID FROM BASE_GMV WHERE AGE_FOR_RTL_YEAR_ID = -1)
+
+			WHERE 		1=1
+			AND 		cal.CAL_DT IN (SELECT DISTINCT QTR_END_DT FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID = -1)
+			
+			ORDER BY 8,1
+						
+	) hist
+
+FULL OUTER JOIN ( 
+
+			SELECT 
+				cal.CAL_DT
+				,cal.RETAIL_YEAR
+				,cal.AGE_FOR_RTL_YEAR_ID
+				,cal.AGE_FOR_RTL_QTR_ID
+				,CONCAT(cal.RETAIL_YEAR,'Q',lpad(cal.RTL_QTR_OF_RTL_YEAR_ID,2,'0')) as RETAIL_QUARTER
+				,cal.RETAIL_WEEK
+				,cal.AGE_FOR_RTL_WEEK_ID
+				,nors.SLR_ID
+				,nors.GMV_DT 
+				,nors.GMV_TO
+				,nors.SEGMENT
+
+			FROM 		ACCESS_VIEWS.DW_CAL_DT cal
+
+			LEFT JOIN 	(SELECT * FROM DT_RANGE WHERE SEGMENT = 'NORS') nors 
+			ON 			cal.CAL_DT BETWEEN nors.GMV_DT AND nors.GMV_TO
+			AND  		nors.SLR_ID IN (SELECT DISTINCT SLR_ID FROM BASE_GMV WHERE AGE_FOR_RTL_YEAR_ID = -1)
+
+			WHERE 		1=1
+			AND 		cal.CAL_DT IN (SELECT DISTINCT QTR_END_DT FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID = -1)
+
+		) nors
+
+ON 		nors.cal_dt = hist.cal_dt
+AND 	nors.slr_id = hist.slr_id
+);
+
+
+-- For each end of year, we need to limit the seller cohort to be any seller that transacted within that year
+DROP TABLE IF EXISTS QUARTER_CHOOSE;
+CREATE TEMPORARY TABLE QUARTER_CHOOSE AS (
+SELECT  
+	a.CAL_DT
+	,a.RETAIL_YEAR
+	,a.RETAIL_QUARTER
+	,a.SLR_ID
+	,COALESCE(a.GMV_DT,a.CUST_SLR_SGMNTN_BEG_DT) as FROM_DT 
+	,COALESCE(a.GMV_TO,a.CUST_SLR_SGMNTN_END_DT) AS TO_DT
+	,COALESCE(a.SEGMENT,a.SEGMENT_2) AS SEGEMNT_COMB 
+
+FROM 		QUARTER_JOIN A
+
+INNER JOIN 	(SELECT DISTINCT SLR_ID, RETAIL_QUARTER, RETAIL_YEAR FROM BASE_GMV WHERE AGE_FOR_RTL_YEAR_ID >= -2) B
+ON 			A.SLR_ID =  B.SLR_ID
+AND 		A.RETAIL_YEAR = B.RETAIL_YEAR 
+AND 		A.RETAIL_QUARTER = B.RETAIL_QUARTER 
+);
+
+
+-- Get the count of sellers in each segment at the end of each year
+DROP TABLE IF EXISTS QUARTER_FINAL_TABLE;
+CREATE TEMPORARY TABLE QUARTER_FINAL_TABLE AS (
+SELECT 
+	CAL_DT
+	,RETAIL_YEAR
+	,RETAIL_QUARTER
+	,SEGEMNT_COMB
+	,COUNT(DISTINCT SLR_ID) AS SLR_COUNT
+
+FROM QUARTER_CHOOSE
+GROUP BY 1,2,3,4
+);
+
+-- SELECT * FROM QUARTER_FINAL_TABLE
+
+
+
+
+/********************************************************************************************************************************************************
+SECTION 3 
+Active seller counts at the end of each year
+********************************************************************************************************************************************************/
+
+DROP TABLE IF EXISTS YEAR_JOIN;
+CREATE TEMPORARY TABLE YEAR_JOIN AS (
+SELECT  
+	COALESCE(hist.CAL_DT,nors.CAL_DT) as CAL_DT -- need to use coalesce as there is a one week lag in new sellers being added to the history table, and therefore this data needs to be pulled from the trans table
+	,COALESCE(hist.RETAIL_YEAR,nors.RETAIL_YEAR) as RETAIL_YEAR
+	,COALESCE(hist.AGE_FOR_RTL_YEAR_ID,nors.AGE_FOR_RTL_YEAR_ID) as AGE_FOR_RTL_YEAR_ID
+	,COALESCE(hist.RETAIL_WEEK,nors.RETAIL_WEEK) as RETAIL_WEEK
+	,COALESCE(hist.AGE_FOR_RTL_WEEK_ID,nors.AGE_FOR_RTL_WEEK_ID) as AGE_FOR_RTL_WEEK_ID
+	,COALESCE(hist.SLR_ID,nors.SLR_ID) as SLR_ID
+	,hist.CUST_SLR_SGMNTN_BEG_DT
+	,hist.CUST_SLR_SGMNTN_END_DT
+	,hist.SEGMENT_2
+	,nors.GMV_DT 
+	,nors.GMV_TO
+	,nors.SEGMENT
+
+FROM (
+			SELECT 
+				cal.CAL_DT
+				,cal.RETAIL_YEAR
+				,cal.AGE_FOR_RTL_YEAR_ID
+				,cal.RETAIL_WEEK
+				,cal.AGE_FOR_RTL_WEEK_ID
+				,hist.SLR_ID
+				,CASE 
+					WHEN hist.CUST_SGMNTN_CD IN (1,2,3,7,8,9,13,14,15,19,20,21,25,26,27,31,32,33) THEN 'Entrepreneur'  
+					WHEN hist.CUST_SGMNTN_CD IN (4,10,16,22,28,34) THEN 'Regular'
+					WHEN hist.CUST_SGMNTN_CD IN (5,11,17,23,29,35) THEN 'Occasional'
+					ELSE 'OTHER' END AS SEGMENT_2 									
+				,hist.CUST_SLR_SGMNTN_BEG_DT
+				,hist.CUST_SLR_SGMNTN_END_DT
+
+			FROM 		ACCESS_VIEWS.DW_CAL_DT cal
+
+			LEFT JOIN 	PRS_RESTRICTED_V.DNA_CUST_SELLER_SGMNTN_HIST hist
+			ON 			cal.cal_dt BETWEEN hist.CUST_SLR_SGMNTN_BEG_DT AND hist.CUST_SLR_SGMNTN_END_DT 
+			AND 		hist.CUST_SGMNTN_GRP_CD BETWEEN 36 AND 41 
+			AND  		hist.SLR_ID IN (SELECT DISTINCT SLR_ID FROM BASE_GMV WHERE AGE_FOR_RTL_YEAR_ID >= -2)
+
+			WHERE 		1=1
+			AND 		(cal.CAL_DT = (SELECT MAX(CAL_DT) FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID = 0 AND AGE_FOR_RTL_WEEK_ID <= -1)
+			OR 			 cal.CAL_DT IN (SELECT DISTINCT YEAR_END_DT FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID BETWEEN -2 AND -1))
+						
+	) hist
+
+FULL OUTER JOIN ( 
+
+			SELECT 
+				cal.CAL_DT
+				,cal.RETAIL_YEAR
+				,cal.AGE_FOR_RTL_YEAR_ID
+				,cal.RETAIL_WEEK
+				,cal.AGE_FOR_RTL_WEEK_ID
+				,nors.SLR_ID
+				,nors.GMV_DT 
+				,nors.GMV_TO
+				,nors.SEGMENT
+
+			FROM 		ACCESS_VIEWS.DW_CAL_DT cal
+
+			LEFT JOIN 	(SELECT * FROM DT_RANGE WHERE SEGMENT = 'NORS') nors 
+			ON 			cal.CAL_DT BETWEEN nors.GMV_DT AND nors.GMV_TO
+			AND  		nors.SLR_ID IN (SELECT DISTINCT SLR_ID FROM BASE_GMV WHERE AGE_FOR_RTL_YEAR_ID >= -2)
+
+			WHERE 		1=1
+			AND 		(cal.CAL_DT = (SELECT MAX(CAL_DT) FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID = 0 AND AGE_FOR_RTL_WEEK_ID <= -1)
+			OR 			 cal.CAL_DT IN (SELECT DISTINCT YEAR_END_DT FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_YEAR_ID BETWEEN -2 AND -1))
+
+		) nors
+
+ON 		nors.cal_dt = hist.cal_dt
+AND 	nors.slr_id = hist.slr_id
+);
+
+
+-- For each end of year, we need to limit the seller cohort to be any seller that transacted within that year
+DROP TABLE IF EXISTS YEAR_CHOOSE;
+CREATE TEMPORARY TABLE YEAR_CHOOSE AS (
+SELECT  
+	a.CAL_DT
+	,a.RETAIL_YEAR
+	,a.SLR_ID
+	,COALESCE(a.GMV_DT,a.CUST_SLR_SGMNTN_BEG_DT) as FROM_DT 
+	,COALESCE(a.GMV_TO,a.CUST_SLR_SGMNTN_END_DT) AS TO_DT
+	,COALESCE(a.SEGMENT,a.SEGMENT_2) AS SEGEMNT_COMB 
+
+FROM 		YEAR_JOIN A
+
+INNER JOIN 	(SELECT DISTINCT SLR_ID, RETAIL_YEAR FROM BASE_GMV WHERE AGE_FOR_RTL_YEAR_ID >= -2) B
+ON 			A.SLR_ID =  B.SLR_ID
+AND 		A.RETAIL_YEAR = B.RETAIL_YEAR 
+);
+
+
+-- Get the count of sellers in each segment at the end of each year
+DROP TABLE IF EXISTS YEAR_FINAL_TABLE;
+CREATE TEMPORARY TABLE YEAR_FINAL_TABLE AS (
+SELECT 
+	CAL_DT
+	,RETAIL_YEAR
+	,SEGEMNT_COMB
+	,COUNT(DISTINCT SLR_ID) AS SLR_COUNT
+
+FROM YEAR_CHOOSE
+GROUP BY 1,2,3
+);
+
+-- SELECT * FROM YEAR_FINAL_TABLE
+
+
+
+/********************************************************************************************************************************************************
+SECTION 4 
+Active seller counts as at the end of the most recent RW 
+********************************************************************************************************************************************************/
+DROP TABLE IF EXISTS DAY_JOIN;
+CREATE TEMPORARY TABLE DAY_JOIN AS (
+SELECT  
+	COALESCE(hist.CAL_DT,nors.CAL_DT) as CAL_DT -- need to use coalesce as there is a one week lag in new sellers being added to the history table, and therefore this data needs to be pulled from the trans table
+	,COALESCE(hist.RETAIL_YEAR,nors.RETAIL_YEAR) as RETAIL_YEAR
+	,COALESCE(hist.AGE_FOR_RTL_YEAR_ID,nors.AGE_FOR_RTL_YEAR_ID) as AGE_FOR_RTL_YEAR_ID
+	,COALESCE(hist.RETAIL_WEEK,nors.RETAIL_WEEK) as RETAIL_WEEK
+	,COALESCE(hist.AGE_FOR_RTL_WEEK_ID,nors.AGE_FOR_RTL_WEEK_ID) as AGE_FOR_RTL_WEEK_ID
+	,COALESCE(hist.SLR_ID,nors.SLR_ID) as SLR_ID
+	,hist.CUST_SLR_SGMNTN_BEG_DT
+	,hist.CUST_SLR_SGMNTN_END_DT
+	,hist.SEGMENT_2
+	,nors.GMV_DT 
+	,nors.GMV_TO
+	,nors.SEGMENT
+
+FROM (
+			SELECT 
+				cal.CAL_DT
+				,cal.RETAIL_YEAR
+				,cal.AGE_FOR_RTL_YEAR_ID
+				,cal.RETAIL_WEEK
+				,cal.AGE_FOR_RTL_WEEK_ID
+				,hist.SLR_ID
+				,CASE 
+					WHEN hist.CUST_SGMNTN_CD IN (1,2,3,7,8,9,13,14,15,19,20,21,25,26,27,31,32,33) THEN 'Entrepreneur'  
+					WHEN hist.CUST_SGMNTN_CD IN (4,10,16,22,28,34) THEN 'Regular'
+					WHEN hist.CUST_SGMNTN_CD IN (5,11,17,23,29,35) THEN 'Occasional'
+					ELSE 'OTHER' END AS SEGMENT_2 									--> logic provided by Ashutosh
+				,hist.CUST_SLR_SGMNTN_BEG_DT
+				,hist.CUST_SLR_SGMNTN_END_DT
+
+			FROM 		ACCESS_VIEWS.DW_CAL_DT cal
+
+			LEFT JOIN 	PRS_RESTRICTED_V.DNA_CUST_SELLER_SGMNTN_HIST hist
+			ON 			cal.cal_dt BETWEEN hist.CUST_SLR_SGMNTN_BEG_DT AND hist.CUST_SLR_SGMNTN_END_DT 
+			AND 		hist.CUST_SGMNTN_GRP_CD BETWEEN 36 AND 41 -- only Customer Seller Segmentation (CSS) data
+
+			WHERE 		1=1
+			AND 		cal.CAL_DT = (SELECT MAX(CAL_DT) FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID = -1) -- get the date of the last day in the previous retail week
+	) hist
+
+
+FULL OUTER JOIN ( 
+
+			SELECT 
+				cal.CAL_DT
+				,cal.RETAIL_YEAR
+				,cal.AGE_FOR_RTL_YEAR_ID
+				,cal.RETAIL_WEEK
+				,cal.AGE_FOR_RTL_WEEK_ID
+				,nors.SLR_ID
+				,nors.GMV_DT 
+				,nors.GMV_TO
+				,nors.SEGMENT
+
+			FROM 		ACCESS_VIEWS.DW_CAL_DT cal
+
+			LEFT JOIN 	(SELECT * FROM DT_RANGE WHERE SEGMENT = 'NORS') nors -- the only cohort we want to include is NORS as this is what is missing in the history table and what we therefore need to replace
+			ON 			cal.CAL_DT BETWEEN nors.GMV_DT AND nors.GMV_TO
+
+			WHERE 		1=1
+			AND 		cal.CAL_DT = (SELECT MAX(CAL_DT) FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID = -1)
+
+		) nors
+
+ON 		nors.cal_dt = hist.cal_dt
+AND 	nors.slr_id = hist.slr_id
+);
+
+
+-- Choose the segment to be shown 
+DROP TABLE IF EXISTS DAY_CHOOSE;
+CREATE TEMPORARY TABLE DAY_CHOOSE AS (
+SELECT  
+	CAL_DT
+	,RETAIL_YEAR
+	,RETAIL_WEEK
+	,SLR_ID
+	,COALESCE(GMV_DT,CUST_SLR_SGMNTN_BEG_DT) as FROM_DT 
+	,COALESCE(GMV_TO,CUST_SLR_SGMNTN_END_DT) AS TO_DT
+	,COALESCE(SEGMENT,SEGMENT_2) AS SEGEMNT_COMB -- choose the segment from the trans table first because those are the NORS sellers, else choose the data from the hist table
+
+FROM DAY_JOIN 
+ORDER BY 1
+);
+
+-- Get the count of sellers in each segment at the end of the retail week
+DROP TABLE IF EXISTS DAY_FINAL_TABLE;
+CREATE TEMPORARY TABLE DAY_FINAL_TABLE AS (
+SELECT 
+	CAL_DT
+	,RETAIL_YEAR
+	,RETAIL_WEEK
+	,SEGEMNT_COMB
+	,COUNT(DISTINCT SLR_ID) AS SLR_COUNT
+
+FROM DAY_CHOOSE
+GROUP BY 1,2,3,4
+);
+
+-- select * from DAY_FINAL_TABLE
+
+
+
+-- combine all cuts of data into one fial table for Tableau Report
+DROP TABLE IF EXISTS P_ukplan_report_T.Tableau_C2C_Key_Metrics_Active_Seller;
+CREATE TABLE P_ukplan_report_T.Tableau_C2C_Key_Metrics_Active_Seller as 
+(
+SELECT 
+	'Prev EOW' as Timeframe
+	,CAL_DT
+	,RETAIL_YEAR
+	,NULL AS RETAIL_QUARTER
+	,RETAIL_WEEK
+	,SEGEMNT_COMB
+	,SLR_COUNT
+FROM DAY_FINAL_TABLE
+
+UNION ALL 
+
+SELECT 
+	'Retail Week' as Timeframe
+	,CAL_DT
+	,RETAIL_YEAR
+	,NULL AS RETAIL_QUARTER
+	,RETAIL_WEEK
+	,SEGEMNT_COMB
+	,SLR_COUNT
+FROM RW_FINAL_TABLE
+
+UNION ALL 
+
+SELECT 
+	'Retail Quarter' as Timeframe
+	,CAL_DT
+	,RETAIL_YEAR
+	,RETAIL_QUARTER
+	,NULL AS RETAIL_WEEK
+	,SEGEMNT_COMB
+	,SLR_COUNT
+	
+FROM QUARTER_FINAL_TABLE
+
+UNION ALL 
+
+SELECT  
+	'Retail Year' as Timeframe
+	,CAL_DT
+	,RETAIL_YEAR
+	,NULL AS RETAIL_QUARTER
+	,NULL AS RETAIL_WEEK
+	,SEGEMNT_COMB
+	,SLR_COUNT
+
+FROM YEAR_FINAL_TABLE 
+);
