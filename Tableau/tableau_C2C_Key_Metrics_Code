@@ -78,11 +78,11 @@ SELECT
 	,cat.CATEG_LVL2_NAME
 	,cat.CATEG_LVL3_NAME
 	,CASE 
-		WHEN lstg.SELLER_SEGMENT_DETAIL = 'Regular' THEN 'Regular'
-		WHEN lstg.SELLER_SEGMENT_DETAIL in ('Large Merchant', 'Merchant', 'Entrepreneur') THEN 'Entrepreneur'
-		WHEN lstg.SELLER_SEGMENT_DETAIL = 'Occasional' THEN 'Occasional'
-		WHEN lstg.SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') THEN 'NORS'
-		WHEN lstg.SELLER_SEGMENT_DETAIL in ('FTL') THEN 'New'
+		WHEN tran.SELLER_SEGMENT_DETAIL = 'Regular' THEN 'Regular'
+		WHEN tran.SELLER_SEGMENT_DETAIL in ('Large Merchant', 'Merchant', 'Entrepreneur') THEN 'Entrepreneur'
+		WHEN tran.SELLER_SEGMENT_DETAIL = 'Occasional' THEN 'Occasional'
+		WHEN tran.SELLER_SEGMENT_DETAIL in ('UnsuccesfulLister','LapsedLister','FTL') THEN 'NORS'
+		WHEN tran.SELLER_SEGMENT_DETAIL in ('FTL') THEN 'New'
 		ELSE 'other' END as Segment
 	,CASE 	
 		WHEN lstg.cndtn_rollup_id = 1 THEN 'New'
@@ -837,4 +837,34 @@ FROM Combined_Data
 );
 
 
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
 	
