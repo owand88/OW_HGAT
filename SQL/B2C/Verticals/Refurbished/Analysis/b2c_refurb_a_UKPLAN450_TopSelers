@@ -1,0 +1,82 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-450
+
+Objective: Understand greater china sellers on the UK site
+
+Description: Top 50 sellers by GMV in Computing down to L2 (58058) YTD
+
+Date: 13/07/2023
+
+Author: Oliver Wand
+
+*/
+drop table if exists sellers;
+create TEMPORARY table sellers as
+select seller_id
+,row_number() over (order by computing_gmv desc) as computing_rank
+,row_number() over (order by mobile_gmv desc) as mobile_rank
+from (
+select SELLER_ID
+,sum(case when META_CATEG_ID = 58058 then ytd_gmv end) as computing_gmv
+,sum(case when META_CATEG_ID = 15032 then ytd_gmv end) as mobile_gmv
+from (
+select tran.SELLER_ID
+,cat.META_CATEG_ID
+,sum(GMV20_PLAN) as ytd_gmv
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+inner join ACCESS_VIEWS.DW_CAL_DT cal on tran.gmv_dt = cal.cal_dt
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and tran.SITE_ID = cat.SITE_ID
+where 1=1
+and tran.SITE_ID = 3
+and tran.SLR_CNTRY_ID = 3
+and tran.B2C_C2C = 'B2C'
+and tran.RPRTD_WACKO_YN = 'N'
+and tran.CNDTN_ROLLUP_ID = 2 -- refurb
+and cat.META_CATEG_ID in (58058,15032) --computing/mobiles
+and cal.AGE_FOR_RTL_YEAR_ID = 0 and cal.AGE_FOR_RTL_WEEK_ID <= -1 --YTD
+group by 1,2
+qualify row_number() over (PARTITION by META_CATEG_ID  order by ytd_gmv desc) <= 50
+)
+group by 1
+)
+;
+drop table if exists P_INVENTORYPLANNING_T.UKPLAN450_TOP50_SELLERS;
+create table P_INVENTORYPLANNING_T.UKPLAN450_TOP50_SELLERS as
+select tran.SELLER_ID
+,user.USER_SLCTD_ID as SELLER_NAME
+,computing_rank
+,mobile_rank
+,RETAIL_YEAR
+,cal.RETAIL_WEEK
+,case tran.item_cndtn_id when 1000 then 'New'
+	  			when 1500 then 'New - Other'
+	  			when 1750 then 'New - With defects'
+	  			when 2000 then 'Refurb - Certified' 
+	  			when 2010 then 'Refurb - Excellent'
+	  			when 2020 then 'Refurb - Very Good'
+	  			when 2030 then 'Refurb - Good'
+	  			when 2500 then 'Refurb - Seller' 
+				when 3000 then 'Used'
+	  			when 4000 then 'Used - Very Good'
+	  			when 5000 then 'Used - Good'
+	  			when 6000 then 'Used - Acceptable'
+	  			when 7000 then 'Used - For parts / not working'
+	  			else 'Other' end as item_condition
+,cat.NEW_VERTICAL as VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,sum(GMV20_PLAN) as GMV
+,sum(tran.QUANTITY) as SI
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+inner join ACCESS_VIEWS.DW_CAL_DT cal on tran.gmv_dt = cal.cal_dt
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and tran.SITE_ID = cat.SITE_ID
+inner join ACCESS_VIEWS.DW_USERS user on tran.SELLER_ID = user.USER_ID
+inner join sellers slr on tran.SELLER_ID = slr.seller_id
+where 1=1
+and tran.SITE_ID = 3
+and tran.SLR_CNTRY_ID = 3
+and tran.B2C_C2C = 'B2C'
+and tran.RPRTD_WACKO_YN = 'N'
+and cal.AGE_FOR_RTL_YEAR_ID >= -1  and cal.AGE_FOR_RTL_WEEK_ID <= -1
+group by 1,2,3,4,5,6,7,8,9,10
+;

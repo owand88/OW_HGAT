@@ -1,0 +1,282 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-427
+
+Objective: Understand greater china sellers on the UK site
+
+Description: I'll be looking at:
+•	GMV 
+•	Actual Standard
+•	Predicted Standard
+•	Defect Rate (%)
+•	Late Delivery Rate (%)
+•	Cancelled Transactions (%)
+•	Cases w/o Resolution (%)
+•	Claims Rate (%)
+•	Refund Rate (%)
+•	Feedback Score
+•	Positive Feedback % (last 12 months)
+•	Positive Feedback % (last month)
+
+Date: 27/06/2023
+
+Author: Oliver Wand
+
+*/
+
+/*find greater china country ids
+China = 45
+Hong Kong = 92
+Singapore = 39
+Taiwan = 41
+
+*/
+drop table if exists sellers;
+create temporary table sellers as
+select distinct lstg.SLR_ID as SELLER_ID
+,user.USER_SLCTD_ID as SELLER_NAME
+from PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+inner join ACCESS_VIEWS.dw_cal_dt cal on lstg.AUCT_START_DT <= cal.CAL_DT and lstg.AUCT_END_DT >= cal.CAL_DT
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and lstg.LSTG_SITE_ID = cat.SITE_ID
+inner join ACCESS_VIEWS.DW_USERS user on lstg.SLR_ID = user.USER_ID
+where 1=1
+and lstg.B2C_C2C = 'B2C'
+and lstg.LSTG_SITE_ID = 3 --UK
+and lstg.SLR_CNTRY_ID in (45,92,41) -- China, HK, Taiwan
+and cal.AGE_FOR_RTL_YEAR_ID >= -1
+and cat.NEW_VERTICAL = 'Parts & Accessories'
+and user.USER_STS_CODE = 1
+;
+
+drop table if exists P_INVENTORYPLANNING_T.UKPLAN427_CHINESE_UK_SELLERS;
+create TABLE P_INVENTORYPLANNING_T.UKPLAN427_CHINESE_UK_SELLERS as
+
+
+--find PA greater china sellers who list on UK 
+with sellers as
+(
+select distinct lstg.SLR_ID as SELLER_ID
+,user.USER_SLCTD_ID as SELLER_NAME
+from PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+inner join ACCESS_VIEWS.dw_cal_dt cal on lstg.AUCT_START_DT <= cal.CAL_DT and lstg.AUCT_END_DT >= cal.CAL_DT
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and lstg.LSTG_SITE_ID = cat.SITE_ID
+inner join ACCESS_VIEWS.DW_USERS user on lstg.SLR_ID = user.USER_ID
+where 1=1
+and lstg.B2C_C2C = 'B2C'
+and lstg.LSTG_SITE_ID = 3 --UK
+and lstg.SLR_CNTRY_ID in (45,92,41) -- China, HK, Taiwan
+and cal.AGE_FOR_RTL_YEAR_ID >= -1
+and cat.NEW_VERTICAL = 'Parts & Accessories'
+and user.USER_STS_CODE = 1
+)
+
+--seller standards
+,seller_standards as
+ ( select distinct fcs.seller_id
+		,CONCAT(cal.RETAIL_YEAR,'M',lpad(cal.RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+		,min(sps.sps_slr_level_cd) as sps_slr_cd
+		,CASE   WHEN sps_slr_cd  = 1 THEN 'eTRS'
+				WHEN sps_slr_cd  = 2 THEN 'Above Standard' 
+				WHEN sps_slr_cd  = 3 THEN 'Standard' 
+				WHEN sps_slr_cd  = 4 THEN 'Below Standard' 
+				ELSE 'No seller standard' END AS SELLER_STANDARD
+ from  PRS_RESTRICTED_V.SPS_LEVEL_METRIC_SUM sps
+ inner join ACCESS_VIEWS.DW_CAL_DT cal on sps.last_eval_dt = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1
+ inner join sellers fcs on sps.user_id = fcs.seller_id
+ where 1=1
+ AND SPS_EVAL_TYPE_CD = 1 
+ AND SPS_PRGRM_ID = 3 
+ group by 1,2
+)
+, predicted_standards as
+(SELECT distinct fcs.seller_id
+	,CONCAT(cal.RETAIL_YEAR,'M',lpad(cal.RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+		,min(sps.SPS_SLR_LEVEL_CD) as sps_slr_cd
+		,CASE   WHEN sps_slr_cd  = 1 THEN 'eTRS'
+				WHEN sps_slr_cd  = 2 THEN 'Above Standard' 
+				WHEN sps_slr_cd  = 3 THEN 'Standard' 
+				WHEN sps_slr_cd  = 4 THEN 'Below Standard' 
+				ELSE 'No seller standard' END AS PREDICTED_STANDARD
+FROM PRS_RESTRICTED_V.SPS_LEVEL SPS
+ inner join ACCESS_VIEWS.DW_CAL_DT cal on sps.eval_mnth_end_dt = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1
+ inner join sellers fcs on sps.user_id = fcs.seller_id
+WHERE 1=1
+	AND SPS_EVAL_TYPE_CD = 3 
+	and SPS_EVAL_RSN_CD=1
+
+group by 1,2
+)
+
+--listing standards
+, listing_standards as
+( select seller_id
+,seller_name
+,retail_year_month
+,count(distinct item_id) as listings
+,sum(PHT_6_COUNT) as PHT_6_COUNT
+,sum(FREE_SHIPPING) as FREE_SHIPPING
+,sum(RETURN_30_DAYS) as RETURN_30_DAYS
+,sum(RETURN_FREE) as RETURN_FREE
+
+from (
+select fcs.seller_id
+,fcs.seller_name
+,CONCAT(cal.RETAIL_YEAR,'M',lpad(cal.RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+,lstg.ITEM_ID
+,case when lstg.PHT_CNT >= 6 then 1 else 0 end as PHT_6_COUNT
+,lstg.FREE_SHPNG_YN_IND as FREE_SHIPPING
+,max(case when left(attr.VALUE_DESC,2) >= 30 and attr.ATTR_ID = 3804 then 1 else 0 end) as RETURN_30_DAYS
+,max(case when attr.ATTR_ID = 3993 and attr.value_desc = 'Seller' then 1 else 0 end) as RETURN_FREE
+from prs_restricted_v.SLNG_LSTG_SUPER_FACT lstg
+inner join ACCESS_VIEWS.dw_cal_dt cal	on lstg.AUCT_START_DT <= cal.CAL_DT and lstg.AUCT_END_DT >= cal.CAL_DT and cal.RETAIL_YEAR >= -1 and cal.AGE_FOR_RTL_MONTH_ID <= -1
+left join ACCESS_VIEWS.DW_ATTR_DETAIL_VALUES attr on lstg.ITEM_ID = attr.item_id and value_id > 0
+inner join sellers fcs on lstg.SLR_ID = fcs.seller_id
+Where 1=1
+and lstg.ITEM_SITE_ID = 3
+group by 1,2,3,4,5,6
+)
+group by 1,2,3
+)
+
+-- inr, snads, sales rate lm day pull
+, sales_standards as
+( select fcs.seller_id
+,fcs.seller_name
+,CONCAT(cal.RETAIL_YEAR,'M',lpad(cal.RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+,sum(case when CPS.FINAL_CLAIM_TYPE_NAME is not null then 1 else 0 end) as CLAIM_IND
+,sum(case when CPS.FINAL_CLAIM_TYPE_NAME like ('%INR') then 1 else 0 end) as INRs
+,sum(case when CPS.FINAL_CLAIM_TYPE_NAME like ('%SNAD') then 1 else 0 end) as SNADs
+,sum(case when coalesce(SSA_EXP.ONTIME_DLVRY_FLAG, 0) = 0 then 1 else 0 end) as LATE_DELVRY
+,sum(CASE WHEN BBE.CNCL_RQSTR_TYPE_CD= 1 THEN 1 ELSE 0 END) AS SELLER_CANCEL
+,sum(case when ck.REFUND_AMT > 0 then 1 else 0 end) as SELLER_REFUND
+,sum(case WHEN EVO.BYR_CNCL_NO_DFCT_IND = 0 AND EVO.DFCT_TYPE_BMAP = 128 AND EVO.DFCT_TYPE_BMAP = EVO.DFCT_DSCR_TYPE_BMAP then 1 else 0 end) as INR_SAF
+,sum(case WHEN EVO.BYR_CNCL_NO_DFCT_IND = 0 AND EVO.DFCT_TYPE_BMAP = 256 AND EVO.DFCT_TYPE_BMAP = EVO.DFCT_DSCR_TYPE_BMAP then 1 else 0 end) as SNAD_SAF
+,sum(case WHEN EVO.BYR_CNCL_NO_DFCT_IND = 0 AND EVO.DFCT_TYPE_BMAP in (128,256) AND EVO.DFCT_TYPE_BMAP = EVO.DFCT_DSCR_TYPE_BMAP then 1 else 0 end) as SAF
+,sum(case WHEN EVO.BYR_CNCL_NO_DFCT_IND = 0 AND EVO.DFCT_TYPE_BMAP = 32 AND EVO.DFCT_TYPE_BMAP = EVO.DFCT_DSCR_TYPE_BMAP then 1 else 0 end) as SLR_CANCEL_STOCKOUT
+,sum(case WHEN EVO.BYR_CNCL_NO_DFCT_IND = 0 AND EVO.DFCT_TYPE_BMAP = 64 AND EVO.DFCT_TYPE_BMAP = EVO.DFCT_DSCR_TYPE_BMAP then 1 else 0 end) as INF_SLR_CNCLED_STOCKOUT
+,sum(case WHEN EVO.BYR_CNCL_NO_DFCT_IND = 0 AND EVO.DFCT_TYPE_BMAP in (32,64) AND EVO.DFCT_TYPE_BMAP = EVO.DFCT_DSCR_TYPE_BMAP then 1 else 0 end) as STOCKOUT
+,sum(case WHEN EVO.BYR_CNCL_NO_DFCT_IND = 0 AND EVO.DFCT_TYPE_BMAP in (32,64,128,256) AND EVO.DFCT_TYPE_BMAP = EVO.DFCT_DSCR_TYPE_BMAP then 1 else 0 end) as DEFECT
+,count(distinct tran.TRANSACTION_ID) as TRANSACTIONS
+,sum(tran.GMV20_PLAN) as gmv
+,sum(tran.QUANTITY) as si
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+inner join ACCESS_VIEWS.DW_CAL_DT cal on cal.CAL_DT = tran.GMV_DT  and cal.AGE_FOR_RTL_YEAR_ID >= -1
+inner join sellers fcs on tran.SELLER_ID = fcs.seller_id
+left join PRS_RESTRICTED_V.EBAY_TRANS_RLTD_EVENT BBE on tran.ITEM_ID = bbe.ITEM_ID and tran.gmv_dt = bbe.TRANS_DT AND bbe.BBE_ELGB_TRANS_IND = 1
+LEFT JOIN SSA_SHPMT_DLVRY_EXP_FACT SSA_EXP ON BBE.ITEM_ID = SSA_EXP.ITEM_ID AND BBE.TRANS_ID = SSA_EXP.TRANS_ID
+Left join ACCESS_VIEWS.CPS_EMBG_SUPER_FACT cps on tran.ITEM_ID = cps.ITEM_ID and tran.TRANSACTION_ID = cps.TRXN_ID
+LEFT JOIN (
+select distinct CAST (DFCT_DSCR_TYPE_BMAP AS BIGINT) as DFCT_DSCR_TYPE_BMAP
+,CAST(DFCT_TYPE_BMAP as BIGINT) as DFCT_TYPE_BMAP
+,ITEM_ID
+,TRANS_ID
+,BYR_CNCL_NO_DFCT_IND
+from PRS_RESTRICTED_V.EVO_SPS_TRANS_DTL) EVO ON EVO.ITEM_ID = BBE.ITEM_ID AND EVO.TRANS_ID = BBE.TRANS_ID
+left join ACCESS_VIEWS.DW_CHECKOUT_TRANS ck on tran.TRANSACTION_ID = ck.TRANSACTION_ID and tran.ITEM_ID = ck.ITEM_ID
+where 1=1
+and tran.SITE_ID = 3
+and tran.RPRTD_WACKO_YN = 'N'
+group by 1,2,3
+)
+
+--calendar m2m join
+, super_cal as
+(select *
+from sellers fcs
+left join (select distinct RETAIL_YEAR
+,RTL_MONTH_OF_RTL_YEAR_ID as RETAIL_MONTH
+,AGE_FOR_RTL_YEAR_ID
+,CONCAT(RETAIL_YEAR,'M',lpad(RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+from ACCESS_VIEWS.dw_cal_dt where AGE_FOR_RTL_YEAR_ID>= -2 and AGE_FOR_RTL_MONTH_ID <= -1) cal on 1=1
+)
+
+-- csat
+, buyer_satisfaction as
+(
+select  fcs.seller_id
+,fcs.seller_name
+,fcs.RETAIL_YEAR_MONTH
+,sum(b.5_V_SATISFIED) over(partition by fcs.seller_id order by fcs.RETAIL_YEAR_MONTH asc rows between 11 PRECEDING and current ROW) as 5_V_SATISFIED
+,sum(b.4_SATISFIED) over(partition by fcs.seller_id order by fcs.RETAIL_YEAR_MONTH asc rows between 11 PRECEDING and current ROW) as 4_SATISFIED
+,sum(b.3_NEUTRAL) over(partition by fcs.seller_id order by fcs.RETAIL_YEAR_MONTH asc rows between 11 PRECEDING and current ROW) as 3_NEUTRAL
+,sum(b.2_DISSATISFIED) over(partition by fcs.seller_id order by fcs.RETAIL_YEAR_MONTH asc rows between 11 PRECEDING and current ROW) as 2_DISSATISFIED
+,sum(b.1_V_DISSATISFIED) over(partition by fcs.seller_id order by fcs.RETAIL_YEAR_MONTH asc rows between 11 PRECEDING and current ROW) as 1_V_DISSATISFIED
+,sum(b.ttl_listings) over(partition by fcs.seller_id order by fcs.RETAIL_YEAR_MONTH asc rows between 11 PRECEDING and current ROW) as ttl_listings
+
+from super_cal fcs
+left join (
+select fcs.seller_id
+,fcs.seller_name
+,CONCAT(cal.RETAIL_YEAR,'M',lpad(cal.RTL_MONTH_OF_RTL_YEAR_ID,2,'0')) as RETAIL_YEAR_MONTH
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 5 then 1 else 0 end) as 5_V_SATISFIED
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 4 then 1 else 0 end) as 4_SATISFIED
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 3 then 1 else 0 end) as 3_NEUTRAL
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 2 then 1 else 0 end) as 2_DISSATISFIED
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 1 then 1 else 0 end) as 1_V_DISSATISFIED
+,count(t.lstg_id) as ttl_listings
+
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t -- CSAT table for focus categories
+
+INNER JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID -- join to get responses by survey ID
+INNER JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp ON rsp.QSTN_ID = q.QSTN_ID -- getting the question ID to join to response table
+												AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+INNER JOIN ACCESS_VIEWS.dw_cal_dt cal on cast(t.USER_SRVY_CMPLTD_DT as date) = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -2  and AGE_FOR_RTL_MONTH_ID <= -1
+INNER JOIN (select distinct fcs.seller_id
+					,fcs.seller_name
+					,tran.ITEM_ID
+					from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+					inner join ACCESS_VIEWS.dw_cal_dt cal on tran.GMV_DT = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -2  and AGE_FOR_RTL_MONTH_ID <= -1
+					inner join sellers fcs on tran.SELLER_ID = fcs.seller_id) fcs on t.LSTG_ID = fcs.item_id
+
+-- LEFT JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_VRBTM_RSPNS VR ON t.USER_SRVY_RSPNS_ID= VR.USER_SRVY_RSPNS_ID AND vr.qstn_id = 37000 vr.VRBTM_RSPNS_TXT as verbatim --verbatim free form text from user
+
+WHERE 1=1 
+	AND USER_SRVY_CMPLTD_DT IS NOT NULL
+	AND t.LSTG_ID > 0
+	AND t.TCHPNT_ID = 92 --92 is the latest touchpoint ID for buyers 
+	AND q.QSTN_ID in (36001,37000) --Numeric Value assigned to each of the questions
+	AND t.USER_SRVY_CMPLTD_DT >= '2021-01-01'
+	and t.USER_CNTRY_ID=3
+
+group by 1,2,3 ) b on fcs.seller_id = b.seller_id and fcs.RETAIL_YEAR_MONTH = b.RETAIL_YEAR_MONTH
+)
+
+
+--finally let's join this bad boy together for some tableau fun
+
+	SELECT
+	fcs.*
+	,ss.seller_standard
+	,ls.listings
+	,ls.PHT_6_COUNT
+	,ls.FREE_SHIPPING
+	,ls.RETURN_30_DAYS
+	,ls.RETURN_FREE
+	,sas.CLAIM_IND
+	,sas.INRs
+	,sas.SNADs
+	,sas.SAF
+	,sas.SELLER_CANCEL
+	,sas.SELLER_REFUND
+	,sas.DEFECT
+	,sas.LATE_DELVRY
+	,sas.TRANSACTIONS
+	,sas.gmv
+	,sas.si
+	,bus.5_V_SATISFIED
+	,bus.4_SATISFIED
+	,bus.3_NEUTRAL
+	,bus.2_DISSATISFIED
+	,bus.1_V_DISSATISFIED
+	,bus.ttl_listings as csat_ttl_listings
+	,bus.5_V_SATISFIED/csat_ttl_listings as csat_score
+
+from super_cal fcs
+left join seller_standards ss    on fcs.seller_id = ss.seller_id and fcs.retail_year_month = ss.retail_year_month
+left join listing_standards	ls   on fcs.seller_id = ls.seller_id and fcs.retail_year_month = ls.retail_year_month
+left join sales_standards sas    on fcs.seller_id = sas.seller_id and fcs.retail_year_month = sas.retail_year_month
+left join buyer_satisfaction bus on fcs.seller_id = bus.seller_id and fcs.retail_year_month = bus.retail_year_month
+where fcs.AGE_FOR_RTL_YEAR_ID >= -1
+;
+
+select count(distinct
