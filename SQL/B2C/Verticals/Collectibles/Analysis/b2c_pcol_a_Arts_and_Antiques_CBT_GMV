@@ -71,7 +71,7 @@ where 1=1
 	and tran.slr_cntry_id = 3
 	and year(tran.gmv_dt) >= year(current_date) - 4  --This is to return the results for the last 4 years
 	and year(tran.gmv_dt) <= year(current_date)  --This is to return the results for the last 4 years
-	and cat.meta_categ_id in (360, 550, 20081)   -- Meta IDs for Arts and Antiques
+	and cat.meta_categ_id in (870, 550, 20081)   -- Meta IDs for Arts and Antiques
 	and tran.ck_wacko_yn = 'N'
 	and tran.iscore = 1
 	and cat.sap_category_id not in (5, 7, 41,23,-999)
