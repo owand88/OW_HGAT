@@ -3,64 +3,87 @@ Jira: UKPLAN-288
 
 Title: Tableau: Pro Trader Forecast Performance
 Author: Tugrul Ates
-Date: 2023-07-18
+Date: 2023-07-20
 */
 
 
-P_ukplan_report_T.protrader_quarterly_forecasts
+
+create view P_ukplan_report_T.protrader_forecast_performance as 
+with protrader_cohorts_for_new_quarter as 
+	(
+	select
+		*
+		,3 as site_id  -- This is to ensure that we only selecth the data for the UK website category hierarchy when we join this table with the category groupings table later on
+		,dense_rank() over (order by cohort_year||cohort_quarter_id desc) as cohort_recency_rank  -- Later on, this cohort_recency_rank value will help us to only return the top sellers for the recent Pro Trader cohort. We will do this by selecting the cohorts with "cohort_recency_rank = 1" value 
+		from P_ukplan_report_T.protrader_quarterly_cohorts
+		--from cohorts
+		where 1 = 1
+		and (seller_id is null and seller_name is null)  -- By doing this we are only retreiving the rows where the cohort definition is based on categories and item conditions, not seller_ids. Because for this report, we are trying to extract the top sellers from those category + item condition combinations
+		and cohort_year is not null
+		and cohort_year != ''
+	)
 
 
+,cohort_gmv_l2y_actuals as
+(
+	select
+		cal.retail_year
+		,cal.retail_week
+		,cal.rtl_qtr_of_rtl_year_id as retail_quarter_id
+		,cat.new_vertical
+		,pro.cohort_name
+		,sum(tran.gmv20_sold_quantity) AS BI
+		,sum(tran.gmv20_plan) as GMV
 
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--- Pro Trader Cohorts GMV L3Y
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-select
-	cal.retail_year
-	,cal.retail_week
-	,cal.rtl_qtr_of_rtl_year_id
-	,cat.new_vertical
-	,pro.cohort_name
-	,sum(tran.gmv20_sold_quantity) AS BI
-	,sum(tran.gmv20_plan) as GMV
+	from prs_restricted_v.slng_trans_super_fact as tran
 
-from prs_restricted_v.slng_trans_super_fact as tran
+	inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ as cat
+		on tran.leaf_categ_id=cat.leaf_categ_id
+		and tran.lstg_site_id=cat.site_id 
+		and cat.site_id = 3   -- This will only return the sales data from the UK website
 
-inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ as cat
-	on tran.leaf_categ_id=cat.leaf_categ_id
-	and tran.lstg_site_id=cat.site_id 
-	and cat.site_id=3
-        
-inner join access_views.dw_cal_dt as cal
-	on tran.gmv_dt = cal.cal_dt 
-	and cal.AGE_FOR_RTL_YEAR_ID >= -1  -- This will return last year and this year results
-    and cal.AGE_FOR_RTL_YEAR_ID <= 0  -- This will return last year and this year results
-	and cal.AGE_FOR_RTL_QTR_ID <= 0  
- 
-inner join P_ukplan_report_T.protrader_quarterly_cohorts as pro
-	on pro.item_condition_id = tran.item_cndtn_id
-	and pro.meta_categ_id = cat.meta_categ_id
-	and pro.categ_lvl2_id = cat.categ_lvl2_id
-	and pro.categ_lvl3_id = cat.categ_lvl3_id
-	and (pro.categ_lvl4_id = '' or pro.categ_lvl4_id IS NULL OR pro.categ_lvl4_id = cat.categ_lvl4_id)
+	inner join protrader_cohorts_for_new_quarter as pro
+		on pro.item_condition_id = tran.item_cndtn_id
+		and pro.meta_categ_id = cat.meta_categ_id
+		and pro.categ_lvl2_id = cat.categ_lvl2_id
+		and pro.categ_lvl3_id = cat.categ_lvl3_id
+		and (pro.categ_lvl4_id = '' or pro.categ_lvl4_id IS NULL OR pro.categ_lvl4_id = cat.categ_lvl4_id)
+		and pro.site_id = cat.site_id
+		and pro.cohort_recency_rank = 1  -- This only returns the most recent cohort data
 
-where 1 = 1
-	and tran.eu_b2c_c2c_flag = 'B2C'
-	and tran.slr_cntry_id = 3 
-	and tran.byr_cntry_id = 3  
-	and tran.slr_cntry_id = tran.byr_cntry_id 
-	and tran.ck_wacko_yn = 'N'
-	and cat.sap_category_id not in (5, 7, 41,23,-999) 
-	and tran.gmv_dt > '2019-12-28'  
-	and tran.auct_end_dt > '2019-12-28'
-	and tran.auct_type_cd not in (10,15)
-	and tran.lstg_site_id = 3	
-	-- Pro Trader Forecast Quarter Config (Change these values according to the Forecast Year and Quarter that you are after --------
-	and pro.cohort_year = 2023
-	and pro.cohort_quarter_id = cal.AGE_FOR_RTL_QTR_ID  -- As cal.AGE_FOR_RTL_QTR_ID is set to "0" value in the script, this will only return the cohorts which are chosen for the current quarter
-	----------------------------------------------------------------------------------------------------------------------------------
-group by 1,2,3,4,5,6;
+
+	inner join access_views.dw_cal_dt as cal
+		on tran.gmv_dt = cal.cal_dt 
+		and cal.RETAIL_YEAR >= pro.cohort_year - 1  -- This will select the data from the cohort year and the year before
+		and cal.rtl_qtr_of_rtl_year_id = pro.cohort_quarter_id   -- This will only select the data for the current cohort quarter
+		and cal.age_for_rtl_week_id <= -1   -- This will only return the results up to the latest completed week
+
+
+	where 1 = 1
+		and tran.eu_b2c_c2c_flag = 'B2C'
+		and tran.slr_cntry_id = 3 
+		and tran.byr_cntry_id = 3  
+		and tran.slr_cntry_id = tran.byr_cntry_id 
+		and tran.ck_wacko_yn = 'N'
+		and cat.sap_category_id not in (5, 7, 41,23,-999) 
+		and tran.gmv_dt > '2019-12-28'  
+		and tran.auct_end_dt > '2019-12-28'
+		and tran.auct_type_cd not in (10,15)
+		and tran.lstg_site_id = 3	
+	group by 1,2,3,4,5
+)
 	
+ 
+select 
+	act.*
+	,fc.forecast_gmv
+	
+	from cohort_gmv_l2y_actuals as act
 
+	left join P_ukplan_report_T.protrader_quarterly_forecasts as fc
+		on act.cohort_name = fc.cohort_name
+		and act.retail_year = fc.forecast_retail_year
+		and act.retail_quarter_id = fc.forecast_retail_quarter_id
+		and act.retail_week = fc.forecast_retail_week
+;
 
-    -- you need to find a way to control the cohorts for different years and quarters in your code.
-    -- you do not want that part to be a hard coded input
