@@ -1,0 +1,83 @@
+
+drop table if exists P_INVENTORYPLANNING_T.UKPLAN473_VERBATIM;
+create TABLE P_INVENTORYPLANNING_T.UKPLAN473_VERBATIM as
+select items.seller_id
+,items.seller_name
+,items.initiative_name
+,CONCAT(cal.RETAIL_YEAR,'W',lpad(cal.RETAIL_WEEK,2,'0')) as RETAIL_YEAR_WEEK
+,cal.AGE_FOR_RTL_WEEK_ID
+,vr.VRBTM_RSPNS_TXT
+,case q.QSTN_RSPNS_VALUE_NUM when 5 then '5 Very Satisfied'
+when 4 then '4 Satisfied'
+when 3 then '3 Neutral'
+when 2 then '2 Disatisfied'
+when 1 then '1 Very Disatisfied' end as rating
+,q.QSTN_RSPNS_VALUE_NUM as score
+,t.USER_SRVY_CMPLTD_DT as Completion_date
+,items.item_condition
+,items.VERTICAL
+,items.META_CATEG_NAME
+,items.CATEG_LVL2_NAME
+,items.item_id
+,items.AUCT_TITLE as AUCTION_TITLE
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t -- CSAT table for focus categories
+
+INNER JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID -- join to get responses by survey ID
+INNER JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp ON rsp.QSTN_ID = q.QSTN_ID -- getting the question ID to join to response table
+												AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+INNER JOIN ACCESS_VIEWS.dw_cal_dt cal on cast(t.USER_SRVY_CMPLTD_DT as date) = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -2  and AGE_FOR_RTL_WEEK_ID <= -1
+INNER JOIN (select distinct user.USER_ID as seller_id
+					,user.USER_SLCTD_ID as seller_name
+					,coalesce(fcs.initiative_name,'Other') as initiative_name
+					,tran.ITEM_ID
+					,tran.TRANSACTION_ID
+					,lstg.AUCT_TITLE
+					,case tran.item_cndtn_id when 1000 then 'New'
+	  			when 1500 then 'New - Other'
+	  			when 1750 then 'New - With defects'
+	  			when 2000 then 'Refurb - Certified' 
+	  			when 2010 then 'Refurb - Excellent'
+	  			when 2020 then 'Refurb - Very Good'
+	  			when 2030 then 'Refurb - Good'
+	  			when 2500 then 'Refurb - Seller' 
+				when 3000 then 'Used'
+	  			when 4000 then 'Used - Very Good'
+	  			when 5000 then 'Used - Good'
+	  			when 6000 then 'Used - Acceptable'
+	  			when 7000 then 'Used - For parts / not working'
+	  			else 'Other' end as item_condition
+				,cat.NEW_VERTICAL as Vertical
+				,cat.META_CATEG_NAME
+				,cat.CATEG_LVL2_NAME
+					from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+					inner join ACCESS_VIEWS.dw_cal_dt cal on tran.GMV_DT = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -1  and AGE_FOR_RTL_WEEK_ID <= -1
+					inner join ACCESS_VIEWS.dw_users user on tran.SELLER_ID = user.USER_ID
+					inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and tran.SITE_ID = cat.SITE_ID
+					left join PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg on tran.ITEM_ID = lstg.ITEM_ID
+					left join (select distinct seller_id
+										,seller_name
+										,min(initcap(trim(initiative_name))) as initiative_name
+										from P_awang_ops_t.seller_ops_83
+										where initcap(trim(seller_vertical)) in ('Electronics','Media')
+										and focused_flag = 'Focus'
+										group by 1,2) fcs on tran.SELLER_ID = fcs.seller_id
+					where 1=1
+					and tran.B2C_C2C = 'B2C'
+					and tran.RPRTD_WACKO_YN = 'N'
+					and cat.NEW_VERTICAL in ('Electronics','Media')
+					and tran.SITE_ID = 3
+					and tran.SLR_CNTRY_ID = 3
+					) items on t.LSTG_ID = items.item_id and t.ck_trans_id = items.transaction_id
+LEFT JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_VRBTM_RSPNS VR ON t.USER_SRVY_RSPNS_ID= VR.USER_SRVY_RSPNS_ID AND vr.qstn_id = 37000
+
+-- LEFT JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_VRBTM_RSPNS VR ON t.USER_SRVY_RSPNS_ID= VR.USER_SRVY_RSPNS_ID AND vr.qstn_id = 37000 vr.VRBTM_RSPNS_TXT as verbatim --verbatim free form text from user
+
+WHERE 1=1 
+	AND USER_SRVY_CMPLTD_DT IS NOT NULL
+	AND t.LSTG_ID > 0
+	AND t.TCHPNT_ID = 92 --92 is the latest touchpoint ID for buyers 
+	AND q.QSTN_ID in (36001,37000) --Numeric Value assigned to each of the questions
+	AND t.USER_SRVY_CMPLTD_DT >= '2021-01-01'
+	and t.USER_CNTRY_ID=3
+;
