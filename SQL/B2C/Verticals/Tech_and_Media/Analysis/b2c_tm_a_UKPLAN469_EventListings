@@ -1,0 +1,87 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-469
+
+Objective: Look at Events at a line listing level over the last 2 full retail weeks
+Description: I'll be looking at:
+GMV 
+Event ID
+ITEMS
+
+Date: 24/07/2023
+
+Author: Oliver Wand
+
+*/
+
+drop table if exists events_ev;
+create temporary table events_ev as
+select distinct re.RPP_EVENT_ID
+,re.event_name
+,re.start_ts
+,re.end_ts
+,ri.ITEM_ID
+,lstg.AUCT_TITL
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_ID
+,cat.CATEG_LVL3_NAME
+from ACCESS_VIEWS.rpp_event re
+inner join ACCESS_VIEWS.RPP_ITEM ri on ri.rpp_crtn_id = re.rpp_crtn_id
+inner join ACCESS_VIEWS.DW_LSTG_ITEM lstg on ri.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3
+inner join access_views.DW_CAL_DT cal on cal.cal_dt=cast(re.START_TS as date)
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and lstg.ITEM_SITE_ID = cat.SITE_ID
+where 1=1
+and cal.AGE_FOR_RTL_WEEK_ID between -20 and -1
+and cat.NEW_VERTICAL in ('Electronics','Media')
+;
+
+
+
+drop table if exists checkout_ev;
+create temporary table checkout_ev as
+
+select 
+ev.RPP_EVENT_ID
+,ev.EVENT_NAME
+,ck.item_id
+,ev.AUCT_TITL as AUCTION_TITLE
+,ck.SELLER_ID
+,user.USER_SLCTD_ID as SELLER_NAME
+,cal.RETAIL_WEEK
+,ev.new_vertical
+,ev.meta_categ_name
+,case cndtn.item_cndtn_id when 1000 then 'New'
+	  			when 1500 then 'New - Other'
+	  			when 1750 then 'New - With defects'
+	  			when 2000 then 'Refurb - Certified' 
+	  			when 2010 then 'Refurb - Excellent'
+	  			when 2020 then 'Refurb - Very Good'
+	  			when 2030 then 'Refurb - Good'
+	  			when 2500 then 'Refurb - Seller' 
+				when 3000 then 'Used'
+	  			when 4000 then 'Used - Very Good'
+	  			when 5000 then 'Used - Good'
+	  			when 6000 then 'Used - Acceptable'
+	  			when 7000 then 'Used - For parts / not working'
+	  			else 'Other' end as item_condition
+,count(distinct ck.TRANSACTION_ID) as TRANSACTIONS
+,SUM(gmv_plan_usd) AS GMV
+,sum(ck.quantity) as SI
+  	FROM  ACCESS_VIEWS.DW_CHECKOUT_TRANS ck  
+    INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL ON CAL.CAL_DT = CK.gmv_dt
+inner join access_views.DW_USEGM_HIST HIST ON HIST.USER_ID = CK.SELLER_ID 
+										AND CK.gmv_dt BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+										AND HIST.USEGM_GRP_ID = 48 AND HIST.USEGM_ID = 206 AND HIST.END_DATE >= '2015-12-30'
+inner join events_ev ev on ck.GMV_TIME between ev.start_ts and ev.end_ts and ev.item_id = ck.ITEM_ID
+inner join ACCESS_VIEWS.dw_users user on ck.SELLER_ID = user.USER_ID
+inner join ACCESS_VIEWS.lstg_item_cndtn cndtn on ck.item_id = cndtn.ITEM_ID
+where 1=1
+and cal.AGE_FOR_RTL_WEEK_ID between -2 and -1
+group by 1,2,3,4,5,6,7,8,9,10
+;
+
+-- Export as csv
+select *
+from checkout_ev
+;
