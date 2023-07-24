@@ -3,10 +3,8 @@ Jira: UKPLAN-288
 
 Title: Tableau: Pro Trader Forecast Performance
 Author: Tugrul Ates
-Date: 2023-07-20
+Date: 2023-07-24
 */
-
-
 
 create view P_ukplan_report_T.protrader_forecast_performance as 
 with protrader_cohorts_for_new_quarter as 
@@ -30,7 +28,6 @@ with protrader_cohorts_for_new_quarter as
 		cal.retail_year
 		,cal.retail_week
 		,cal.rtl_qtr_of_rtl_year_id as retail_quarter_id
-		,cat.new_vertical
 		,pro.cohort_name
 		,sum(tran.gmv20_sold_quantity) AS BI
 		,sum(tran.gmv20_plan) as GMV
@@ -70,7 +67,7 @@ with protrader_cohorts_for_new_quarter as
 		and tran.auct_end_dt > '2019-12-28'
 		and tran.auct_type_cd not in (10,15)
 		and tran.lstg_site_id = 3	
-	group by 1,2,3,4,5
+	group by 1,2,3,4
 )
 	
  
