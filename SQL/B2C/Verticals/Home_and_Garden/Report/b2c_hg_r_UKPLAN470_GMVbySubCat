@@ -1,0 +1,454 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-470
+
+Description
+
+Author: Oliver Wand
+
+Date: 24/07/2023
+
+
+*/
+
+DROP TABLE IF EXISTS P_INVENTORYPLANNING_T.HANDG_WEEKLY_DATA;
+
+CREATE TABLE P_INVENTORYPLANNING_T.HANDG_WEEKLY_DATA as
+
+Select *
+From
+	(
+	select 
+	lstg.ITEM_ID
+	,lstg.SLR_ID
+	,u.user_slctd_id as seller_name
+	,lstg.B2C_C2C as Business_flag
+	,FOCUS_FLAG
+	,case when cndtn.cndtn_rollup_id = 1 then 'New'
+when cndtn.cndtn_rollup_id = 2 then 'Refurbished'
+when cndtn.cndtn_rollup_id = 3 then 'Used'
+when cndtn.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+	,INVENTORY_PROP
+	,META_CATEG_NAME
+	,CATEG_LVL2_NAME
+	,CATEG_LVL3_NAME
+	,CATEG_LVL4_NAME
+	,cat.new_vertical
+
+			FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg 
+			INNER JOIN DW_CAL_DT CAL
+				ON lstg.AUCT_START_DT < cal.cal_dt and lstg.AUCT_END_DT >= cal.CAL_DT
+-- 				and (AGE_FOR_RTL_YEAR_ID >= -1) and
+-- 				(RETAIL_WEEK between 1
+-- 				and (select RETAIL_WEEK from DW_CAL_DT CAL where AGE_FOR_RTL_WEEK_ID = -1 Group by 1))
+-- 			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+-- 			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
+-- 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
+			INNER JOIN P_INVENTORYPLANNING_T.dw_category_groupings_adj CAT
+					ON lstg.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+					AND cat.site_id = 3
+			LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
+				ON lstg.ITEM_ID = CNDTN.ITEM_ID
+			Left join P_ROBEVANS_T.item_cndtn_descr cd on cd.cndtn_rollup_id = CNDTN.CNDTN_ROLLUP_ID
+			INNER JOIN DW_USERS u
+				on u.user_id = lstg.SLR_ID
+			LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg Where new_vertical = 'Home & Garden' group by 1,2,3,4) INV
+				on inv.item_id = lstg.item_id
+
+			WHERE 1=1
+			AND lstg.SLR_CNTRY_ID = 3
+			AND lstg.LSTG_SITE_ID = 3
+			AND lstg.AUCT_END_DT >= '2018-12-25'
+			AND lstg.B2C_C2C = 'B2C'
+			GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12
+			)
+Where new_vertical = 'Home & Garden'
+;
+
+DROP TABLE if exists P_INVENTORYPLANNING_T.HANDG_WEEKLY_CAT_GMV4;
+
+Create table P_INVENTORYPLANNING_T.HANDG_WEEKLY_CAT_GMV4 as
+
+SELECT
+'GMV' as target
+,retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+-- ,raw.seller_name
+,case when HIST.USEGM_ID = 206 then 'B2C' end as Business_flag
+,raw.FOCUS_FLAG
+,case when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,raw.INVENTORY_PROP
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,cat.CATEG_LVL4_NAME
+,sum(case when AGE_FOR_RTL_YEAR_ID = 0 then ck.GMV_PLAN_USD End) as TY_GMV
+,sum(case when AGE_FOR_RTL_YEAR_ID = -1 then ck.GMV_PLAN_USD End) as LY_GMV
+,sum(case when AGE_FOR_RTL_YEAR_ID = 0 then ck.QUANTITY End) as TY_SI
+,sum(case when AGE_FOR_RTL_YEAR_ID = -1 then ck.QUANTITY End) as LY_SI
+,0 as TY_LL
+,0 as LY_LL
+,0 as TY_VI
+,0 as LY_VI
+
+FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS ck 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON ck.gmv_dt = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0
+			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
+			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+-- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
+
+INNER JOIN P_awang_ops_t.item_invent_lstg raw on ck.ITEM_ID = raw.item_id and raw.new_vertical = 'Home & Garden'
+INNER JOIN ( select *
+,new_vertical
+from P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ) cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+    INNER JOIN ACCESS_VIEWS.DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2018-12-25'
+INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN LSTG on ck.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3		
+WHERE 1=1
+AND ck.SLR_CNTRY_ID = 3
+and ck.BYR_CNTRY_ID = 3
+AND ck.SITE_ID = 3
+AND CK.CK_WACKO_YN = 'N'
+AND CK.AUCT_END_DT >= '2018-12-25'
+AND ck.SALE_TYPE not in (10,12,15)
+AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+--CHANGE HERE FOR VERTICAL
+AND cat.new_vertical = 'Home & Garden'
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+
+
+UNION ALL
+
+
+SELECT
+'Listings' as target
+,retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+-- ,raw.seller_name
+,lstg.EU_B2C_C2C_FLAG as Business_flag
+,raw.FOCUS_FLAG
+,case when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,raw.INVENTORY_PROP
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,cat.CATEG_LVL4_NAME
+,0 as TY_GMV
+,0 as LY_GMV
+,0 as TY_SI
+,0 as LY_SI
+,count(distinct case when AGE_FOR_RTL_YEAR_ID = 0 then lstg.item_id End) as TY_LL
+,count(distinct case when AGE_FOR_RTL_YEAR_ID = -1 then lstg.item_id End) as LY_LL
+,0 as TY_VI
+,0 as LY_VI
+
+FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON lstg.AUCT_START_DT < cal.cal_dt and lstg.AUCT_END_DT >= cal.CAL_DT
+-- 			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+-- 			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
+			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+-- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
+
+INNER JOIN P_awang_ops_t.item_invent_lstg raw on lstg.ITEM_ID = raw.item_id and raw.new_vertical = 'Home & Garden'
+INNER JOIN ( select *
+,new_vertical
+from P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ) cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID	and cat.site_id = 3
+			
+WHERE 1=1
+AND lstg.SLR_CNTRY_ID = 3
+AND lstg.LSTG_SITE_ID = 3
+--AND lstg.AUCT_END_DT >= '2018-12-25'
+AND lstg.EU_B2C_C2C_FLAG = 'B2C'
+AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+--CHANGE HERE FOR VERTICAL
+AND cat.new_vertical = 'Home & Garden'
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+
+UNION ALL
+
+
+SELECT
+'Views' as target
+,retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+-- ,raw.seller_name
+,lstg.EU_B2C_C2C_FLAG as Business_flag
+,raw.FOCUS_FLAG
+,case when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,raw.INVENTORY_PROP
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,cat.CATEG_LVL4_NAME
+,0 as TY_GMV
+,0 as LY_GMV
+,0 as TY_SI
+,0 as LY_SI
+,0 as TY_LL
+,0 as LY_LL
+,sum(case when AGE_FOR_RTL_YEAR_ID = 0 then trfc.TTL_VI_CNT End) as TY_VI
+,sum(case when AGE_FOR_RTL_YEAR_ID = -1 then trfc.TTL_VI_CNT End) as LY_VI
+
+FROM PRS_RESTRICTED_V.SLNG_TRFC_SUPER_FACT trfc 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL on trfc.CAL_DT = cal.cal_dt
+			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
+			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+-- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
+
+INNER JOIN P_awang_ops_t.item_invent_lstg raw on trfc.ITEM_ID = raw.item_id and raw.new_vertical = 'Home & Garden'
+INNER JOIN ( select *
+,new_vertical
+from P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ) cat on trfc.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+INNER JOIN 
+(select 
+ITEM_ID
+,ITEM_CNDTN_ID
+,cndtn_rollup_id
+,EU_B2C_C2C_FLAG
+FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT
+WHERE SLR_CNTRY_ID = 3
+AND LSTG_SITE_ID = 3) lstg on trfc.ITEM_ID = lstg.ITEM_ID
+WHERE 1=1
+and trfc.SITE_ID = 3
+AND lstg.EU_B2C_C2C_FLAG = 'B2C'
+AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+--CHANGE HERE FOR VERTICAL
+AND cat.new_vertical = 'Home & Garden'
+
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+;
+
+
+
+----------------------------------------------------------------Seller Level--------------------------------------------------------
+DROP TABLE if exists HANDG_WEEKLY_TOP_SELLERS;
+
+Create temporary table HANDG_WEEKLY_TOP_SELLERS as
+select *
+from (
+select *
+,row_number() over (order by GMV desc) as GMV_RNK
+from (
+SELECT
+ck.SELLER_ID
+,u.user_slctd_id as seller_name
+,coalesce(inventory_prop,'Other') as inventory_prop
+,sum(ck.GMV_PLAN_USD) as GMV
+,sum(QUANTITY) as SI
+
+FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS ck 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON ck.gmv_dt = cal.CAL_DT and cal.AGE_FOR_RTL_WEEK_ID between -53 and -1
+
+INNER JOIN (
+select *
+,new_vertical
+from P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ) cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+    INNER JOIN ACCESS_VIEWS.DW_USEGM_HIST AS HIST
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 -- UK Sellers
+        AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2018-12-25'
+INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN LSTG on ck.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3
+INNER JOIN DW_USERS u on u.user_id = ck.SELLER_ID
+LEFT JOIN (select distinct seller_id as slr_id
+,initiative_name as inventory_prop
+from  P_awang_ops_T.seller_ops_83
+where seller_vertical = 'Home & Garden') focus on ck.SELLER_ID = focus.slr_id
+WHERE 1=1
+AND ck.SLR_CNTRY_ID = 3
+and ck.BYR_CNTRY_ID = 3
+AND ck.SITE_ID = 3
+AND CK.CK_WACKO_YN = 'N'
+AND CK.AUCT_END_DT >= '2018-12-25'
+AND ck.SALE_TYPE not in (10,12,15)
+AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+AND cal.AGE_FOR_RTL_WEEK_ID between -53 and -1
+--CHANGE HERE FOR VERTICAL
+AND cat.new_vertical = 'Home & Garden'
+
+group by 1,2,3
+))
+where inventory_prop != 'Other' or GMV_RNK <= 500
+;
+----------------------------------------------------------------Seller Level--------------------------------------------------------
+DROP TABLE if exists P_INVENTORYPLANNING_T.HANDG_WEEKLY_SELLER_GMV4;
+
+Create table P_INVENTORYPLANNING_T.HANDG_WEEKLY_SELLER_GMV4 as
+
+SELECT
+'GMV' as target
+,retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+,raw.seller_name
+,case when hist.USEGM_ID = 206 then 'B2C' else 'C2C' end as Business_flag
+,case when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,raw.INVENTORY_PROP
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,cat.CATEG_LVL4_NAME
+,sum(case when AGE_FOR_RTL_YEAR_ID = 0 then ck.GMV_PLAN_USD End) as TY_GMV
+,sum(case when AGE_FOR_RTL_YEAR_ID = -1 then ck.GMV_PLAN_USD End) as LY_GMV
+,sum(case when AGE_FOR_RTL_YEAR_ID = 0 then ck.QUANTITY End) as TY_SI
+,sum(case when AGE_FOR_RTL_YEAR_ID = -1 then ck.QUANTITY End) as LY_SI
+,0 as TY_LL
+,0 as LY_LL
+,0 as TY_VI
+,0 as LY_VI
+
+FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS ck 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON ck.gmv_dt = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
+			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
+
+INNER JOIN (
+select *
+,new_vertical
+from P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ) cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+    INNER JOIN ACCESS_VIEWS.DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 --B2C only sellers
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2018-12-25'
+INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN LSTG on ck.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3		
+
+
+INNER JOIN HANDG_WEEKLY_TOP_SELLERS raw on ck.SELLER_ID = raw.seller_id
+Left join P_ROBEVANS_T.item_cndtn_descr cd on cd.cndtn_rollup_id = lstg.CNDTN_ROLLUP_ID
+
+			
+WHERE 1=1
+AND ck.SLR_CNTRY_ID = 3
+and ck.BYR_CNTRY_ID = 3
+AND ck.SITE_ID = 3
+AND CK.CK_WACKO_YN = 'N'
+AND CK.AUCT_END_DT >= '2018-12-25'
+AND ck.SALE_TYPE not in (10,12,15)
+AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+--CHANGE HERE FOR VERTICAL
+AND cat.new_vertical = 'Home & Garden'
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+		
+
+UNION ALL
+
+
+SELECT
+'Listings' as target
+,retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+,raw.seller_name
+,lstg.eu_b2c_c2c_flag as Business_flag
+,case when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,raw.INVENTORY_PROP
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,cat.CATEG_LVL4_NAME
+,0 as TY_GMV
+,0 as LY_GMV
+,0 as TY_SI
+,0 as LY_SI
+,count(distinct case when AGE_FOR_RTL_YEAR_ID = 0 then lstg.item_id End) as TY_LL
+,count(distinct case when AGE_FOR_RTL_YEAR_ID = -1 then lstg.item_id End) as LY_LL
+,0 as TY_VI
+,0 as LY_VI
+FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON lstg.AUCT_START_DT < cal.cal_dt and lstg.AUCT_END_DT >= cal.CAL_DT
+			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
+			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
+INNER JOIN HANDG_WEEKLY_TOP_SELLERS raw on lstg.slr_id = raw.seller_id
+INNER JOIN (
+select *
+,new_vertical
+from P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ) cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+Left join P_ROBEVANS_T.item_cndtn_descr cd on cd.cndtn_rollup_id = lstg.CNDTN_ROLLUP_ID			
+			
+WHERE 1=1
+AND lstg.SLR_CNTRY_ID = 3
+AND lstg.LSTG_SITE_ID = 3
+AND lstg.AUCT_END_DT >= '2018-12-25'
+AND cat.new_vertical = 'Home & Garden'
+and lstg.eu_b2c_c2c_flag = 'B2C'
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+	
+
+
+UNION ALL
+
+
+SELECT
+'Views' as target
+,retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+,raw.seller_name
+,'B2C' as Business_flag
+,case when cndtn.cndtn_rollup_id = 1 then 'New'
+when cndtn.cndtn_rollup_id = 2 then 'Refurbished'
+when cndtn.cndtn_rollup_id = 3 then 'Used'
+when cndtn.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,raw.INVENTORY_PROP
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,cat.CATEG_LVL4_NAME
+,0 as TY_GMV
+,0 as LY_GMV
+,0 as TY_SI
+,0 as LY_SI
+,0 as TY_LL
+,0 as LY_LL
+,sum(case when AGE_FOR_RTL_YEAR_ID = 0 then trfc.TTL_VI_CNT End) as TY_VI
+,sum(case when AGE_FOR_RTL_YEAR_ID = -1 then trfc.TTL_VI_CNT End) as LY_VI
+
+FROM PRS_RESTRICTED_V.SLNG_TRFC_SUPER_FACT trfc 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON trfc.CAL_DT = cal.cal_dt
+			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
+			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
+INNER JOIN HANDG_WEEKLY_TOP_SELLERS raw on trfc.SELLER_ID = raw.seller_id
+INNER JOIN (
+select *
+,new_vertical
+from P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ) cat on trfc.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN CNDTN on trfc.ITEM_ID = cndtn.ITEM_ID
+Left join P_ROBEVANS_T.item_cndtn_descr cd on cd.cndtn_rollup_id = cndtn.CNDTN_ROLLUP_ID					
+WHERE 1=1
+and trfc.SITE_ID = 3
+AND cat.new_vertical = 'Home & Garden'
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+
+;
