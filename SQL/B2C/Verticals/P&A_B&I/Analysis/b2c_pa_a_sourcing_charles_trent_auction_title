@@ -1,0 +1,1222 @@
+------------------------------------------------------------------------------
+-- UKPLAN-457
+-- TOP PARTS BY YMM RANK BY VOLUME
+-- Previously provided sourcing data to Charles Trent however, there are listings which identified as multiple YMM according to fitment data. We are going to limit the data to a selection of sellers and using the auction title to check the Year/Make/Model entries.
+-- The Year/Make/Model of each item are identified by the combination of Fitment data and the auction titles
+-- For any items which are compatible to a range of years, please refer to the columns ‘Year_from’ and ‘Year_to’
+-- A new column ‘Buyer_type’ is added to indicate whether the transaction was purchased by a business or a private buyer
+------------------------------------------------------------------------------
+
+-- MY GARAGE DATA
+drop table if exists p_eupricing_t.My_Garage_data;
+create table p_eupricing_t.My_Garage_data as
+( select 
+VEHICLE_YEAR_DT,
+VEHICLE_MAKE_NAME,
+VEHICLE_MODEL_NAME,
+concat(VEHICLE_YEAR_DT,'.',VEHICLE_MAKE_NAME,'.',VEHICLE_MODEL_NAME) year_make_model,
+COUNT(DISTINCT VEHICLE_ID) EXPL_VEHICLES_REGISTERED
+FROM prs_motors_v.motors_my_vehicle MOTORS    
+LEFT JOIN ACCESS_VIEWS.dw_cal_dt cal   
+ON MOTORS.SRC_CRE_DT = cal.cal_dt
+WHERE MOTORS.site_id IN (3)
+            AND MOTORS.vehicle_sts_cd = 1
+            AND MOTORS.vehicle_share_type_cd = 1 --C&T
+--             AND cal.retail_year >= 2019
+-- 			AND CAL.age_for_rtl_week_id <0
+-- 			AND MOTORS.SRC_CRE_DT>'2019-01-03'
+group by 1,2,3,4
+);
+ Select * from prs_motors_v.motors_my_vehicle MOTORS where EBAY_LOGIN_NAME ='dilema131'   limit 100; 
+select * from  p_eupricing_t.My_Garage_data limit 100; 
+
+-- select count(*) num , sum(EXPL_VEHICLES_REGISTERED) EXPL_VEHICLES_REGISTERED from p_eupricing_t.My_Garage_data group by 1 order by 3 desc ;
+-- 40042
+
+
+-- select distinct  FTMNT_NAME from  DW_LSTG_ITEM_FTMNT where  upper(FTMNT_NAME) like '%MODEL%'  and  auct_end_dt >='2022-08-09' ;
+ --(FTMNT_NAME = 'Model' or FTMNT_NAME ='Model') and  auct_end_dt >='2022-08-09'  limit 100 ;
+
+-- select * from  p_eupricing_t.My_Garage_data limit 100
+--select * from  p_eupricing_t.B2B_FITMENT_TEMP limit 100
+---select * from  p_ichan_t.B2B_FITMENT_TEMP limit 100
+
+
+-- YMM FOR ALL FITMENT LISTINGS
+DROP TABLE IF EXISTS p_ichan_t.B2B_FITMENT_TEMP;
+CREATE TABLE p_ichan_t.B2B_FITMENT_TEMP AS 
+(
+select FM.*
+	
+/*FM.item_id
+, FM.auct_end_dt
+,MAX(case when FTMNT_NAME = 'Cars Year' then FTMNT_VALUE_TEXT else  0 end) as yr
+,MAX(case when FTMNT_NAME = 'Year' then FTMNT_VALUE_TEXT else  0 end) as yr2
+
+,MAX(case when FTMNT_NAME = 'Car Make' then FTMNT_VALUE_TEXT else  0 end) as make
+,MAX(case when FTMNT_NAME = 'Make' then FTMNT_VALUE_TEXT else  0 end) as make2
+
+,MAX(case when FTMNT_NAME = 'Model' then FTMNT_VALUE_TEXT else  0 end) as model*/
+--case when ftmnt_grp_id =1 and FTMNT_NAME = 'Cars Year'  then FTMNT_VALUE_TEXT  else  0 end 
+from 
+(
+select a.* 
+from DW_LSTG_ITEM_FTMNT as a
+join DW_CAL_DT as b on a.cre_date=b.cal_dt
+where  (FTMNT_NAME = 'Cars Year' OR FTMNT_NAME = 'Year'  or FTMNT_NAME ='Car Make'  or FTMNT_NAME ='Make' or FTMNT_NAME ='Model'/* or FTMNT_NAME ='Engine'*/ ) 
+and a.auct_end_dt >= '2018-01-01' 
+and a.cre_date <= CURRENT_DATE
+ ---and b.QTR_ID in ('2020Q02','2020Q01','2019Q04','2019Q03') -- fixing the cohort as of Q3 2020
+--and b.QTR_ID in ('2022Q02','2022Q01','2021Q04','2021Q03') -- fixing the cohort as of Q3 2022
+and a.FTMNT_VALUE_TEXT is not null
+) FM
+INNER JOIN PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lst on fm.item_id = lst.item_id and fm.auct_end_dt = lst.auct_end_dt and lst.lstg_site_id = 3
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID =3 AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)  and cat.CATEG_LVL2_ID=6030
+INNER JOIN lstg_item_cndtn cond ON fm.item_id = cond.item_id AND fm.auct_end_dt = cond.AUCT_END_DT AND COND.CNDTN_ROLLUP_ID = 3
+inner join  DW_CHECKOUT_TRANS AS CK on ck.item_id=lst.item_id and ck.GMV_DT >='2022-10-01'
+--INNER JOIN   DW_LSTG_ITEM lst  ON CK.ITEM_ID=LST.ITEM_ID -- SELECT * FROM   DW_LSTG_ITEM WHERE AUCT_END_DATE >='2023-10-01' LIMIT 100;
+-- INNER JOIN (SELECT ITEM_ID, AUCT_END_DT,FITMENT_ADOPTD_Flag FROM P_WAJ_T.FITMENT_CAPTURE_2018 WHERE retail_year = 2020) FT ON FT.ITEM_ID = FM.ITEM_ID AND FT.AUCT_END_DT = FM.AUCT_END_DT
+--GROUP BY 1,2
+); 
+
+select min( FTMNT_VALUE_TEXT ) from p_ichan_t.B2B_FITMENT_TEMP where  item_id =175598231218 and ftmnt_name ='Cars Year' limit 1000;
+
+DROP TABLE IF EXISTS p_ichan_t.FITMENT_Table;
+CREATE TABLE p_ichan_t.FITMENT_Table AS 
+
+SELECT t1.item_id, t1.Year_from, t2.Year_to, t3.make_from, t4.make_to, t5.Model_from, t6.Model_to
+FROM 
+  (SELECT item_id, min(FTMNT_VALUE_TEXT) as Year_from FROM p_ichan_t.B2B_FITMENT_TEMP WHERE ftmnt_name ='Cars Year' GROUP BY 1) t1
+  JOIN (SELECT item_id, max(FTMNT_VALUE_TEXT) as Year_to FROM p_ichan_t.B2B_FITMENT_TEMP WHERE ftmnt_name ='Cars Year' GROUP BY 1) t2
+  ON t1.item_id = t2.item_id
+  JOIN (SELECT item_id, min(FTMNT_VALUE_TEXT) as make_from FROM p_ichan_t.B2B_FITMENT_TEMP WHERE ftmnt_name ='Car Make' GROUP BY 1) t3
+  ON t1.item_id = t3.item_id
+  JOIN (SELECT item_id, max(FTMNT_VALUE_TEXT) as make_to FROM p_ichan_t.B2B_FITMENT_TEMP WHERE ftmnt_name ='Car Make' GROUP BY 1) t4
+  ON t1.item_id = t4.item_id
+  JOIN (SELECT item_id, min(FTMNT_VALUE_TEXT) as Model_from FROM p_ichan_t.B2B_FITMENT_TEMP WHERE ftmnt_name ='Model' GROUP BY 1) t5
+  ON t1.item_id = t5.item_id
+  JOIN (SELECT item_id, max(FTMNT_VALUE_TEXT) as Model_to FROM p_ichan_t.B2B_FITMENT_TEMP WHERE ftmnt_name ='Model' GROUP BY 1) t6
+  ON t1.item_id = t6.item_id;
+
+
+--449702  
+select * from p_ichan_t.FITMENT_Table where make_from <> make_to limit 1000;
+
+
+
+-- select count(distinct item_id) from p_ICHAN_t.B2B_FITMENT_TEMP ;
+-- 83,741,536
+---781 204 
+-- 18 149 150 
+-- 160951781 
+-- select*from p_ICHAN_t.B2B_FITMENT_TEMP where make ='Fiat' or make2 ='Fiat';
+-- JOIN ON MY GARAGE DATA TO RETURN ITEMS WITH RECOGNISED YMMS FROM MY GARAGE
+
+
+-- TOP ITEMS 
+Drop table if exists P_ICHAN_T.gp_MARKET_top_item ;
+Create table P_ICHAN_T.gp_MARKET_top_item as(
+SELECT	Retail_year
+,gmv_dt as Sale_date
+,slr_id
+,case when  ck.buyer_id=b2b.primary_user_id then 'B2B' else 'B2C' end as Buyer_type
+,CK.ITEM_ID
+,ck.TRANSACTION_ID
+,auct_titl
+,   cat.META_CATEG_ID
+, cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL2_ID
+,cat.CATEG_LVL3_NAME
+, cat.CATEG_LVL3_ID
+,cat.CATEG_LVL4_NAME
+,cat.CATEG_LVL4_ID
+,cat.CATEG_LVL5_NAME
+,cat.CATEG_LVL5_ID
+, Year_from
+,Year_to
+,Make_from
+,Make_to
+,Model_from
+,Model_to
+, case when  Year_from <> Year_to then 'Y' else 'N' end as Year_diff
+, case when  Make_from <> Make_to then 'Y' else 'N' end as Make_diff
+, case when  Model_from <> Model_to then 'Y' else 'N' end as Model_diff
+, case when CNDTN_ROLLUP_ID = 1 then 'New' when   CNDTN_ROLLUP_ID = 3 then 'Used'  when   CNDTN_ROLLUP_ID = 2 then 'Refurb' else  'Other'  end as Condition
+,gmv_plan_usd as GMV_usd
+, QUANTITY
+FROM   DW_CHECKOUT_TRANS ck -- SELECT * FROM   DW_CHECKOUT_TRANS  where seller_id= 45524941 111241341333
+INNER JOIN   DW_LSTG_ITEM lst  ON CK.ITEM_ID=LST.ITEM_ID -- SELECT * FROM   DW_LSTG_ITEM WHERE AUCT_END_DATE >='2023-10-01' LIMIT 100;
+INNER JOIN (  Select *  from  p_ichan_t.FITMENT_Table  ) FIT ON CK.ITEM_ID =FIT.ITEM_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.gmv_DT   and retail_year =2022   --change here for time period if needed
+INNER JOIN ( select meta_categ_id, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_name, categ_lvl4_id,categ_lvl5_name, categ_lvl5_id,  LEAF_CATEG_ID,SITE_ID,
+			 BSNS_VRTCL_NAME  ,SAP_CATEGORY_ID,
+					
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+else bsns_vrtcl_name end as new_vertical
+		from DW_CATEGORY_GROUPINGS where SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)  group by 1,2,3,4,5,6,7,8 ,9,10,11,12,13,14)  AS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) 
+		AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			inner JOIN lstg_item_cndtn cond ON ck.item_id = cond.item_id  AND ck.auct_end_dt = cond.AUCT_END_DT
+left outer JOIN DW_USERs U ON U.USER_ID= ck.seller_id 
+INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+Left join ( select distinct primary_user_id from p_eupricing_t.ymm_b2b_buyers_2022 ) b2b on ck.buyer_id=b2b.primary_user_id
+WHERE 1=1
+				and slr_id in ( select distinct user_id from P_ICHAN_T.ETRS_DATA ) 
+				and CK.SALE_TYPE NOT IN (10,15)
+				--and ck.site_id = 3
+				and ck.slr_cntry_id = 3
+				and ck.BYR_CNTRY_ID=3
+				--and seller_id =1193121968
+				and CREATED_DT >='2022-01-01'
+				and retail_year =2022
+				and  categ_lvl2_id in (6030)
+				--and categ_lvl3_id = 33637
+				and new_vertical in('Parts & Accessories')
+				and u.USER_DSGNTN_ID =2 
+				and  CNDTN_ROLLUP_ID = 3
+				--and retail_week between 1 and 13
+				and HIST.USEGM_ID = 206		
+					) ;
+				
+				-- Select * from  P_ICHAN_T.gp_MARKET_top_item ; 
+/*
+-- CONCAT YMM				
+DROP TABLE IF EXISTS    P_ICHAN_T.gp_MARKET_TOP_YMM  ;
+CREATE TABLE   P_ICHAN_T.gp_MARKET_TOP_YMM AS	Select concat(YR,"-",MAKE,"-",MODEL) AS YMM , * from  P_ICHAN_T.gp_MARKET_top_item WHERE BI >=20 ;		
+SELECT * FROM   P_ICHAN_T.gp_MARKET_TOP_YMM 	;
+select distinct ymm from  P_ICHAN_T.gp_MARKET_TOP_YMM 	 ;
+
+select RANK() OVER (ORDER BY BI DESC)  AS RANK, * FROM ( SELECT YMM , sum(bi) BI from  P_ICHAN_T.gp_MARKET_TOP_YMM group by 1) ;
+
+---EXCEL OUTPUT
+Drop table if exists    P_ICHAN_T.gp_MARKET_TOP_YMM_OUTPUT ;
+CREATE TABLE   P_ICHAN_T.gp_MARKET_TOP_YMM_OUTPUT AS
+select a.*,
+b.rank
+from  P_ICHAN_T.gp_MARKET_TOP_YMM   a 
+left join ( 		select RANK() OVER (ORDER BY BI DESC)  AS RANK, * FROM ( SELECT YMM , sum(bi) BI from  P_ICHAN_T.gp_MARKET_TOP_YMM group by 1)) b on a.YMM=B.YMM;		
+SELECT * FROM   P_ICHAN_T.gp_MARKET_TOP_YMM_OUTPUT;
+
+*/
+-- PULL OEM numbers
+drop table if exists  P_ICHAN_T.gp_MARKET_top_item_oem  ;
+create table  P_ICHAN_T.gp_MARKET_top_item_oem as 
+SELECT
+m.item_id, 
+oem_number,
+CASE	WHEN lst.auct_type_code IN (1,8) THEN 'Auction'	
+  		WHEN lst.auct_type_code IN (7,9) THEN 'Fixed Price'	
+  		WHEN lst.auct_type_code = 13 THEN  'Classified'	
+  		END AS format_listing
+from DW_LSTG_ITEM lst 
+inner join (	Select distinct item_id from  P_ICHAN_T.gp_MARKET_top_item ) m on lst.item_id=m.item_id
+	-- 	Reference OE/OEM Number
+left join (select item_id, max(oem_number) oem_number from (select 
+						upper(ASPCT_VLU_NM) as oem_number,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('reference oe/oem number') --and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4 ) group by 1 ) bbase
+				ON lst.ITEM_ID = bbase.ITEM_ID	
+	;
+Select * from  P_ICHAN_T.gp_MARKET_top_item_oem limit 1000;
+
+
+
+-- Add OEM numbers to the orignal 
+drop table if exists  P_ICHAN_T.gp_MARKET_top_output ; 
+create table P_ICHAN_T.gp_MARKET_top_output as 
+Select distinct  a.*,
+b.oem_number,
+b.format_listing
+from  P_ICHAN_T.gp_MARKET_top_item a
+left join  P_ICHAN_T.gp_MARKET_top_item_oem b on a.item_id=b.item_id ;  -- 430933 
+--
+
+
+
+drop table if exists  P_ICHAN_T.gp_MARKET_top_output_match ; 
+create table P_ICHAN_T.gp_MARKET_top_output_match as 
+select distinct 
+case when  auct_titl LIKE CONCAT('%', Year_from,  '%') then 'Y' else 'N' end as Year_from_match,
+case when  auct_titl LIKE CONCAT('%', Year_to,    '%') then 'Y' else 'N' end as Year_to_match,
+case when  auct_titl LIKE CONCAT('%', Make_from,  '%') then 'Y' else 'N' end as Make_from_match,
+case when  auct_titl LIKE CONCAT('%', Make_to,    '%') then 'Y' else 'N' end as Make_to_match,
+case when  auct_titl LIKE CONCAT('%', Model_from, '%') then 'Y' else 'N' end as Model_from_match,
+case when  auct_titl LIKE CONCAT('%', Model_to,   '%') then 'Y' else 'N' end as Model_to_match,*
+from  P_ICHAN_T.gp_MARKET_top_output 
+;
+
+drop table if exists  P_ICHAN_T.gp_MARKET_top_output_text ; 
+create table P_ICHAN_T.gp_MARKET_top_output_text as 
+Select 
+case
+when upper(auct_titl) LIKE CONCAT('%', 'FORD',   '%') then  'FORD'
+when upper(auct_titl) LIKE CONCAT('%', 'BMW',   '%') then  'BMW'
+when upper(auct_titl) LIKE CONCAT('%', 'VAUXHALL',   '%') then  'VAUXHALL'
+when upper(auct_titl) LIKE CONCAT('%', 'VW',   '%') then  'VW'
+when upper(auct_titl) LIKE CONCAT('%', 'AUDI',   '%') then  'AUDI'
+when upper(auct_titl) LIKE CONCAT('%', 'MINI',   '%') then  'MINI'
+when upper(auct_titl) LIKE CONCAT('%', 'PEUGEOT',   '%') then  'PEUGEOT'
+when upper(auct_titl) LIKE CONCAT('%', 'NISSAN',   '%') then  'NISSAN'
+when upper(auct_titl) LIKE CONCAT('%', 'MERCEDES-BENZ',   '%') then  'MERCEDES-BENZ'
+when upper(auct_titl) LIKE CONCAT('%', 'RENAULT',   '%') then  'RENAULT'
+when upper(auct_titl) LIKE CONCAT('%', 'CITROËN',   '%') then  'CITROËN'
+when upper(auct_titl) LIKE CONCAT('%', 'TOYOTA',   '%') then  'TOYOTA'
+when upper(auct_titl) LIKE CONCAT('%', 'HONDA',   '%') then  'HONDA'
+when upper(auct_titl) LIKE CONCAT('%', 'SEAT',   '%') then  'SEAT'
+when upper(auct_titl) LIKE CONCAT('%', 'HYUNDAI',   '%') then  'HYUNDAI'
+when upper(auct_titl) LIKE CONCAT('%', 'FIAT',   '%') then  'FIAT'
+when upper(auct_titl) LIKE CONCAT('%', 'LAND ROVER',   '%') then  'LAND ROVER'
+when upper(auct_titl) LIKE CONCAT('%', 'KIA',   '%') then  'KIA'
+when upper(auct_titl) LIKE CONCAT('%', 'SKODA',   '%') then  'SKODA'
+when upper(auct_titl) LIKE CONCAT('%', 'VOLVO',   '%') then  'VOLVO'
+when upper(auct_titl) LIKE CONCAT('%', 'TBC',   '%') then  'TBC'
+when upper(auct_titl) LIKE CONCAT('%', 'MAZDA',   '%') then  'MAZDA'
+when upper(auct_titl) LIKE CONCAT('%', 'SUZUKI',   '%') then  'SUZUKI'
+when upper(auct_titl) LIKE CONCAT('%', 'JAGUAR',   '%') then  'JAGUAR'
+when upper(auct_titl) LIKE CONCAT('%', 'MITSUBISHI',   '%') then  'MITSUBISHI'
+when upper(auct_titl) LIKE CONCAT('%', 'PORSCHE',   '%') then  'PORSCHE'
+when upper(auct_titl) LIKE CONCAT('%', 'DACIA',   '%') then  'DACIA'
+when upper(auct_titl) LIKE CONCAT('%', 'SAAB',   '%') then  'SAAB'
+when upper(auct_titl) LIKE CONCAT('%', 'CHEVROLET',   '%') then  'CHEVROLET'
+when upper(auct_titl) LIKE CONCAT('%', 'ALFA ROMEO',   '%') then  'ALFA ROMEO'
+when upper(auct_titl) LIKE CONCAT('%', 'JEEP',   '%') then  'JEEP'
+when upper(auct_titl) LIKE CONCAT('%', 'LEXUS',   '%') then  'LEXUS'
+when upper(auct_titl) LIKE CONCAT('%', 'SMART',   '%') then  'SMART'
+when upper(auct_titl) LIKE CONCAT('%', 'DS',   '%') then  'DS'
+when upper(auct_titl) LIKE CONCAT('%', 'SUBARU',   '%') then  'SUBARU'
+when upper(auct_titl) LIKE CONCAT('%', 'MG',   '%') then  'MG'
+when upper(auct_titl) LIKE CONCAT('%', 'CHRYSLER',   '%') then  'CHRYSLER'
+when upper(auct_titl) LIKE CONCAT('%', 'OPEL',   '%') then  'OPEL'
+when upper(auct_titl) LIKE CONCAT('%', 'ROVER',   '%') then  'ROVER'
+when upper(auct_titl) LIKE CONCAT('%', 'ISUZU',   '%') then  'ISUZU'
+when upper(auct_titl) LIKE CONCAT('%', 'TESLA',   '%') then  'TESLA'
+when upper(auct_titl) LIKE CONCAT('%', 'DAIHATSU',   '%') then  'DAIHATSU'
+when upper(auct_titl) LIKE CONCAT('%', 'DODGE',   '%') then  'DODGE'
+when upper(auct_titl) LIKE CONCAT('%', 'IVECO',   '%') then  'IVECO'
+when upper(auct_titl) LIKE CONCAT('%', 'SSANGYONG',   '%') then  'SSANGYONG'
+when upper(auct_titl) LIKE CONCAT('%', 'LDV',   '%') then  'LDV'
+when upper(auct_titl) LIKE CONCAT('%', 'BENTLEY',   '%') then  'BENTLEY'
+when upper(auct_titl) LIKE CONCAT('%', 'ASTON MARTIN',   '%') then  'ASTON MARTIN'
+when upper(auct_titl) LIKE CONCAT('%', 'DAEWOO',   '%') then  'DAEWOO'
+when upper(auct_titl) LIKE CONCAT('%', 'PROTON',   '%') then  'PROTON'
+when upper(auct_titl) LIKE CONCAT('%', 'FERRARI',   '%') then  'FERRARI'
+when upper(auct_titl) LIKE CONCAT('%', 'INFINITI',   '%') then  'INFINITI'
+when upper(auct_titl) LIKE CONCAT('%', 'MASERATI',   '%') then  'MASERATI'
+when upper(auct_titl) LIKE CONCAT('%', 'PERODUA',   '%') then  'PERODUA'
+when upper(auct_titl) LIKE CONCAT('%', 'LOTUS',   '%') then  'LOTUS'
+when upper(auct_titl) LIKE CONCAT('%', 'CUPRA',   '%') then  'CUPRA'
+when upper(auct_titl) LIKE CONCAT('%', 'GREAT WALL',   '%') then  'GREAT WALL'
+when upper(auct_titl) LIKE CONCAT('%', 'MICROCAR',   '%') then  'MICROCAR'
+when upper(auct_titl) LIKE CONCAT('%', 'LTI',   '%') then  'LTI'
+when upper(auct_titl) LIKE CONCAT('%', 'MCLAREN',   '%') then  'MCLAREN'
+when upper(auct_titl) LIKE CONCAT('%', 'MAN',   '%') then  'MAN'
+when upper(auct_titl) LIKE CONCAT('%', 'LAMBORGHINI',   '%') then  'LAMBORGHINI'
+when upper(auct_titl) LIKE CONCAT('%', 'TRIUMPH',   '%') then  'TRIUMPH'
+when upper(auct_titl) LIKE CONCAT('%', 'AUSTIN',   '%') then  'AUSTIN'
+when upper(auct_titl) LIKE CONCAT('%', 'ROLLS-ROYCE',   '%') then  'ROLLS-ROYCE'
+when upper(auct_titl) LIKE CONCAT('%', 'AIXAM',   '%') then  'AIXAM'
+when upper(auct_titl) LIKE CONCAT('%', 'TVR',   '%') then  'TVR'
+when upper(auct_titl) LIKE CONCAT('%', 'TALBOT',   '%') then  'TALBOT'
+when upper(auct_titl) LIKE CONCAT('%', 'ZENOS CARS',   '%') then  'ZENOS CARS'
+when upper(auct_titl) LIKE CONCAT('%', 'CADILLAC',   '%') then  'CADILLAC'
+when upper(auct_titl) LIKE CONCAT('%', 'MORRIS',   '%') then  'MORRIS'
+when upper(auct_titl) LIKE CONCAT('%', 'PIAGGIO',   '%') then  'PIAGGIO'
+when upper(auct_titl) LIKE CONCAT('%', 'PONTIAC',   '%') then  'PONTIAC'
+when upper(auct_titl) LIKE CONCAT('%', 'NOBLE',   '%') then  'NOBLE'
+when upper(auct_titl) LIKE CONCAT('%', 'MORGAN',   '%') then  'MORGAN'
+when upper(auct_titl) LIKE CONCAT('%', 'RELIANT',   '%') then  'RELIANT'
+when upper(auct_titl) LIKE CONCAT('%', 'AC',   '%') then  'AC' 
+when upper(auct_titl) LIKE CONCAT('%', 'MERCEDES',   '%') then  'MERCEDES' 
+when upper(auct_titl) LIKE CONCAT('%', 'VOLKSWAGEN',   '%') then  'VOLKSWAGEN'
+when upper(auct_titl) LIKE CONCAT('%', 'CITROEN',   '%') then  'CITROEN'
+when upper(auct_titl) LIKE CONCAT('%', 'CITREON',   '%') then  'CITROEN'
+when upper(auct_titl) LIKE CONCAT('%', 'VIVARO',   '%') then   'VAUXHALL'
+when upper(auct_titl) LIKE CONCAT('%', 'FIESTA',   '%') then   'FORD'
+when upper(auct_titl) LIKE CONCAT('%', 'CORSA',   '%') then   'OPEL'
+when upper(auct_titl) LIKE CONCAT('%', 'BERLINGO',   '%') then   'CITROEN'
+when upper(auct_titl) LIKE CONCAT('%', 'DISCOVERY',   '%') then   'DISCOVERY'
+when upper(auct_titl) LIKE CONCAT('%', 'FIORINO',   '%') then   'FIORINO'
+when upper(auct_titl) LIKE CONCAT('%', 'QASHQAI',   '%') then   'NISSAN'
+when upper(auct_titl) LIKE CONCAT('%', 'BIPPER',   '%') then   'PEUGEOT'
+when upper(auct_titl) LIKE CONCAT('%', 'PICASSO',   '%') then   'CITROEN'
+when upper(auct_titl) LIKE CONCAT('%', 'COMBO/DOBLO',   '%') then   'VAUXHALL'
+when upper(auct_titl) LIKE CONCAT('%', 'EXPERT / DISPATCH',   '%') then   'CITROEN'
+when upper(auct_titl) LIKE CONCAT('%', 'FREELANDER',   '%') then   'LANDROVER'
+when upper(auct_titl) LIKE CONCAT('%', 'OCTAVIA',   '%') then   'SKODA'
+when upper(auct_titl) LIKE CONCAT('%', 'RELAY DUCATO',   '%') then   'CITROEN'
+when upper(auct_titl) LIKE CONCAT('%', 'SANDERO DUSTER',   '%') then   'RENAULT'
+when upper(auct_titl) LIKE CONCAT('%', 'TIGUAN',   '%') then   'VOLKSWAGEN'
+when upper(auct_titl) LIKE CONCAT('%', 'VARTA',   '%') then   'PEUGEOT'
+when upper(auct_titl) LIKE CONCAT('%', 'SORENTO',   '%') then   'KIA'
+when upper(auct_titl) LIKE CONCAT('%', 'AMP MAXI BLADE',   '%') then   'AUDI'
+else 'TBC' end as Make_text,
+case 
+when upper(auct_titl) LIKE CONCAT('%', 'FIESTA',   '%') then  'FIESTA'
+when upper(auct_titl) LIKE CONCAT('%', 'MINI',   '%') then  'MINI'
+when upper(auct_titl) LIKE CONCAT('%', '3 SERIES',   '%') then  '3 SERIES'
+when upper(auct_titl) LIKE CONCAT('%', 'GOLF',   '%') then  'GOLF'
+when upper(auct_titl) LIKE CONCAT('%', 'FOCUS',   '%') then  'FOCUS'
+when upper(auct_titl) LIKE CONCAT('%', 'CORSA',   '%') then  'CORSA'
+when upper(auct_titl) LIKE CONCAT('%', 'ASTRA',   '%') then  'ASTRA'
+when upper(auct_titl) LIKE CONCAT('%', '1 SERIES',   '%') then  '1 SERIES'
+when upper(auct_titl) LIKE CONCAT('%', 'POLO',   '%') then  'POLO'
+when upper(auct_titl) LIKE CONCAT('%', 'A3',   '%') then  'A3'
+when upper(auct_titl) LIKE CONCAT('%', 'A4',   '%') then  'A4'
+when upper(auct_titl) LIKE CONCAT('%', 'CLIO',   '%') then  'CLIO'
+when upper(auct_titl) LIKE CONCAT('%', '5 SERIES',   '%') then  '5 SERIES'
+when upper(auct_titl) LIKE CONCAT('%', 'MONDEO',   '%') then  'MONDEO'
+when upper(auct_titl) LIKE CONCAT('%', 'IBIZA',   '%') then  'IBIZA'
+when upper(auct_titl) LIKE CONCAT('%', 'CIVIC',   '%') then  'CIVIC'
+when upper(auct_titl) LIKE CONCAT('%', 'INSIGNIA',   '%') then  'INSIGNIA'
+when upper(auct_titl) LIKE CONCAT('%', 'ZAFIRA',   '%') then  'ZAFIRA'
+when upper(auct_titl) LIKE CONCAT('%', 'C-CLASS',   '%') then  'C-CLASS'
+when upper(auct_titl) LIKE CONCAT('%', 'A-CLASS',   '%') then  'A-CLASS'
+when upper(auct_titl) LIKE CONCAT('%', '208',   '%') then  '208'
+when upper(auct_titl) LIKE CONCAT('%', 'A6',   '%') then  'A6'
+when upper(auct_titl) LIKE CONCAT('%', 'LEON',   '%') then  'LEON'
+when upper(auct_titl) LIKE CONCAT('%', '500',   '%') then  '500'
+when upper(auct_titl) LIKE CONCAT('%', 'JUKE',   '%') then  'JUKE'
+when upper(auct_titl) LIKE CONCAT('%', 'KUGA',   '%') then  'KUGA'
+when upper(auct_titl) LIKE CONCAT('%', 'QASHQAI',   '%') then  'QASHQAI'
+when upper(auct_titl) LIKE CONCAT('%', 'FABIA',   '%') then  'FABIA'
+when upper(auct_titl) LIKE CONCAT('%', 'X5',   '%') then  'X5'
+when upper(auct_titl) LIKE CONCAT('%', 'JAZZ',   '%') then  'JAZZ'
+when upper(auct_titl) LIKE CONCAT('%', 'PASSAT',   '%') then  'PASSAT'
+when upper(auct_titl) LIKE CONCAT('%', 'MICRA',   '%') then  'MICRA'
+when upper(auct_titl) LIKE CONCAT('%', 'KA',   '%') then  'KA'
+when upper(auct_titl) LIKE CONCAT('%', 'OCTAVIA',   '%') then  'OCTAVIA'
+when upper(auct_titl) LIKE CONCAT('%', 'QASHQAI/QASHQAI+2',   '%') then  'QASHQAI/QASHQAI+2'
+when upper(auct_titl) LIKE CONCAT('%', 'QASHQAI',   '%') then  'QASHQAI'
+when upper(auct_titl) LIKE CONCAT('%', 'MEGANE',   '%') then  'MEGANE'
+when upper(auct_titl) LIKE CONCAT('%', 'A1',   '%') then  'A1'
+when upper(auct_titl) LIKE CONCAT('%', 'TRANSIT',   '%') then  'TRANSIT'
+when upper(auct_titl) LIKE CONCAT('%', 'VIVARO',   '%') then  'VIVARO'
+when upper(auct_titl) LIKE CONCAT('%', 'YARIS/VITZ',   '%') then  'YARIS/VITZ'
+when upper(auct_titl) LIKE CONCAT('%', 'C3',   '%') then  'C3'
+when upper(auct_titl) LIKE CONCAT('%', 'TRANSIT CUSTOM',   '%') then  'TRANSIT CUSTOM'
+when upper(auct_titl) LIKE CONCAT('%', 'RANGE ROVER EVOQUE',   '%') then  'RANGE ROVER EVOQUE'
+when upper(auct_titl) LIKE CONCAT('%', 'MERIVA',   '%') then  'MERIVA'
+when upper(auct_titl) LIKE CONCAT('%', 'I10',   '%') then  'I10'
+when upper(auct_titl) LIKE CONCAT('%', 'AYGO',   '%') then  'AYGO'
+when upper(auct_titl) LIKE CONCAT('%', 'E-CLASS',   '%') then  'E-CLASS'
+when upper(auct_titl) LIKE CONCAT('%', '207',   '%') then  '207'
+when upper(auct_titl) LIKE CONCAT('%', 'DS3',   '%') then  'DS3'
+when upper(auct_titl) LIKE CONCAT('%', 'MOKKA',   '%') then  'MOKKA'
+when upper(auct_titl) LIKE CONCAT('%', 'MOKKA X',   '%') then  'MOKKA X'
+when upper(auct_titl) LIKE CONCAT('%', 'MOKKA / MOKKA X',   '%') then  'MOKKA / MOKKA X'
+when upper(auct_titl) LIKE CONCAT('%', 'PICANTO',   '%') then  'PICANTO'
+when upper(auct_titl) LIKE CONCAT('%', 'SPORTAGE',   '%') then  'SPORTAGE'
+when upper(auct_titl) LIKE CONCAT('%', 'A5',   '%') then  'A5'
+when upper(auct_titl) LIKE CONCAT('%', 'TRANSIT CONNECT',   '%') then  'TRANSIT CONNECT'
+when upper(auct_titl) LIKE CONCAT('%', 'TT',   '%') then  'TT'
+when upper(auct_titl) LIKE CONCAT('%', 'SWIFT',   '%') then  'SWIFT'
+when upper(auct_titl) LIKE CONCAT('%', 'NOTE',   '%') then  'NOTE'
+when upper(auct_titl) LIKE CONCAT('%', '308',   '%') then  '308'
+when upper(auct_titl) LIKE CONCAT('%', 'XF',   '%') then  'XF'
+when upper(auct_titl) LIKE CONCAT('%', 'CR-V',   '%') then  'CR-V'
+when upper(auct_titl) LIKE CONCAT('%', 'X3',   '%') then  'X3'
+when upper(auct_titl) LIKE CONCAT('%', 'C-MAX',   '%') then  'C-MAX'
+when upper(auct_titl) LIKE CONCAT('%', 'I30',   '%') then  'I30'
+when upper(auct_titl) LIKE CONCAT('%', 'C1',   '%') then  'C1'
+when upper(auct_titl) LIKE CONCAT('%', '3008',   '%') then  '3008'
+when upper(auct_titl) LIKE CONCAT('%', 'A8',   '%') then  'A8'
+when upper(auct_titl) LIKE CONCAT('%', 'RANGE ROVER SPORT',   '%') then  'RANGE ROVER SPORT'
+when upper(auct_titl) LIKE CONCAT('%', 'S-MAX',   '%') then  'S-MAX'
+when upper(auct_titl) LIKE CONCAT('%', '4 SERIES',   '%') then  '4 SERIES'
+when upper(auct_titl) LIKE CONCAT('%', 'Q7',   '%') then  'Q7'
+when upper(auct_titl) LIKE CONCAT('%', 'SANDERO',   '%') then  'SANDERO'
+when upper(auct_titl) LIKE CONCAT('%', 'CADDY',   '%') then  'CADDY'
+when upper(auct_titl) LIKE CONCAT('%', '9-3',   '%') then  '9-3'
+when upper(auct_titl) LIKE CONCAT('%', 'X-TRAIL',   '%') then  'X-TRAIL'
+when upper(auct_titl) LIKE CONCAT('%', 'CAPTUR',   '%') then  'CAPTUR'
+when upper(auct_titl) LIKE CONCAT('%', 'MAZDA3',   '%') then  'MAZDA3'
+when upper(auct_titl) LIKE CONCAT('%', 'DISCOVERY',   '%') then  'DISCOVERY'
+when upper(auct_titl) LIKE CONCAT('%', 'AURIS',   '%') then  'AURIS'
+when upper(auct_titl) LIKE CONCAT('%', 'C3 PICASSO',   '%') then  'C3 PICASSO'
+when upper(auct_titl) LIKE CONCAT('%', 'BERLINGO',   '%') then  'BERLINGO'
+when upper(auct_titl) LIKE CONCAT('%', 'GALAXY',   '%') then  'GALAXY'
+when upper(auct_titl) LIKE CONCAT('%', 'BOXSTER',   '%') then  'BOXSTER'
+when upper(auct_titl) LIKE CONCAT('%', '2008',   '%') then  '2008'
+when upper(auct_titl) LIKE CONCAT('%', 'TOURAN',   '%') then  'TOURAN'
+when upper(auct_titl) LIKE CONCAT('%', 'VECTRA',   '%') then  'VECTRA'
+when upper(auct_titl) LIKE CONCAT('%', 'Z4',   '%') then  'Z4'
+when upper(auct_titl) LIKE CONCAT('%', 'I20',   '%') then  'I20'
+when upper(auct_titl) LIKE CONCAT('%', 'GRANDE PUNTO',   '%') then  'GRANDE PUNTO'
+when upper(auct_titl) LIKE CONCAT('%', 'MAZDA6',   '%') then  'MAZDA6'
+when upper(auct_titl) LIKE CONCAT('%', 'MAZDA2',   '%') then  'MAZDA2'
+when upper(auct_titl) LIKE CONCAT('%', 'TIGUAN',   '%') then  'TIGUAN'
+when upper(auct_titl) LIKE CONCAT('%', 'PANDA',   '%') then  'PANDA'
+when upper(auct_titl) LIKE CONCAT('%', '6 SERIES',   '%') then  '6 SERIES'
+when upper(auct_titl) LIKE CONCAT('%', '2 SERIES',   '%') then  '2 SERIES'
+when upper(auct_titl) LIKE CONCAT('%', '107',   '%') then  '107'
+when upper(auct_titl) LIKE CONCAT('%', 'RIO',   '%') then  'RIO'
+when upper(auct_titl) LIKE CONCAT('%', 'V70',   '%') then  'V70'
+when upper(auct_titl) LIKE CONCAT('%', 'X1',   '%') then  'X1'
+when upper(auct_titl) LIKE CONCAT('%', 'PARTNER',   '%') then  'PARTNER'
+when upper(auct_titl) LIKE CONCAT('%', '206',   '%') then  '206'
+when upper(auct_titl) LIKE CONCAT('%', 'C4',   '%') then  'C4'
+when upper(auct_titl) LIKE CONCAT('%', 'RANGE ROVER',   '%') then  'RANGE ROVER'
+when upper(auct_titl) LIKE CONCAT('%', 'XC90',   '%') then  'XC90'
+when upper(auct_titl) LIKE CONCAT('%', 'V40',   '%') then  'V40'
+when upper(auct_titl) LIKE CONCAT('%', '307',   '%') then  '307'
+when upper(auct_titl) LIKE CONCAT('%', 'MINI COUNTRYMAN',   '%') then  'MINI COUNTRYMAN'
+when upper(auct_titl) LIKE CONCAT('%', 'AVENSIS',   '%') then  'AVENSIS'
+when upper(auct_titl) LIKE CONCAT('%', 'V50',   '%') then  'V50'
+when upper(auct_titl) LIKE CONCAT('%', 'TUCSON',   '%') then  'TUCSON'
+when upper(auct_titl) LIKE CONCAT('%', 'DISCOVERY SPORT',   '%') then  'DISCOVERY SPORT'
+when upper(auct_titl) LIKE CONCAT('%', 'C4 PICASSO',   '%') then  'C4 PICASSO'
+when upper(auct_titl) LIKE CONCAT('%', 'OUTLANDER',   '%') then  'OUTLANDER'
+when upper(auct_titl) LIKE CONCAT('%', 'NAVARA',   '%') then  'NAVARA'
+when upper(auct_titl) LIKE CONCAT('%', 'COMBO',   '%') then  'COMBO'
+when upper(auct_titl) LIKE CONCAT('%', '911',   '%') then  '911'
+when upper(auct_titl) LIKE CONCAT('%', 'COROLLA',   '%') then  'COROLLA'
+when upper(auct_titl) LIKE CONCAT('%', 'RANGER',   '%') then  'RANGER'
+when upper(auct_titl) LIKE CONCAT('%', 'YETI',   '%') then  'YETI'
+when upper(auct_titl) LIKE CONCAT('%', 'SCIROCCO',   '%') then  'SCIROCCO'
+when upper(auct_titl) LIKE CONCAT('%', 'ADAM',   '%') then  'ADAM'
+when upper(auct_titl) LIKE CONCAT('%', '108',   '%') then  '108'
+when upper(auct_titl) LIKE CONCAT('%', 'FUSION',   '%') then  'FUSION'
+when upper(auct_titl) LIKE CONCAT('%', 'ALTO',   '%') then  'ALTO'
+when upper(auct_titl) LIKE CONCAT('%', 'B-MAX',   '%') then  'B-MAX'
+when upper(auct_titl) LIKE CONCAT('%', 'RAV4',   '%') then  'RAV4'
+when upper(auct_titl) LIKE CONCAT('%', '7 SERIES',   '%') then  '7 SERIES'
+when upper(auct_titl) LIKE CONCAT('%', 'TRANSPORTER',   '%') then  'TRANSPORTER'
+when upper(auct_titl) LIKE CONCAT('%', 'KADJAR',   '%') then  'KADJAR'
+when upper(auct_titl) LIKE CONCAT('%', 'ECOSPORT',   '%') then  'ECOSPORT'
+when upper(auct_titl) LIKE CONCAT('%', 'FREELANDER',   '%') then  'FREELANDER'
+when upper(auct_titl) LIKE CONCAT('%', 'AGILA',   '%') then  'AGILA'
+when upper(auct_titl) LIKE CONCAT('%', 'CAYENNE',   '%') then  'CAYENNE'
+when upper(auct_titl) LIKE CONCAT('%', 'KANGOO',   '%') then  'KANGOO'
+when upper(auct_titl) LIKE CONCAT('%', 'C4 CACTUS',   '%') then  'C4 CACTUS'
+when upper(auct_titl) LIKE CONCAT('%', 'C30',   '%') then  'C30'
+when upper(auct_titl) LIKE CONCAT('%', 'TRAFIC II',   '%') then  'TRAFIC II'
+when upper(auct_titl) LIKE CONCAT('%', 'SLK',   '%') then  'SLK'
+when upper(auct_titl) LIKE CONCAT('%', 'SPRINTER 3,5-T',   '%') then  'SPRINTER 3,5-T'
+when upper(auct_titl) LIKE CONCAT('%', 'Q3',   '%') then  'Q3'
+when upper(auct_titl) LIKE CONCAT('%', 'TRAFIC',   '%') then  'TRAFIC'
+when upper(auct_titl) LIKE CONCAT('%', 'XC60',   '%') then  'XC60'
+when upper(auct_titl) LIKE CONCAT('%', 'MASTER',   '%') then  'MASTER'
+when upper(auct_titl) LIKE CONCAT('%', 'FREELANDER 2',   '%') then  'FREELANDER 2'
+when upper(auct_titl) LIKE CONCAT('%', 'UP!',   '%') then  'UP!'
+when upper(auct_titl) LIKE CONCAT('%', 'UP',   '%') then  'UP'
+when upper(auct_titl) LIKE CONCAT('%', 'GLA-CLASS',   '%') then  'GLA-CLASS'
+when upper(auct_titl) LIKE CONCAT('%', 'TOUAREG',   '%') then  'TOUAREG'
+when upper(auct_titl) LIKE CONCAT('%', 'S60',   '%') then  'S60'
+when upper(auct_titl) LIKE CONCAT('%', 'IS C',   '%') then  'IS C'
+when upper(auct_titl) LIKE CONCAT('%', 'DISPATCH',   '%') then  'DISPATCH'
+when upper(auct_titl) LIKE CONCAT('%', 'COLT',   '%') then  'COLT'
+when upper(auct_titl) LIKE CONCAT('%', 'DUSTER',   '%') then  'DUSTER'
+when upper(auct_titl) LIKE CONCAT('%', 'RELAY',   '%') then  'RELAY'
+when upper(auct_titl) LIKE CONCAT('%', 'Q5',   '%') then  'Q5'
+when upper(auct_titl) LIKE CONCAT('%', 'BOXER',   '%') then  'BOXER'
+when upper(auct_titl) LIKE CONCAT('%', 'SPARK',   '%') then  'SPARK'
+when upper(auct_titl) LIKE CONCAT('%', 'S40',   '%') then  'S40'
+when upper(auct_titl) LIKE CONCAT('%', 'I40',   '%') then  'I40'
+when upper(auct_titl) LIKE CONCAT('%', 'ACCORD',   '%') then  'ACCORD'
+when upper(auct_titl) LIKE CONCAT('%', 'SORENTO',   '%') then  'SORENTO'
+when upper(auct_titl) LIKE CONCAT('%', 'SCENIC',   '%') then  'SCENIC'
+when upper(auct_titl) LIKE CONCAT('%', 'PRIUS',   '%') then  'PRIUS'
+when upper(auct_titl) LIKE CONCAT('%', 'SUPERB',   '%') then  'SUPERB'
+when upper(auct_titl) LIKE CONCAT('%', 'C4 GRAND PICASSO',   '%') then  'C4 GRAND PICASSO'
+when upper(auct_titl) LIKE CONCAT('%', 'XE',   '%') then  'XE'
+when upper(auct_titl) LIKE CONCAT('%', 'DOBLO',   '%') then  'DOBLO'
+when upper(auct_titl) LIKE CONCAT('%', 'MITO',   '%') then  'MITO'
+when upper(auct_titl) LIKE CONCAT('%', 'VITO',   '%') then  'VITO'
+when upper(auct_titl) LIKE CONCAT('%', 'MINI CLUBMAN',   '%') then  'MINI CLUBMAN'
+when upper(auct_titl) LIKE CONCAT('%', 'X-TYPE',   '%') then  'X-TYPE'
+when upper(auct_titl) LIKE CONCAT('%', 'XSARA PICASSO',   '%') then  'XSARA PICASSO'
+when upper(auct_titl) LIKE CONCAT('%', 'GRAND VITARA',   '%') then  'GRAND VITARA'
+when upper(auct_titl) LIKE CONCAT('%', 'PUNTO',   '%') then  'PUNTO'
+when upper(auct_titl) LIKE CONCAT('%', 'B-CLASS',   '%') then  'B-CLASS'
+when upper(auct_titl) LIKE CONCAT('%', 'GOLF PLUS',   '%') then  'GOLF PLUS'
+when upper(auct_titl) LIKE CONCAT('%', 'VITO/MIXTO',   '%') then  'VITO/MIXTO'
+when upper(auct_titl) LIKE CONCAT('%', 'FORTWO',   '%') then  'FORTWO'
+when upper(auct_titl) LIKE CONCAT('%', 'M-CLASS',   '%') then  'M-CLASS'
+when upper(auct_titl) LIKE CONCAT('%', 'RENEGADE',   '%') then  'RENEGADE'
+when upper(auct_titl) LIKE CONCAT('%', '9-5',   '%') then  '9-5'
+when upper(auct_titl) LIKE CONCAT('%', 'PASSAT CC',   '%') then  'PASSAT CC'
+when upper(auct_titl) LIKE CONCAT('%', 'A2',   '%') then  'A2'
+when upper(auct_titl) LIKE CONCAT('%', 'GRAND CHEROKEE',   '%') then  'GRAND CHEROKEE'
+when upper(auct_titl) LIKE CONCAT('%', 'MX-5',   '%') then  'MX-5'
+when upper(auct_titl) LIKE CONCAT('%', 'ANTARA',   '%') then  'ANTARA'
+when upper(auct_titl) LIKE CONCAT('%', 'BERLINGO MULTISPACE',   '%') then  'BERLINGO MULTISPACE'
+when upper(auct_titl) LIKE CONCAT('%', 'CLK',   '%') then  'CLK'
+when upper(auct_titl) LIKE CONCAT('%', 'X6',   '%') then  'X6'
+when upper(auct_titl) LIKE CONCAT('%', 'L200 / TRITON',   '%') then  'L200 / TRITON'
+when upper(auct_titl) LIKE CONCAT('%', 'CX-5',   '%') then  'CX-5'
+when upper(auct_titl) LIKE CONCAT('%', 'EXPERT',   '%') then  'EXPERT'
+when upper(auct_titl) LIKE CONCAT('%', 'T-ROC',   '%') then  'T-ROC'
+when upper(auct_titl) LIKE CONCAT('%', 'ALHAMBRA',   '%') then  'ALHAMBRA'
+when upper(auct_titl) LIKE CONCAT('%', 'FORFOUR',   '%') then  'FORFOUR'
+when upper(auct_titl) LIKE CONCAT('%', 'C2',   '%') then  'C2'
+when upper(auct_titl) LIKE CONCAT('%', 'S-CLASS',   '%') then  'S-CLASS'
+when upper(auct_titl) LIKE CONCAT('%', 'VENGA',   '%') then  'VENGA'
+when upper(auct_titl) LIKE CONCAT('%', 'GETZ',   '%') then  'GETZ'
+when upper(auct_titl) LIKE CONCAT('%', 'DS4',   '%') then  'DS4'
+when upper(auct_titl) LIKE CONCAT('%', 'S-TYPE',   '%') then  'S-TYPE'
+when upper(auct_titl) LIKE CONCAT('%', 'CITIGO',   '%') then  'CITIGO'
+when upper(auct_titl) LIKE CONCAT('%', 'SOUL',   '%') then  'SOUL'
+when upper(auct_titl) LIKE CONCAT('%', 'SX4',   '%') then  'SX4'
+when upper(auct_titl) LIKE CONCAT('%', 'VIVA',   '%') then  'VIVA'
+when upper(auct_titl) LIKE CONCAT('%', 'TWINGO',   '%') then  'TWINGO'
+when upper(auct_titl) LIKE CONCAT('%', 'SCÉNIC',   '%') then  'SCÉNIC'
+when upper(auct_titl) LIKE CONCAT('%', 'NEW BEETLE',   '%') then  'NEW BEETLE'
+when upper(auct_titl) LIKE CONCAT('%', 'GRANDLAND X',   '%') then  'GRANDLAND X'
+when upper(auct_titl) LIKE CONCAT('%', '407',   '%') then  '407'
+when upper(auct_titl) LIKE CONCAT('%', 'FOX',   '%') then  'FOX'
+when upper(auct_titl) LIKE CONCAT('%', 'GIULIETTA',   '%') then  'GIULIETTA'
+when upper(auct_titl) LIKE CONCAT('%', '207 CC',   '%') then  '207 CC'
+when upper(auct_titl) LIKE CONCAT('%', 'CT',   '%') then  'CT'
+when upper(auct_titl) LIKE CONCAT('%', 'IX35',   '%') then  'IX35'
+when upper(auct_titl) LIKE CONCAT('%', 'BIPPER',   '%') then  'BIPPER'
+when upper(auct_titl) LIKE CONCAT('%', 'CEED',   '%') then  'CEED'
+when upper(auct_titl) LIKE CONCAT('%', 'C70',   '%') then  'C70'
+when upper(auct_titl) LIKE CONCAT('%', 'GRAND SCENIC',   '%') then  'GRAND SCENIC'
+when upper(auct_titl) LIKE CONCAT('%', 'C5',   '%') then  'C5'
+when upper(auct_titl) LIKE CONCAT('%', 'NEMO',   '%') then  'NEMO'
+when upper(auct_titl) LIKE CONCAT('%', 'GRAND C-MAX',   '%') then  'GRAND C-MAX'
+when upper(auct_titl) LIKE CONCAT('%', '308 SW',   '%') then  '308 SW'
+when upper(auct_titl) LIKE CONCAT('%', 'SHARAN',   '%') then  'SHARAN'
+when upper(auct_titl) LIKE CONCAT('%', 'Q2',   '%') then  'Q2'
+when upper(auct_titl) LIKE CONCAT('%', 'LAGUNA',   '%') then  'LAGUNA'
+when upper(auct_titl) LIKE CONCAT('%', 'CLA',   '%') then  'CLA'
+when upper(auct_titl) LIKE CONCAT('%', 'V60',   '%') then  'V60'
+when upper(auct_titl) LIKE CONCAT('%', 'GRANDLAND X / GRANDLAND',   '%') then  'GRANDLAND X / GRANDLAND'
+when upper(auct_titl) LIKE CONCAT('%', '500X',   '%') then  '500X'
+when upper(auct_titl) LIKE CONCAT('%', 'RCZ',   '%') then  'RCZ'
+when upper(auct_titl) LIKE CONCAT('%', 'PUMA',   '%') then  'PUMA'
+when upper(auct_titl) LIKE CONCAT('%', 'IX20',   '%') then  'IX20'
+when upper(auct_titl) LIKE CONCAT('%', 'PAJERO/SHOGUN',   '%') then  'PAJERO/SHOGUN'
+when upper(auct_titl) LIKE CONCAT('%', 'ALTEA',   '%') then  'ALTEA'
+when upper(auct_titl) LIKE CONCAT('%', 'MATIZ',   '%') then  'MATIZ'
+when upper(auct_titl) LIKE CONCAT('%', 'NIRO',   '%') then  'NIRO'
+when upper(auct_titl) LIKE CONCAT('%', 'GLC',   '%') then  'GLC'
+when upper(auct_titl) LIKE CONCAT('%', 'CC',   '%') then  'CC'
+when upper(auct_titl) LIKE CONCAT('%', 'TRANSIT COURIER',   '%') then  'TRANSIT COURIER'
+when upper(auct_titl) LIKE CONCAT('%', 'CEED',   '%') then  'CEED'
+when upper(auct_titl) LIKE CONCAT('%', 'MODUS / GRAND MODUS',   '%') then  'MODUS / GRAND MODUS'
+when upper(auct_titl) LIKE CONCAT('%', 'SANTA FE',   '%') then  'SANTA FE'
+when upper(auct_titl) LIKE CONCAT('%', 'FOCUS C-MAX',   '%') then  'FOCUS C-MAX'
+when upper(auct_titl) LIKE CONCAT('%', 'LEAF',   '%') then  'LEAF'
+when upper(auct_titl) LIKE CONCAT('%', 'C-HR',   '%') then  'C-HR'
+when upper(auct_titl) LIKE CONCAT('%', '500L',   '%') then  '500L'
+when upper(auct_titl) LIKE CONCAT('%', 'C3 AIRCROSS',   '%') then  'C3 AIRCROSS'
+when upper(auct_titl) LIKE CONCAT('%', 'IMPREZA',   '%') then  'IMPREZA'
+when upper(auct_titl) LIKE CONCAT('%', 'L200',   '%') then  'L200'
+when upper(auct_titl) LIKE CONCAT('%', 'PUNTO EVO',   '%') then  'PUNTO EVO'
+when upper(auct_titl) LIKE CONCAT('%', 'JETTA',   '%') then  'JETTA'
+when upper(auct_titl) LIKE CONCAT('%', 'CLS',   '%') then  'CLS'
+when upper(auct_titl) LIKE CONCAT('%', 'ALMERA',   '%') then  'ALMERA'
+when upper(auct_titl) LIKE CONCAT('%', 'LOGAN MCV',   '%') then  'LOGAN MCV'
+when upper(auct_titl) LIKE CONCAT('%', 'COUPE',   '%') then  'COUPE'
+when upper(auct_titl) LIKE CONCAT('%', 'IGNIS',   '%') then  'IGNIS'
+when upper(auct_titl) LIKE CONCAT('%', 'NV200',   '%') then  'NV200'
+when upper(auct_titl) LIKE CONCAT('%', 'BERLINGO / BERLINGO FIRST',   '%') then  'BERLINGO / BERLINGO FIRST'
+when upper(auct_titl) LIKE CONCAT('%', 'MG 3',   '%') then  'MG 3'
+when upper(auct_titl) LIKE CONCAT('%', 'TIGRA',   '%') then  'TIGRA'
+when upper(auct_titl) LIKE CONCAT('%', 'PATHFINDER',   '%') then  'PATHFINDER'
+when upper(auct_titl) LIKE CONCAT('%', 'ROOMSTER',   '%') then  'ROOMSTER'
+when upper(auct_titl) LIKE CONCAT('%', 'CAPTIVA',   '%') then  'CAPTIVA'
+when upper(auct_titl) LIKE CONCAT('%', 'TIPO',   '%') then  'TIPO'
+when upper(auct_titl) LIKE CONCAT('%', 'D-MAX',   '%') then  'D-MAX'
+when upper(auct_titl) LIKE CONCAT('%', 'BRAVO',   '%') then  'BRAVO'
+when upper(auct_titl) LIKE CONCAT('%', '207 SW',   '%') then  '207 SW'
+when upper(auct_titl) LIKE CONCAT('%', 'KA+',   '%') then  'KA+'
+when upper(auct_titl) LIKE CONCAT('%', 'RANGE ROVER VELAR',   '%') then  'RANGE ROVER VELAR'
+when upper(auct_titl) LIKE CONCAT('%', 'FORESTER',   '%') then  'FORESTER'
+when upper(auct_titl) LIKE CONCAT('%', 'PARTNER TEPEE',   '%') then  'PARTNER TEPEE'
+when upper(auct_titl) LIKE CONCAT('%', 'MAZDA5',   '%') then  'MAZDA5'
+when upper(auct_titl) LIKE CONCAT('%', 'MG ZS',   '%') then  'MG ZS'
+when upper(auct_titl) LIKE CONCAT('%', 'CHEROKEE',   '%') then  'CHEROKEE'
+when upper(auct_titl) LIKE CONCAT('%', 'A7',   '%') then  'A7'
+when upper(auct_titl) LIKE CONCAT('%', 'ATECA',   '%') then  'ATECA'
+when upper(auct_titl) LIKE CONCAT('%', 'CEE D',   '%') then  'CEE D'
+when upper(auct_titl) LIKE CONCAT('%', 'PULSAR',   '%') then  'PULSAR'
+when upper(auct_titl) LIKE CONCAT('%', 'RAPID',   '%') then  'RAPID'
+when upper(auct_titl) LIKE CONCAT('%', 'CROSSLAND X / CROSSLAND',   '%') then  'CROSSLAND X / CROSSLAND'
+when upper(auct_titl) LIKE CONCAT('%', 'KONA',   '%') then  'KONA'
+when upper(auct_titl) LIKE CONCAT('%', 'MUSTANG',   '%') then  'MUSTANG'
+when upper(auct_titl) LIKE CONCAT('%', 'BEETLE',   '%') then  'BEETLE'
+when upper(auct_titl) LIKE CONCAT('%', 'ASX',   '%') then  'ASX'
+when upper(auct_titl) LIKE CONCAT('%', 'GRAND SCÉNIC',   '%') then  'GRAND SCÉNIC'
+when upper(auct_titl) LIKE CONCAT('%', 'AVEO / KALOS',   '%') then  'AVEO / KALOS'
+when upper(auct_titl) LIKE CONCAT('%', 'LANCER',   '%') then  'LANCER'
+when upper(auct_titl) LIKE CONCAT('%', 'CELERIO',   '%') then  'CELERIO'
+when upper(auct_titl) LIKE CONCAT('%', 'MIRAGE / SPACE STAR',   '%') then  'MIRAGE / SPACE STAR'
+when upper(auct_titl) LIKE CONCAT('%', 'S80',   '%') then  'S80'
+when upper(auct_titl) LIKE CONCAT('%', '5008',   '%') then  '5008'
+when upper(auct_titl) LIKE CONCAT('%', 'DAILY',   '%') then  'DAILY'
+when upper(auct_titl) LIKE CONCAT('%', 'SPLASH',   '%') then  'SPLASH'
+when upper(auct_titl) LIKE CONCAT('%', '159',   '%') then  '159'
+when upper(auct_titl) LIKE CONCAT('%', '500 / 595 / 695',   '%') then  '500 / 595 / 695'
+when upper(auct_titl) LIKE CONCAT('%', 'PIXO',   '%') then  'PIXO'
+when upper(auct_titl) LIKE CONCAT('%', 'JIMNY',   '%') then  'JIMNY'
+when upper(auct_titl) LIKE CONCAT('%', 'CRAFTER 30-50',   '%') then  'CRAFTER 30-50'
+when upper(auct_titl) LIKE CONCAT('%', 'TOLEDO',   '%') then  'TOLEDO'
+when upper(auct_titl) LIKE CONCAT('%', 'HR-V',   '%') then  'HR-V'
+when upper(auct_titl) LIKE CONCAT('%', 'Z3',   '%') then  'Z3'
+when upper(auct_titl) LIKE CONCAT('%', 'VITARA',   '%') then  'VITARA'
+when upper(auct_titl) LIKE CONCAT('%', 'SANTA FÉ',   '%') then  'SANTA FÉ'
+when upper(auct_titl) LIKE CONCAT('%', 'STONIC',   '%') then  'STONIC'
+when upper(auct_titl) LIKE CONCAT('%', 'ARONA',   '%') then  'ARONA'
+when upper(auct_titl) LIKE CONCAT('%', 'FR-V',   '%') then  'FR-V'
+when upper(auct_titl) LIKE CONCAT('%', 'CRUZE',   '%') then  'CRUZE'
+when upper(auct_titl) LIKE CONCAT('%', 'CITAN',   '%') then  'CITAN'
+when upper(auct_titl) LIKE CONCAT('%', 'XJ',   '%') then  'XJ'
+when upper(auct_titl) LIKE CONCAT('%', 'AMAROK',   '%') then  'AMAROK'
+when upper(auct_titl) LIKE CONCAT('%', 'SEDONA',   '%') then  'SEDONA'
+when upper(auct_titl) LIKE CONCAT('%', 'RX',   '%') then  'RX'
+when upper(auct_titl) LIKE CONCAT('%', 'DUCATO',   '%') then  'DUCATO'
+when upper(auct_titl) LIKE CONCAT('%', 'MOVANO',   '%') then  'MOVANO'
+when upper(auct_titl) LIKE CONCAT('%', 'HILUX VIGO',   '%') then  'HILUX VIGO'
+when upper(auct_titl) LIKE CONCAT('%', 'VOYAGER',   '%') then  'VOYAGER'
+when upper(auct_titl) LIKE CONCAT('%', 'F-PACE',   '%') then  'F-PACE'
+when upper(auct_titl) LIKE CONCAT('%', 'SPRINTER 3-T',   '%') then  'SPRINTER 3-T'
+when upper(auct_titl) LIKE CONCAT('%', 'EOS',   '%') then  'EOS'
+when upper(auct_titl) LIKE CONCAT('%', 'KODIAQ',   '%') then  'KODIAQ'
+when upper(auct_titl) LIKE CONCAT('%', 'DS 3',   '%') then  'DS 3'
+when upper(auct_titl) LIKE CONCAT('%', '508 SW',   '%') then  '508 SW'
+when upper(auct_titl) LIKE CONCAT('%', 'CARENS',   '%') then  'CARENS'
+when upper(auct_titl) LIKE CONCAT('%', 'DS5',   '%') then  'DS5'
+when upper(auct_titl) LIKE CONCAT('%', 'MAXUS',   '%') then  'MAXUS'
+when upper(auct_titl) LIKE CONCAT('%', 'XK',   '%') then  'XK'
+when upper(auct_titl) LIKE CONCAT('%', 'ASTRAVAN',   '%') then  'ASTRAVAN'
+when upper(auct_titl) LIKE CONCAT('%', 'CLC-CLASS',   '%') then  'CLC-CLASS'
+when upper(auct_titl) LIKE CONCAT('%', 'I-PACE',   '%') then  'I-PACE'
+when upper(auct_titl) LIKE CONCAT('%', 'MODEL S',   '%') then  'MODEL S'
+when upper(auct_titl) LIKE CONCAT('%', '75',   '%') then  '75'
+when upper(auct_titl) LIKE CONCAT('%', 'I3',   '%') then  'I3'
+when upper(auct_titl) LIKE CONCAT('%', 'YARIS',   '%') then  'YARIS'
+when upper(auct_titl) LIKE CONCAT('%', 'VERSO',   '%') then  'VERSO'
+when upper(auct_titl) LIKE CONCAT('%', 'FIORINO',   '%') then  'FIORINO'
+when upper(auct_titl) LIKE CONCAT('%', '106',   '%') then  '106'
+when upper(auct_titl) LIKE CONCAT('%', 'DEFENDER',   '%') then  'DEFENDER'
+when upper(auct_titl) LIKE CONCAT('%', 'SCUDO',   '%') then  'SCUDO'
+when upper(auct_titl) LIKE CONCAT('%', '944',   '%') then  '944'
+when upper(auct_titl) LIKE CONCAT('%', 'CELICA',   '%') then  'CELICA'
+when upper(auct_titl) LIKE CONCAT('%', 'GLE',   '%') then  'GLE'
+when upper(auct_titl) LIKE CONCAT('%', '508',   '%') then  '508'
+when upper(auct_titl) LIKE CONCAT('%', 'MII',   '%') then  'MII'
+when upper(auct_titl) LIKE CONCAT('%', 'ESPACE',   '%') then  'ESPACE'
+when upper(auct_titl) LIKE CONCAT('%', 'MODEL 3',   '%') then  'MODEL 3'
+when upper(auct_titl) LIKE CONCAT('%', 'YPSILON',   '%') then  'YPSILON'
+when upper(auct_titl) LIKE CONCAT('%', 'INSIGHT',   '%') then  'INSIGHT'
+when upper(auct_titl) LIKE CONCAT('%', '100',   '%') then  '100'
+when upper(auct_titl) LIKE CONCAT('%', 'XC40',   '%') then  'XC40'
+when upper(auct_titl) LIKE CONCAT('%', 'EXEO',   '%') then  'EXEO'
+when upper(auct_titl) LIKE CONCAT('%', 'A6 ALLROAD',   '%') then  'A6 ALLROAD'
+when upper(auct_titl) LIKE CONCAT('%', 'PRO CEED',   '%') then  'PRO CEED'
+when upper(auct_titl) LIKE CONCAT('%', 'PRIMASTAR',   '%') then  'PRIMASTAR'
+when upper(auct_titl) LIKE CONCAT('%', 'MR2',   '%') then  'MR2'
+when upper(auct_titl) LIKE CONCAT('%', 'XSARA',   '%') then  'XSARA'
+when upper(auct_titl) LIKE CONCAT('%', 'PRIMERA',   '%') then  'PRIMERA'
+when upper(auct_titl) LIKE CONCAT('%', 'BORA',   '%') then  'BORA'
+when upper(auct_titl) LIKE CONCAT('%', 'OPTIMA',   '%') then  'OPTIMA'
+when upper(auct_titl) LIKE CONCAT('%', 'WAGON R+',   '%') then  'WAGON R+'
+when upper(auct_titl) LIKE CONCAT('%', 'KAMIQ',   '%') then  'KAMIQ'
+when upper(auct_titl) LIKE CONCAT('%', 'CROSSLAND X',   '%') then  'CROSSLAND X'
+when upper(auct_titl) LIKE CONCAT('%', 'NX',   '%') then  'NX'
+when upper(auct_titl) LIKE CONCAT('%', 'DAIMLER XJ',   '%') then  'DAIMLER XJ'
+when upper(auct_titl) LIKE CONCAT('%', 'LUPO',   '%') then  'LUPO'
+when upper(auct_titl) LIKE CONCAT('%', 'LEGACY',   '%') then  'LEGACY'
+when upper(auct_titl) LIKE CONCAT('%', 'ALTEA XL',   '%') then  'ALTEA XL'
+when upper(auct_titl) LIKE CONCAT('%', 'RIFTER',   '%') then  'RIFTER'
+when upper(auct_titl) LIKE CONCAT('%', 'EXPERT TEPEE',   '%') then  'EXPERT TEPEE'
+when upper(auct_titl) LIKE CONCAT('%', 'MACAN',   '%') then  'MACAN'
+when upper(auct_titl) LIKE CONCAT('%', '900',   '%') then  '900'
+when upper(auct_titl) LIKE CONCAT('%', 'LACETTI',   '%') then  'LACETTI'
+when upper(auct_titl) LIKE CONCAT('%', 'AVEO',   '%') then  'AVEO'
+when upper(auct_titl) LIKE CONCAT('%', 'AMICA / ATOZ',   '%') then  'AMICA / ATOZ'
+when upper(auct_titl) LIKE CONCAT('%', 'SX4 S-CROSS',   '%') then  'SX4 S-CROSS'
+when upper(auct_titl) LIKE CONCAT('%', 'TOURNEO CONNECT / GRAND TOURNEO CONNECT',   '%') then  'TOURNEO CONNECT / GRAND TOURNEO CONNECT'
+when upper(auct_titl) LIKE CONCAT('%', 'ZOE',   '%') then  'ZOE'
+when upper(auct_titl) LIKE CONCAT('%', 'IQ',   '%') then  'IQ'
+when upper(auct_titl) LIKE CONCAT('%', 'CONTINENTAL',   '%') then  'CONTINENTAL'
+when upper(auct_titl) LIKE CONCAT('%', 'F-TYPE',   '%') then  'F-TYPE'
+when upper(auct_titl) LIKE CONCAT('%', '306',   '%') then  '306'
+when upper(auct_titl) LIKE CONCAT('%', 'VELOSTER',   '%') then  'VELOSTER'
+when upper(auct_titl) LIKE CONCAT('%', 'MICRA C+C',   '%') then  'MICRA C+C'
+when upper(auct_titl) LIKE CONCAT('%', 'ORLANDO',   '%') then  'ORLANDO'
+when upper(auct_titl) LIKE CONCAT('%', 'SAXO',   '%') then  'SAXO'
+when upper(auct_titl) LIKE CONCAT('%', 'KAROQ',   '%') then  'KAROQ'
+when upper(auct_titl) LIKE CONCAT('%', 'CALIBER',   '%') then  'CALIBER'
+when upper(auct_titl) LIKE CONCAT('%', 'PRIUS PLUS',   '%') then  'PRIUS PLUS'
+when upper(auct_titl) LIKE CONCAT('%', 'CAYMAN',   '%') then  'CAYMAN'
+when upper(auct_titl) LIKE CONCAT('%', 'XC70 CROSS COUNTRY',   '%') then  'XC70 CROSS COUNTRY'
+when upper(auct_titl) LIKE CONCAT('%', 'PATRIOT',   '%') then  'PATRIOT'
+when upper(auct_titl) LIKE CONCAT('%', '308 CC',   '%') then  '308 CC'
+when upper(auct_titl) LIKE CONCAT('%', 'RX-8',   '%') then  'RX-8'
+when upper(auct_titl) LIKE CONCAT('%', 'GT',   '%') then  'GT'
+when upper(auct_titl) LIKE CONCAT('%', 'RODEO',   '%') then  'RODEO'
+when upper(auct_titl) LIKE CONCAT('%', 'CHALLENGER / SHOGUN SPORT',   '%') then  'CHALLENGER / SHOGUN SPORT'
+when upper(auct_titl) LIKE CONCAT('%', 'XC70',   '%') then  'XC70'
+when upper(auct_titl) LIKE CONCAT('%', 'SIGNUM',   '%') then  'SIGNUM'
+when upper(auct_titl) LIKE CONCAT('%', 'IONIQ',   '%') then  'IONIQ'
+when upper(auct_titl) LIKE CONCAT('%', 'ALMERA TINO',   '%') then  'ALMERA TINO'
+when upper(auct_titl) LIKE CONCAT('%', 'CABRIOLET',   '%') then  'CABRIOLET'
+when upper(auct_titl) LIKE CONCAT('%', 'TERIOS',   '%') then  'TERIOS'
+when upper(auct_titl) LIKE CONCAT('%', '406',   '%') then  '406'
+when upper(auct_titl) LIKE CONCAT('%', 'PREVIA / ESTIMA',   '%') then  'PREVIA / ESTIMA'
+when upper(auct_titl) LIKE CONCAT('%', 'ALLROAD',   '%') then  'ALLROAD'
+when upper(auct_titl) LIKE CONCAT('%', '8 SERIES',   '%') then  '8 SERIES'
+when upper(auct_titl) LIKE CONCAT('%', 'HILUX',   '%') then  'HILUX'
+when upper(auct_titl) LIKE CONCAT('%', '25',   '%') then  '25'
+when upper(auct_titl) LIKE CONCAT('%', 'SIRION',   '%') then  'SIRION'
+when upper(auct_titl) LIKE CONCAT('%', 'KOLEOS',   '%') then  'KOLEOS'
+when upper(auct_titl) LIKE CONCAT('%', 'E-PACE',   '%') then  'E-PACE'
+when upper(auct_titl) LIKE CONCAT('%', 'MINI PACEMAN',   '%') then  'MINI PACEMAN'
+when upper(auct_titl) LIKE CONCAT('%', '80',   '%') then  '80'
+when upper(auct_titl) LIKE CONCAT('%', 'C5 AIRCROSS',   '%') then  'C5 AIRCROSS'
+when upper(auct_titl) LIKE CONCAT('%', '1007',   '%') then  '1007'
+when upper(auct_titl) LIKE CONCAT('%', 'I800',   '%') then  'I800'
+when upper(auct_titl) LIKE CONCAT('%', 'MATRIX',   '%') then  'MATRIX'
+when upper(auct_titl) LIKE CONCAT('%', 'GIULIA',   '%') then  'GIULIA'
+when upper(auct_titl) LIKE CONCAT('%', '940',   '%') then  '940'
+when upper(auct_titl) LIKE CONCAT('%', '924',   '%') then  '924'
+when upper(auct_titl) LIKE CONCAT('%', '45',   '%') then  '45'
+when upper(auct_titl) LIKE CONCAT('%', 'R8',   '%') then  'R8'
+when upper(auct_titl) LIKE CONCAT('%', 'CX-7',   '%') then  'CX-7'
+when upper(auct_titl) LIKE CONCAT('%', 'TERRACAN',   '%') then  'TERRACAN'
+when upper(auct_titl) LIKE CONCAT('%', 'CITY-COUPE',   '%') then  'CITY-COUPE'
+when upper(auct_titl) LIKE CONCAT('%', 'CORSAVAN',   '%') then  'CORSAVAN'
+when upper(auct_titl) LIKE CONCAT('%', 'KORANDO',   '%') then  'KORANDO'
+when upper(auct_titl) LIKE CONCAT('%', 'CR-Z',   '%') then  'CR-Z'
+when upper(auct_titl) LIKE CONCAT('%', 'VANTAGE',   '%') then  'VANTAGE'
+when upper(auct_titl) LIKE CONCAT('%', 'OUTBACK',   '%') then  'OUTBACK'
+when upper(auct_titl) LIKE CONCAT('%', 'ESCORT',   '%') then  'ESCORT'
+when upper(auct_titl) LIKE CONCAT('%', 'MG TF',   '%') then  'MG TF'
+when upper(auct_titl) LIKE CONCAT('%', 'CUBE',   '%') then  'CUBE'
+when upper(auct_titl) LIKE CONCAT('%', 'R8 SPYDER',   '%') then  'R8 SPYDER'
+when upper(auct_titl) LIKE CONCAT('%', '147',   '%') then  '147'
+when upper(auct_titl) LIKE CONCAT('%', '350Z',   '%') then  '350Z'
+when upper(auct_titl) LIKE CONCAT('%', 'TRANSPORTER / CARAVELLE',   '%') then  'TRANSPORTER / CARAVELLE'
+when upper(auct_titl) LIKE CONCAT('%', 'CRAFTER',   '%') then  'CRAFTER'
+when upper(auct_titl) LIKE CONCAT('%', 'PANAMERA',   '%') then  'PANAMERA'
+when upper(auct_titl) LIKE CONCAT('%', 'MGF',   '%') then  'MGF'
+when upper(auct_titl) LIKE CONCAT('%', 'XCEED',   '%') then  'XCEED'
+when upper(auct_titl) LIKE CONCAT('%', 'PT CRUISER',   '%') then  'PT CRUISER'
+when upper(auct_titl) LIKE CONCAT('%', 'JOURNEY',   '%') then  'JOURNEY'
+when upper(auct_titl) LIKE CONCAT('%', 'GL-CLASS',   '%') then  'GL-CLASS'
+when upper(auct_titl) LIKE CONCAT('%', '9000',   '%') then  '9000'
+when upper(auct_titl) LIKE CONCAT('%', 'CX-3',   '%') then  'CX-3'
+when upper(auct_titl) LIKE CONCAT('%', 'COMPASS',   '%') then  'COMPASS'
+when upper(auct_titl) LIKE CONCAT('%', 'TROOPER',   '%') then  'TROOPER'
+when upper(auct_titl) LIKE CONCAT('%', 'SEICENTO / 600',   '%') then  'SEICENTO / 600'
+when upper(auct_titl) LIKE CONCAT('%', 'GT-R',   '%') then  'GT-R'
+when upper(auct_titl) LIKE CONCAT('%', 'MODEL X',   '%') then  'MODEL X'
+when upper(auct_titl) LIKE CONCAT('%', 'GRANDIS',   '%') then  'GRANDIS'
+when upper(auct_titl) LIKE CONCAT('%', 'MG 6',   '%') then  'MG 6'
+when upper(auct_titl) LIKE CONCAT('%', 'SPACE STAR',   '%') then  'SPACE STAR'
+when upper(auct_titl) LIKE CONCAT('%', 'PASSAT ALLTRACK',   '%') then  'PASSAT ALLTRACK'
+when upper(auct_titl) LIKE CONCAT('%', 'SPRINTER 4-T',   '%') then  'SPRINTER 4-T'
+when upper(auct_titl) LIKE CONCAT('%', 'GS',   '%') then  'GS'
+when upper(auct_titl) LIKE CONCAT('%', '850',   '%') then  '850'
+when upper(auct_titl) LIKE CONCAT('%', 'BRERA',   '%') then  'BRERA'
+when upper(auct_titl) LIKE CONCAT('%', 'ZAFIRA TOURER',   '%') then  'ZAFIRA TOURER'
+when upper(auct_titl) LIKE CONCAT('%', '50',   '%') then  '50'
+when upper(auct_titl) LIKE CONCAT('%', 'AROSA',   '%') then  'AROSA'
+when upper(auct_titl) LIKE CONCAT('%', 'QUBO',   '%') then  'QUBO'
+when upper(auct_titl) LIKE CONCAT('%', '300C',   '%') then  '300C'
+when upper(auct_titl) LIKE CONCAT('%', 'C-CROSSER',   '%') then  'C-CROSSER'
+when upper(auct_titl) LIKE CONCAT('%', '200',   '%') then  '200'
+when upper(auct_titl) LIKE CONCAT('%', 'STREET KA',   '%') then  'STREET KA'
+when upper(auct_titl) LIKE CONCAT('%', 'TOURNEO CUSTOM',   '%') then  'TOURNEO CUSTOM'
+when upper(auct_titl) LIKE CONCAT('%', 'CROSSFIRE',   '%') then  'CROSSFIRE'
+when upper(auct_titl) LIKE CONCAT('%', 'PHAETON',   '%') then  'PHAETON'
+when upper(auct_titl) LIKE CONCAT('%', 'TIVOLI',   '%') then  'TIVOLI'
+when upper(auct_titl) LIKE CONCAT('%', 'XK8',   '%') then  'XK8'
+when upper(auct_titl) LIKE CONCAT('%', 'SLC',   '%') then  'SLC'
+when upper(auct_titl) LIKE CONCAT('%', 'X4',   '%') then  'X4'
+when upper(auct_titl) LIKE CONCAT('%', 'EDGE',   '%') then  'EDGE'
+when upper(auct_titl) LIKE CONCAT('%', 'SHOGUN PININ',   '%') then  'SHOGUN PININ'
+when upper(auct_titl) LIKE CONCAT('%', 'S90',   '%') then  'S90'
+when upper(auct_titl) LIKE CONCAT('%', 'POLO VAN',   '%') then  'POLO VAN'
+when upper(auct_titl) LIKE CONCAT('%', 'SL',   '%') then  'SL'
+when upper(auct_titl) LIKE CONCAT('%', 'WRANGLER',   '%') then  'WRANGLER'
+when upper(auct_titl) LIKE CONCAT('%', 'BALENO',   '%') then  'BALENO'
+when upper(auct_titl) LIKE CONCAT('%', 'C8',   '%') then  'C8'
+when upper(auct_titl) LIKE CONCAT('%', 'STILO',   '%') then  'STILO'
+when upper(auct_titl) LIKE CONCAT('%', 'OMEGA',   '%') then  'OMEGA'
+when upper(auct_titl) LIKE CONCAT('%', '960',   '%') then  '960'
+when upper(auct_titl) LIKE CONCAT('%', 'SPRINTER 5-T',   '%') then  'SPRINTER 5-T'
+when upper(auct_titl) LIKE CONCAT('%', 'MULTIPLA',   '%') then  'MULTIPLA'
+when upper(auct_titl) LIKE CONCAT('%', 'GEN-2',   '%') then  'GEN-2'
+when upper(auct_titl) LIKE CONCAT('%', 'GHIBLI',   '%') then  'GHIBLI'
+when upper(auct_titl) LIKE CONCAT('%', 'LIBERTY',   '%') then  'LIBERTY'
+when upper(auct_titl) LIKE CONCAT('%', 'COLT CZC',   '%') then  'COLT CZC'
+when upper(auct_titl) LIKE CONCAT('%', 'PROACE',   '%') then  'PROACE'
+when upper(auct_titl) LIKE CONCAT('%', 'GT86',   '%') then  'GT86'
+when upper(auct_titl) LIKE CONCAT('%', 'KANGOO/GRAND KANGOO',   '%') then  'KANGOO/GRAND KANGOO'
+when upper(auct_titl) LIKE CONCAT('%', '500 C',   '%') then  '500 C'
+when upper(auct_titl) LIKE CONCAT('%', '124',   '%') then  '124'
+when upper(auct_titl) LIKE CONCAT('%', 'PACEMAN',   '%') then  'PACEMAN'
+when upper(auct_titl) LIKE CONCAT('%', 'DS 5',   '%') then  'DS 5'
+when upper(auct_titl) LIKE CONCAT('%', 'MURANO',   '%') then  'MURANO'
+when upper(auct_titl) LIKE CONCAT('%', 'GRAND VOYAGER',   '%') then  'GRAND VOYAGER'
+when upper(auct_titl) LIKE CONCAT('%', 'Q50',   '%') then  'Q50'
+when upper(auct_titl) LIKE CONCAT('%', 'HIACE',   '%') then  'HIACE'
+when upper(auct_titl) LIKE CONCAT('%', 'SAVVY',   '%') then  'SAVVY'
+when upper(auct_titl) LIKE CONCAT('%', 'VIANO',   '%') then  'VIANO'
+when upper(auct_titl) LIKE CONCAT('%', 'R-CLASS',   '%') then  'R-CLASS'
+when upper(auct_titl) LIKE CONCAT('%', 'ACCENT',   '%') then  'ACCENT'
+when upper(auct_titl) LIKE CONCAT('%', 'V90',   '%') then  'V90'
+when upper(auct_titl) LIKE CONCAT('%', '205',   '%') then  '205'
+when upper(auct_titl) LIKE CONCAT('%', 'CALIFORNIA',   '%') then  'CALIFORNIA'
+when upper(auct_titl) LIKE CONCAT('%', 'X2',   '%') then  'X2'
+when upper(auct_titl) LIKE CONCAT('%', 'SILVIA',   '%') then  'SILVIA'
+when upper(auct_titl) LIKE CONCAT('%', 'SCALA',   '%') then  'SCALA'
+when upper(auct_titl) LIKE CONCAT('%', 'TURISMO',   '%') then  'TURISMO'
+when upper(auct_titl) LIKE CONCAT('%', 'ELGRAND',   '%') then  'ELGRAND'
+when upper(auct_titl) LIKE CONCAT('%', 'LIANA',   '%') then  'LIANA'
+when upper(auct_titl) LIKE CONCAT('%', 'LT',   '%') then  'LT'
+when upper(auct_titl) LIKE CONCAT('%', 'DB7',   '%') then  'DB7'
+when upper(auct_titl) LIKE CONCAT('%', 'SEBRING',   '%') then  'SEBRING'
+when upper(auct_titl) LIKE CONCAT('%', 'MG ZR',   '%') then  'MG ZR'
+when upper(auct_titl) LIKE CONCAT('%', 'NV400',   '%') then  'NV400'
+when upper(auct_titl) LIKE CONCAT('%', '370Z',   '%') then  '370Z'
+when upper(auct_titl) LIKE CONCAT('%', 'PROCEED',   '%') then  'PROCEED'
+when upper(auct_titl) LIKE CONCAT('%', 'ELISE',   '%') then  'ELISE'
+when upper(auct_titl) LIKE CONCAT('%', 'TRANSPORTER/CARAVELLE',   '%') then  'TRANSPORTER/CARAVELLE'
+when upper(auct_titl) LIKE CONCAT('%', 'TERRANO II',   '%') then  'TERRANO II'
+when upper(auct_titl) LIKE CONCAT('%', 'KALOS',   '%') then  'KALOS'
+when upper(auct_titl) LIKE CONCAT('%', 'ILOAD',   '%') then  'ILOAD'
+when upper(auct_titl) LIKE CONCAT('%', 'TERRANO',   '%') then  'TERRANO'
+when upper(auct_titl) LIKE CONCAT('%', '807',   '%') then  '807'
+when upper(auct_titl) LIKE CONCAT('%', 'CONVOY',   '%') then  'CONVOY'
+when upper(auct_titl) LIKE CONCAT('%', 'CARISMA',   '%') then  'CARISMA'
+when upper(auct_titl) LIKE CONCAT('%', 'STELVIO',   '%') then  'STELVIO'
+when upper(auct_titl) LIKE CONCAT('%', 'PICKUP',   '%') then  'PICKUP'
+when upper(auct_titl) LIKE CONCAT('%', 'GOLF SPORTSVAN',   '%') then  'GOLF SPORTSVAN'
+when upper(auct_titl) LIKE CONCAT('%', 'FELICIA',   '%') then  'FELICIA'
+when upper(auct_titl) LIKE CONCAT('%', 'BONGO FRIENDEE',   '%') then  'BONGO FRIENDEE'
+when upper(auct_titl) LIKE CONCAT('%', '100 / METRO',   '%') then  '100 / METRO'
+when upper(auct_titl) LIKE CONCAT('%', 'URBAN CRUISER',   '%') then  'URBAN CRUISER'
+when upper(auct_titl) LIKE CONCAT('%', 'AMPERA',   '%') then  'AMPERA'
+when upper(auct_titl) LIKE CONCAT('%', 'STEED',   '%') then  'STEED'
+when upper(auct_titl) LIKE CONCAT('%', 'MYVI',   '%') then  'MYVI'
+when upper(auct_titl) LIKE CONCAT('%', 'KANGOO BE BOP',   '%') then  'KANGOO BE BOP'
+when upper(auct_titl) LIKE CONCAT('%', 'COROLLA LIFTBACK (_E11_)',   '%') then  'COROLLA LIFTBACK (_E11_)'
+when upper(auct_titl) LIKE CONCAT('%', 'TACUMA',   '%') then  'TACUMA'
+when upper(auct_titl) LIKE CONCAT('%', 'WIND',   '%') then  'WIND'
+when upper(auct_titl) LIKE CONCAT('%', 'CARAVELLE',   '%') then  'CARAVELLE'
+when upper(auct_titl) LIKE CONCAT('%', 'CERATO',   '%') then  'CERATO'
+when upper(auct_titl) LIKE CONCAT('%', 'SEDICI',   '%') then  'SEDICI'
+when upper(auct_titl) LIKE CONCAT('%', 'TRAJET',   '%') then  'TRAJET'
+when upper(auct_titl) LIKE CONCAT('%', '4007',   '%') then  '4007'
+when upper(auct_titl) LIKE CONCAT('%', '928',   '%') then  '928'
+when upper(auct_titl) LIKE CONCAT('%', 'C6',   '%') then  'C6'
+when upper(auct_titl) LIKE CONCAT('%', 'BRZ',   '%') then  'BRZ'
+when upper(auct_titl) LIKE CONCAT('%', 'FRONTERA',   '%') then  'FRONTERA'
+when upper(auct_titl) LIKE CONCAT('%', 'MAGENTIS',   '%') then  'MAGENTIS'
+when upper(auct_titl) LIKE CONCAT('%', 'EXTOL',   '%') then  'EXTOL'
+when upper(auct_titl) LIKE CONCAT('%', 'MATERIA',   '%') then  'MATERIA'
+when upper(auct_titl) LIKE CONCAT('%', 'BENTAYGA',   '%') then  'BENTAYGA'
+when upper(auct_titl) LIKE CONCAT('%', '400',   '%') then  '400'
+when upper(auct_titl) LIKE CONCAT('%', 'CAVALIER',   '%') then  'CAVALIER'
+when upper(auct_titl) LIKE CONCAT('%', 'YARIS VERSO / FUN CARGO',   '%') then  'YARIS VERSO / FUN CARGO'
+when upper(auct_titl) LIKE CONCAT('%', 'LAND CRUISER PRADO',   '%') then  'LAND CRUISER PRADO'
+when upper(auct_titl) LIKE CONCAT('%', 'DELTA',   '%') then  'DELTA'
+when upper(auct_titl) LIKE CONCAT('%', 'M.GO',   '%') then  'M.GO'
+when upper(auct_titl) LIKE CONCAT('%', 'I20 ACTIVE',   '%') then  'I20 ACTIVE'
+when upper(auct_titl) LIKE CONCAT('%', 'FLYING SPUR',   '%') then  'FLYING SPUR'
+when upper(auct_titl) LIKE CONCAT('%', 'A4 ALLROAD',   '%') then  'A4 ALLROAD'
+when upper(auct_titl) LIKE CONCAT('%', '607',   '%') then  '607'
+when upper(auct_titl) LIKE CONCAT('%', '740',   '%') then  '740'
+when upper(auct_titl) LIKE CONCAT('%', 'SHOGUN',   '%') then  'SHOGUN'
+when upper(auct_titl) LIKE CONCAT('%', 'LOGO',   '%') then  'LOGO'
+when upper(auct_titl) LIKE CONCAT('%', 'LANDCRUISER PRADO',   '%') then  'LANDCRUISER PRADO'
+when upper(auct_titl) LIKE CONCAT('%', 'LS',   '%') then  'LS'
+when upper(auct_titl) LIKE CONCAT('%', 'ESTIMA EMINA / LUCIDA',   '%') then  'ESTIMA EMINA / LUCIDA'
+when upper(auct_titl) LIKE CONCAT('%', 'IDEA',   '%') then  'IDEA'
+when upper(auct_titl) LIKE CONCAT('%', '240',   '%') then  '240'
+when upper(auct_titl) LIKE CONCAT('%', 'CASCADA',   '%') then  'CASCADA'
+when upper(auct_titl) LIKE CONCAT('%', '323 F/P',   '%') then  '323 F/P'
+when upper(auct_titl) LIKE CONCAT('%', 'DB11',   '%') then  'DB11'
+when upper(auct_titl) LIKE CONCAT('%', 'VANEO',   '%') then  'VANEO'
+when upper(auct_titl) LIKE CONCAT('%', 'TX',   '%') then  'TX'
+when upper(auct_titl) LIKE CONCAT('%', 'NV250',   '%') then  'NV250'
+when upper(auct_titl) LIKE CONCAT('%', 'NITRO',   '%') then  'NITRO'
+when upper(auct_titl) LIKE CONCAT('%', 'ECLIPSE CROSS',   '%') then  'ECLIPSE CROSS'
+when upper(auct_titl) LIKE CONCAT('%', 'DB9',   '%') then  'DB9'
+when upper(auct_titl) LIKE CONCAT('%', '156',   '%') then  '156'
+when upper(auct_titl) LIKE CONCAT('%', 'ROADSTER',   '%') then  'ROADSTER'
+when upper(auct_titl) LIKE CONCAT('%', 'WAGON R',   '%') then  'WAGON R'
+when upper(auct_titl) LIKE CONCAT('%', 'TIIDA',   '%') then  'TIIDA'
+when upper(auct_titl) LIKE CONCAT('%', 'S2000',   '%') then  'S2000'
+when upper(auct_titl) LIKE CONCAT('%', 'KUBISTAR',   '%') then  'KUBISTAR'
+when upper(auct_titl) LIKE CONCAT('%', 'GLA',   '%') then  'GLA'
+when upper(auct_titl) LIKE CONCAT('%', 'MG GS',   '%') then  'MG GS'
+when upper(auct_titl) LIKE CONCAT('%', 'DELICA / SPACE GEAR',   '%') then  'DELICA / SPACE GEAR'
+when upper(auct_titl) LIKE CONCAT('%', 'NV200 / EVALIA',   '%') then  'NV200 / EVALIA'
+when upper(auct_titl) LIKE CONCAT('%', 'GRAND C4 SPACETOURER',   '%') then  'GRAND C4 SPACETOURER'
+when upper(auct_titl) LIKE CONCAT('%', 'V-CLASS',   '%') then  'V-CLASS'
+when upper(auct_titl) LIKE CONCAT('%', 'SPIDER',   '%') then  'SPIDER'
+when upper(auct_titl) LIKE CONCAT('%', 'SC',   '%') then  'SC'
+when upper(auct_titl) LIKE CONCAT('%', 'DURANGO',   '%') then  'DURANGO'
+when upper(auct_titl) LIKE CONCAT('%', 'GRANCABRIO',   '%') then  'GRANCABRIO'
+when upper(auct_titl) LIKE CONCAT('%', 'I',   '%') then  'I'
+when upper(auct_titl) LIKE CONCAT('%', 'CAPRI',   '%') then  'CAPRI'
+when upper(auct_titl) LIKE CONCAT('%', '328 GTS',   '%') then  '328 GTS'
+when upper(auct_titl) LIKE CONCAT('%', 'SONATA',   '%') then  'SONATA'
+when upper(auct_titl) LIKE CONCAT('%', 'SPRINTER 4,6-T',   '%') then  'SPRINTER 4,6-T'
+when upper(auct_titl) LIKE CONCAT('%', 'PRELUDE',   '%') then  'PRELUDE'
+when upper(auct_titl) LIKE CONCAT('%', 'EXPLORER',   '%') then  'EXPLORER'
+when upper(auct_titl) LIKE CONCAT('%', 'FTO',   '%') then  'FTO'
+when upper(auct_titl) LIKE CONCAT('%', 'GRANADA',   '%') then  'GRANADA'
+when upper(auct_titl) LIKE CONCAT('%', 'COPEN',   '%') then  'COPEN'
+when upper(auct_titl) LIKE CONCAT('%', 'SPRINTER 2-T',   '%') then  'SPRINTER 2-T'
+when upper(auct_titl) LIKE CONCAT('%', 'STARLET',   '%') then  'STARLET'
+when upper(auct_titl) LIKE CONCAT('%', 'TGE',   '%') then  'TGE'
+when upper(auct_titl) LIKE CONCAT('%', 'TRAX',   '%') then  'TRAX'
+when upper(auct_titl) LIKE CONCAT('%', 'SPRINTER',   '%') then  'SPRINTER'
+when upper(auct_titl) LIKE CONCAT('%', 'Q30',   '%') then  'Q30'
+when upper(auct_titl) LIKE CONCAT('%', 'MAVERICK',   '%') then  'MAVERICK'
+when upper(auct_titl) LIKE CONCAT('%', 'GT 86',   '%') then  'GT 86'
+when upper(auct_titl) LIKE CONCAT('%', 'SHOGUN SPORT',   '%') then  'SHOGUN SPORT'
+when upper(auct_titl) LIKE CONCAT('%', 'RODIUS',   '%') then  'RODIUS'
+when upper(auct_titl) LIKE CONCAT('%', 'STORIA',   '%') then  'STORIA'
+when upper(auct_titl) LIKE CONCAT('%', 'MONARO',   '%') then  'MONARO'
+when upper(auct_titl) LIKE CONCAT('%', 'MG ZT',   '%') then  'MG ZT'
+when upper(auct_titl) LIKE CONCAT('%', 'MG HS',   '%') then  'MG HS'
+when upper(auct_titl) LIKE CONCAT('%', 'CAMRY',   '%') then  'CAMRY'
+when upper(auct_titl) LIKE CONCAT('%', 'CITYROVER',   '%') then  'CITYROVER'
+when upper(auct_titl) LIKE CONCAT('%', 'VANETTE CARGO',   '%') then  'VANETTE CARGO'
+when upper(auct_titl) LIKE CONCAT('%', 'STREAM',   '%') then  'STREAM'
+when upper(auct_titl) LIKE CONCAT('%', '500C / 595C / 695C',   '%') then  '500C / 595C / 695C'
+when upper(auct_titl) LIKE CONCAT('%', 'C4 SPACETOURER',   '%') then  'C4 SPACETOURER'
+when upper(auct_titl) LIKE CONCAT('%', '570S',   '%') then  '570S'
+when upper(auct_titl) LIKE CONCAT('%', 'CABSTAR E',   '%') then  'CABSTAR E'
+when upper(auct_titl) LIKE CONCAT('%', 'STINGER',   '%') then  'STINGER'
+when upper(auct_titl) LIKE CONCAT('%', 'SKYLINE',   '%') then  'SKYLINE'
+when upper(auct_titl) LIKE CONCAT('%', 'SPACETOURER BUS (V_)',   '%') then  'SPACETOURER BUS (V_)'
+when upper(auct_titl) LIKE CONCAT('%', 'XV',   '%') then  'XV'
+when upper(auct_titl) LIKE CONCAT('%', 'SIERRA',   '%') then  'SIERRA'
+when upper(auct_titl) LIKE CONCAT('%', 'VX220',   '%') then  'VX220'
+when upper(auct_titl) LIKE CONCAT('%', 'HIJET',   '%') then  'HIJET'
+when upper(auct_titl) LIKE CONCAT('%', 'KYRON',   '%') then  'KYRON'
+when upper(auct_titl) LIKE CONCAT('%', 'CHARADE',   '%') then  'CHARADE'
+when upper(auct_titl) LIKE CONCAT('%', 'RC',   '%') then  'RC'
+when upper(auct_titl) LIKE CONCAT('%', 'TALENTO',   '%') then  'TALENTO'
+when upper(auct_titl) LIKE CONCAT('%', 'TARRACO',   '%') then  'TARRACO'
+when upper(auct_titl) LIKE CONCAT('%', 'GTV',   '%') then  'GTV'
+when upper(auct_titl) LIKE CONCAT('%', 'JUSTY',   '%') then  'JUSTY'
+when upper(auct_titl) LIKE CONCAT('%', 'DEMIO',   '%') then  'DEMIO'
+when upper(auct_titl) LIKE CONCAT('%', 'I8',   '%') then  'I8'
+when upper(auct_titl) LIKE CONCAT('%', 'LAND CRUISER COLORADO',   '%') then  'LAND CRUISER COLORADO'
+when upper(auct_titl) LIKE CONCAT('%', 'GRANVIA',   '%') then  'GRANVIA'
+when upper(auct_titl) LIKE CONCAT('%', 'FIGARO',   '%') then  'FIGARO'
+when upper(auct_titl) LIKE CONCAT('%', 'ARTEON',   '%') then  'ARTEON'
+when upper(auct_titl) LIKE CONCAT('%', '190',   '%') then  '190'
+when upper(auct_titl) LIKE CONCAT('%', 'TRIBUTE',   '%') then  'TRIBUTE'
+when upper(auct_titl) LIKE CONCAT('%', 'SCORPIO',   '%') then  'SCORPIO'
+when upper(auct_titl) LIKE CONCAT('%', 'REXTON / REXTON II',   '%') then  'REXTON / REXTON II'
+when upper(auct_titl) LIKE CONCAT('%', 'PREVIA',   '%') then  'PREVIA'
+when upper(auct_titl) LIKE CONCAT('%', 'STREETWISE',   '%') then  'STREETWISE'
+when upper(auct_titl) LIKE CONCAT('%', 'PROACE VERSO',   '%') then  'PROACE VERSO'
+when upper(auct_titl) LIKE CONCAT('%', 'LARGO',   '%') then  'LARGO'
+when upper(auct_titl) LIKE CONCAT('%', 'KARL',   '%') then  'KARL'
+when upper(auct_titl) LIKE CONCAT('%', '19',   '%') then  '19'
+when upper(auct_titl) LIKE CONCAT('%', 'CUORE',   '%') then  'CUORE'
+when upper(auct_titl) LIKE CONCAT('%', 'C15',   '%') then  'C15'
+when upper(auct_titl) LIKE CONCAT('%', '718 CAYMAN',   '%') then  '718 CAYMAN'
+when upper(auct_titl) LIKE CONCAT('%', 'B-SERIES',   '%') then  'B-SERIES'
+when upper(auct_titl) LIKE CONCAT('%', '200SX',   '%') then  '200SX'
+when upper(auct_titl) LIKE CONCAT('%', 'BT-50',   '%') then  'BT-50'
+when upper(auct_titl) LIKE CONCAT('%', 'TRANSIT TOURNEO',   '%') then  'TRANSIT TOURNEO'
+when upper(auct_titl) LIKE CONCAT('%', 'SUNNY',   '%') then  'SUNNY'
+when upper(auct_titl) LIKE CONCAT('%', 'PREMACY',   '%') then  'PREMACY'
+when upper(auct_titl) LIKE CONCAT('%', 'REXTON',   '%') then  'REXTON'
+when upper(auct_titl) LIKE CONCAT('%', 'ZX',   '%') then  'ZX'
+when upper(auct_titl) LIKE CONCAT('%', 'LEGEND',   '%') then  'LEGEND'
+when upper(auct_titl) LIKE CONCAT('%', 'EXIGE',   '%') then  'EXIGE'
+when upper(auct_titl) LIKE CONCAT('%', 'KELISA',   '%') then  'KELISA'
+when upper(auct_titl) LIKE CONCAT('%', 'COMMANDER',   '%') then  'COMMANDER'
+when upper(auct_titl) LIKE CONCAT('%', 'AVENSIS VERSO',   '%') then  'AVENSIS VERSO'
+when upper(auct_titl) LIKE CONCAT('%', 'ACCLAIM',   '%') then  'ACCLAIM'
+when upper(auct_titl) LIKE CONCAT('%', '126',   '%') then  '126'
+when upper(auct_titl) LIKE CONCAT('%', '21',   '%') then  '21'
+when upper(auct_titl) LIKE CONCAT('%', 'COROLLA COMPACT (_E11_)',   '%') then  'COROLLA COMPACT (_E11_)'
+when upper(auct_titl) LIKE CONCAT('%', 'CABRIO',   '%') then  'CABRIO'
+when upper(auct_titl) LIKE CONCAT('%', '309',   '%') then  '309'
+when upper(auct_titl) LIKE CONCAT('%', 'SHOGUN SPORT VAN',   '%') then  'SHOGUN SPORT VAN'
+when upper(auct_titl) LIKE CONCAT('%', 'T-CROSS',   '%') then  'T-CROSS'
+when upper(auct_titl) LIKE CONCAT('%', 'ELANTRA',   '%') then  'ELANTRA'
+when upper(auct_titl) LIKE CONCAT('%', 'MG ZT-T',   '%') then  'MG ZT-T'
+when upper(auct_titl) LIKE CONCAT('%', 'DYNA',   '%') then  'DYNA'
+when upper(auct_titl) LIKE CONCAT('%', 'MAESTRO',   '%') then  'MAESTRO'
+when upper(auct_titl) LIKE CONCAT('%', 'KENARI',   '%') then  'KENARI'
+when upper(auct_titl) LIKE CONCAT('%', 'M35',   '%') then  'M35'
+when upper(auct_titl) LIKE CONCAT('%', 'AVENGER',   '%') then  'AVENGER'
+when upper(auct_titl) LIKE CONCAT('%', '90',   '%') then  '90'
+when upper(auct_titl) LIKE CONCAT('%', 'CROMA',   '%') then  'CROMA'
+when upper(auct_titl) LIKE CONCAT('%', '600',   '%') then  '600'
+when upper(auct_titl) LIKE CONCAT('%', 'CORDOBA',   '%') then  'CORDOBA'
+when upper(auct_titl) LIKE CONCAT('%', 'BIPPER TEPEE',   '%') then  'BIPPER TEPEE' else 'TBC' end as Model_text,
+case 
+when upper(auct_titl) LIKE CONCAT('%', '1977',   '%') then  '1977'
+when upper(auct_titl) LIKE CONCAT('%', '1978',   '%') then  '1978'
+when upper(auct_titl) LIKE CONCAT('%', '1979',   '%') then  '1979'
+when upper(auct_titl) LIKE CONCAT('%', '1980',   '%') then  '1980'
+when upper(auct_titl) LIKE CONCAT('%', '1981',   '%') then  '1981'
+when upper(auct_titl) LIKE CONCAT('%', '1982',   '%') then  '1982'
+when upper(auct_titl) LIKE CONCAT('%', '1983',   '%') then  '1983'
+when upper(auct_titl) LIKE CONCAT('%', '1984',   '%') then  '1984'
+when upper(auct_titl) LIKE CONCAT('%', '1985',   '%') then  '1985'
+when upper(auct_titl) LIKE CONCAT('%', '1986',   '%') then  '1986'
+when upper(auct_titl) LIKE CONCAT('%', '1987',   '%') then  '1987'
+when upper(auct_titl) LIKE CONCAT('%', '1988',   '%') then  '1988'
+when upper(auct_titl) LIKE CONCAT('%', '1989',   '%') then  '1989'
+when upper(auct_titl) LIKE CONCAT('%', '1990',   '%') then  '1990'
+when upper(auct_titl) LIKE CONCAT('%', '1991',   '%') then  '1991'
+when upper(auct_titl) LIKE CONCAT('%', '1992',   '%') then  '1992'
+when upper(auct_titl) LIKE CONCAT('%', '1993',   '%') then  '1993'
+when upper(auct_titl) LIKE CONCAT('%', '1994',   '%') then  '1994'
+when upper(auct_titl) LIKE CONCAT('%', '1995',   '%') then  '1995'
+when upper(auct_titl) LIKE CONCAT('%', '1996',   '%') then  '1996'
+when upper(auct_titl) LIKE CONCAT('%', '1997',   '%') then  '1997'
+when upper(auct_titl) LIKE CONCAT('%', '1998',   '%') then  '1998'
+when upper(auct_titl) LIKE CONCAT('%', '1999',   '%') then  '1999'
+when upper(auct_titl) LIKE CONCAT('%', '2000',   '%') then  '2000'
+when upper(auct_titl) LIKE CONCAT('%', '2001',   '%') then  '2001'
+when upper(auct_titl) LIKE CONCAT('%', '2002',   '%') then  '2002'
+when upper(auct_titl) LIKE CONCAT('%', '2003',   '%') then  '2003'
+when upper(auct_titl) LIKE CONCAT('%', '2004',   '%') then  '2004'
+when upper(auct_titl) LIKE CONCAT('%', '2005',   '%') then  '2005'
+when upper(auct_titl) LIKE CONCAT('%', '2006',   '%') then  '2006'
+when upper(auct_titl) LIKE CONCAT('%', '2007',   '%') then  '2007'
+when upper(auct_titl) LIKE CONCAT('%', '2008',   '%') then  '2008'
+when upper(auct_titl) LIKE CONCAT('%', '2009',   '%') then  '2009'
+when upper(auct_titl) LIKE CONCAT('%', '2010',   '%') then  '2010'
+when upper(auct_titl) LIKE CONCAT('%', '2011',   '%') then  '2011'
+when upper(auct_titl) LIKE CONCAT('%', '2012',   '%') then  '2012'
+when upper(auct_titl) LIKE CONCAT('%', '2013',   '%') then  '2013'
+when upper(auct_titl) LIKE CONCAT('%', '2014',   '%') then  '2014'
+when upper(auct_titl) LIKE CONCAT('%', '2015',   '%') then  '2015'
+when upper(auct_titl) LIKE CONCAT('%', '2016',   '%') then  '2016'
+when upper(auct_titl) LIKE CONCAT('%', '2017',   '%') then  '2017'
+when upper(auct_titl) LIKE CONCAT('%', '2018',   '%') then  '2018'
+when upper(auct_titl) LIKE CONCAT('%', '2019',   '%') then  '2019'
+when upper(auct_titl) LIKE CONCAT('%', '2020',   '%') then  '2020'
+when upper(auct_titl) LIKE CONCAT('%', '2021',   '%') then  '2021'
+when upper(auct_titl) LIKE CONCAT('%', '2022',   '%') then  '2022'
+when upper(auct_titl) LIKE CONCAT('%', '2023',   '%') then  '2023'else 'TBC' end as Year_text
+,*
+from P_ICHAN_T.gp_MARKET_top_output_match  ; 
+
+Select * from  P_ICHAN_T.gp_MARKET_top_output_text  limit 1000;
+
+---Select * from  P_ICHAN_T.gp_MARKET_top_output_match  limit 1000;;;
+
+drop table if exists  P_ICHAN_T.gp_MARKET_top_output_stage ; 
+create table P_ICHAN_T.gp_MARKET_top_output_stage as 
+Select
+case when Year_diff ='N' then Year_from
+	 when  Year_diff ='Y' and Year_from_match ='Y' then Year_from 
+	 when  Year_diff ='Y' and Year_to_match ='Y' then Year_to else  Year_text  end as Year_final,
+case when Make_diff  ='N' then Make_from
+	 when Make_diff  ='Y' and Make_from_match ='Y' then Make_from 
+	 when Make_diff  ='Y' and Make_to_match ='Y' then Make_to else Make_text  end as Make_final,
+case when Model_diff ='N' then Model_from
+	 when Model_diff ='Y' and Model_from_match ='Y' then Model_from 
+	 when Model_diff ='Y' and Model_to_match ='Y' then Model_to else Model_text  end as Model_final
+,*
+from   P_ICHAN_T.gp_MARKET_top_output_text
+;
+/*
+Select count(*) from P_ICHAN_T.gp_MARKET_top_output_stage  where   Make_final <>'TBC'  limit 1000; 
+Select count(*) from P_ICHAN_T.gp_MARKET_top_output_stage  where year_final ='TBC'  limit 1000; 
+Select  slr_id ,count(*) from P_ICHAN_T.gp_MARKET_top_output_stage  where Make_final ='TBC'   group by 1 limit 1000; 
+Select  slr_id ,count(*) from P_ICHAN_T.gp_MARKET_top_output_stage    group by 1 limit 1000; 
+Select count(*) from P_ICHAN_T.gp_MARKET_top_output_stage  where Model_final ='TBC'  limit 1000; 
+*/
+
+drop table if exists  P_ICHAN_T.gp_MARKET_top_output_final ; 
+create table P_ICHAN_T.gp_MARKET_top_output_final as 
+SELECT	
+Retail_year
+--,Sale_date
+,EXTRACT(MONTH FROM Sale_date) AS sale_month
+,Buyer_type
+,auct_titl
+--,META_CATEG_ID
+,CATEG_LVL2_NAME
+--,CATEG_LVL2_ID
+,CATEG_LVL3_NAME
+--,CATEG_LVL3_ID
+,CATEG_LVL4_NAME
+--,CATEG_LVL4_ID
+,CATEG_LVL5_NAME
+--,CATEG_LVL5_ID
+,Year_final
+, case 
+when  upper(auct_titl) LIKE CONCAT('%', 'VOLKSWAGEN',   '%') then  'VOLKSWAGEN'
+when  upper(auct_titl) LIKE CONCAT('%', 'CITROEN',   '%') then  'CITROEN'
+when  upper(auct_titl) LIKE CONCAT('%', 'CITREON'   '%') then  'CITROEN'
+when  upper(auct_titl) LIKE CONCAT('%', 'MERCEDES'   '%') then  'MERCEDES'
+when  upper(auct_titl) LIKE CONCAT('%', 'AUDI'   '%') then  'AUDI'
+when  upper(auct_titl) LIKE CONCAT('%', 'VIVARO'   '%') then  'VAUXHALL'
+when  upper(auct_titl) LIKE CONCAT('%', 'TOYOTA'   '%') then  'TOYOTA' ELSE Make_final  END AS Make_final
+,Model_final
+,Year_from
+,Year_to
+-- ,concat(Year_final,'-', Make_final,'-',Model_final ) as YMM
+--,Make_from
+--,Make_to
+--,Model_from
+--,Model_to
+,Condition
+,OEM_Number
+,format_listing
+--,sum(GMV_usd) GMV_USD
+,sum(Quantity) as Quantity
+from P_ICHAN_T.gp_MARKET_top_output_stage
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+;
+
+Select * from P_ICHAN_T.gp_MARKET_top_output_final where make_final ='MERCEDES'  limit 1000; 
+
+drop table if exists   P_ICHAN_T.gp_MARKET_top_output_final_rank  ; 
+Create  table P_ICHAN_T.gp_MARKET_top_output_final_rank as 
+( select 
+case 
+when row_n <=100000 then 'File_1' 
+when row_n <=200000 then 'File_2' 
+when row_n <=300000 then 'File_3' 
+when row_n <=400000 then 'File_4'
+when row_n <=500000 then 'File_5'  else 'File_0' end as File,* from (
+select row_number () over ( order by Make_final, Model_final, Year_final, auct_titl ) as row_n,concat(Year_final,'-', Make_final,'-',Model_final ) as YMM
+,* from  P_ICHAN_T.gp_MARKET_top_output_final));
+
+
+select File , count(*)  from P_ICHAN_T.gp_MARKET_top_output_final_rank group by 1  order by 1 limit 1000; 
+select * from  P_ICHAN_T.gp_MARKET_top_output_final_rank  limit 1000; 
+
+
+drop table if exists   P_ICHAN_T.gp_MARKET_top_summary ; 
+Create  table P_ICHAN_T.gp_MARKET_top_summary as 
+select
+Buyer_type,
+YMM,
+Year_final,
+Make_final,
+Model_final,
+sum(Quantity) as Quantity
+from  P_ICHAN_T.gp_MARKET_top_output_final_rank 
+group by 1,2,3,4,5
+;
