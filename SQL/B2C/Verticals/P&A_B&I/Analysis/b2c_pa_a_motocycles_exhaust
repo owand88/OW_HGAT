@@ -1,0 +1,116 @@
+------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------
+-- UKPLAN-421
+-- Motorcycle Exhausts L3 data request
+-- Requested by Yann Gemmet
+------------------------------------------------------------------------------------------------------------
+--Task: 
+-- I need to find out during the year 2022, what the GMV for all sales in the L3 category  Exhausts & Emission Systems 180027, for either the aspect  Brand  or  Part Manufacturer  for the following brands/manufacturers:
+--Beowulf
+--GRmoto
+--Lextek
+--Delkevic
+--Blueflame
+--Blueflame Performance Ltd
+--Black Widow Exhausts
+--Fuel Exhausts
+--Scorpion
+--SP ENGINEERING
+--Racefit
+--Pro-Race
+--Powertech
+--Pipe Werx
+--Max Torque Cans
+--Hope this makes sense, if not, I’m happy to hop on a quick call to explain. Either way, I would certainly appreciate your help with this as it would be impossible for me otherwise.
+
+--Objective:
+-- To be able to identify GMV impact from affected exhaust brands if the businesses are prohibited from UK sales.
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Drop table if exists P_INVENTORYPLANNING_T.b2c_pa_motorcycle_brand_part_gmv  ;
+Create table P_INVENTORYPLANNING_T.b2c_pa_motorcycle_brand_part_gmv as(
+SELECT	Retail_year
+,cat.META_CATEG_ID
+,cat.CATEG_LVL2_NAME
+, cat.CATEG_LVL2_ID
+,cat.CATEG_LVL3_NAME
+, cat.CATEG_LVL3_ID
+, Brand
+, Part_Manufacturer
+,case  when byr_cntry_id=3 and slr_cntry_id=3 then 'DOMESTIC' else 'CBT' end  as byr_segment
+,SUM(gmv_plan_usd) AS GMV_usd
+FROM   DW_CHECKOUT_TRANS ck -- SELECT * FROM   DW_CHECKOUT_TRANS  where seller_id= 45524941
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.gmv_DT   and retail_year =2022 
+inner join dw_category_groupings as cat   on  ( (cat.leaf_categ_id=ck.leaf_categ_id and cat.site_id=3) and  ! cat.sap_category_id in(5,7,41,23, -999))
+inner JOIN lstg_item_cndtn cond ON ck.item_id = cond.item_id  AND ck.auct_end_dt = cond.AUCT_END_DT
+left outer JOIN DW_USERs U ON U.USER_ID= ck.seller_id 
+INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+left join (select 
+						upper(ASPCT_VLU_NM) as Brand,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('brand' ) and  ns_type_cd in ('df', 'nf')
+						 and  aspct.auct_end_dt  >=  date '2021-01-01' group by 1,2,3,4) bbase
+				ON ck.ITEM_ID = bbase.ITEM_ID
+left join (select
+						upper(ASPCT_VLU_NM) as Part_Manufacturer,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('part manufacturer' ) and ns_type_cd in ('df', 'nf')
+						 and  aspct.auct_end_dt  >=  date '2021-01-01' group by 1,2,3,4  ) cbase
+				ON ck.ITEM_ID = cbase.ITEM_ID
+WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				--and ck.site_id = 3
+				and slr_cntry_id = 3
+				--and BYR_CNTRY_ID=3
+				and CREATED_DT >='2018-01-01'
+				and CATEG_LVL3_ID =180027
+				and u.USER_DSGNTN_ID =2 
+				and HIST.USEGM_ID = 206	
+				and  (Brand  IN 
+							('BEOWULF',
+							'GRMOTO',
+							'LEXTEK',
+							'DELKEVIC',
+							'BLUEFLAME',
+							'BLUEFLAME PERFORMANCE LTD',
+							'BLACK WIDOW EXHAUSTS',
+							'FUEL EXHAUSTS',
+							'SCORPION',
+							'SP ENGINEERING',
+							'RACEFIT',
+							'PRO-RACE',
+							'POWER TECH',
+							'PIPE WERX',
+							'MAX TORQUE CANS') 
+					or Part_Manufacturer IN 
+							('BEOWULF',
+							'GRMOTO',
+							'LEXTEK',
+							'DELKEVIC',
+							'BLUEFLAME',
+							'BLUEFLAME PERFORMANCE LTD',
+							'BLACK WIDOW EXHAUSTS',
+							'FUEL EXHAUSTS',
+							'SCORPION',
+							'SP ENGINEERING',
+							'RACEFIT',
+							'PRO-RACE',
+							'POWER TECH',
+							'PIPE WERX',
+							'MAX TORQUE CANS'))  
+GROUP BY 1,2,3,4,5,6,7,8,9);
+select * from P_INVENTORYPLANNING_T.b2c_pa_motorcycle_brand_part_gmv  ;

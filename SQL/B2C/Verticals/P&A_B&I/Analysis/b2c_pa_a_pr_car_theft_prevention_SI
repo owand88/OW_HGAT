@@ -1,0 +1,126 @@
+--==================================================================================================================================================================================================================================
+-- UKPLAN-431
+-- Data request for PR story on car theft prevention trends
+--request support with a data pull for P&A comms, for a story on car theft prevention trends.
+--Data required:
+-- Sold items between May 2022 – May 2023 ranked by postcode.
+
+-- I ’ m not sure how the L4 breakdown will class this inventory,
+-- but the items we ’ re interested in are: 
+
+-- • Lockbox • Faraday box • Signal blocker box • Car key signal blocker box • Faraday pouch for car keys • Steering wheel lock • Wheel clamp • Pedal lock • Wheel brake lock • Car GPS tracker • Car locator • GPS vehicle tracker • Car alarm • Vehicle alarm • Car security system • Car Immobiliser
+--==================================================================================================================================================================================================================================
+-- 1. GMV
+Drop table if exists P_INVENTORYPLANNING_T.b2c_pa_pr_theft_prevention_sold_items;
+ CREATE TABLE  P_INVENTORYPLANNING_T.b2c_pa_pr_theft_prevention_sold_items as 
+(
+SELECT 
+BUYER_ID,
+TRANSACTION_ID,
+CK.SELLER_ID,
+A.USER_SLCTD_ID AS Seller_name ,
+CATEG_LVL2_name, 
+CATEG_LVL3_name, 
+CATEG_LVL4_name, 
+ bsns_vrtcl_name, 
+--ASE WHEN HIST.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END SEGMENT,
+SUM(CK.gmv_plan_usd) AS Total_GMV, 
+SUM(QUANTITY) AS SI
+from  DW_CHECKOUT_TRANS AS CK 
+--inner  JOIN  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR  ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL  ON CAL.CAL_DT = CK.CREATED_DT  and retail_year >= 2022 and  AGE_FOR_RTL_WEEK_ID  BETWEEN -58  AND -6 
+INNER JOIN (select LEAF_CATEG_ID, meta_categ_id, meta_categ_name, CATEG_LVL2_ID, CATEG_LVL2_name, categ_lvl3_name, categ_lvl3_id, categ_lvl4_name, categ_lvl4_id, bsns_vrtcl_name
+			from DW_CATEGORY_GROUPINGS CAT where CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) and site_id = 3 
+			group by LEAF_CATEG_ID, meta_categ_id, meta_categ_name, CATEG_LVL2_ID, CATEG_LVL2_name, categ_lvl3_name, categ_lvl3_id, categ_lvl4_name, categ_lvl4_id, bsns_vrtcl_name) cat
+ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+LEFT  JOIN DW_USEGM_HIST HIST 
+ON HIST.USER_ID=ck.Seller_ID 
+AND HIST.USEGM_GRP_ID  = 48 
+AND CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+left join DW_USERS A ON A.USER_ID=CK.SELLER_ID
+    LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+WHERE 1=1
+and CNDTN_ROLLUP_ID IN(1,3)
+AND CK.CK_WACKO_YN  =  'N'
+AND CK.SALE_TYPE NOT IN (10,15)
+AND CK.SLR_CNTRY_ID = 3
+and ck.byr_cntry_id =3
+and HIST.USEGM_ID = 206
+AND  CATEG_LVL2_ID IN ( 262266 , 38635) 
+and bsns_vrtcl_name = 'Parts & Accessories'
+
+GROUP BY
+1,2,3,4,5,6,7,8
+ );
+-- 803841   
+SELECT sum(SI)  FROM P_INVENTORYPLANNING_T.b2c_pa_pr_theft_prevention_sold_items LIMIT 100; 
+
+-- 2. Extract tran id 
+Drop table if exists  p_InventoryPlanning_t.b2c_pa_pr_theft_tran_id ; 
+create table p_InventoryPlanning_t.b2c_pa_pr_theft_tran_id as 
+select BUYER_ID , max(TRANSACTION_ID) TRANSACTION_ID 
+from P_INVENTORYPLANNING_T.b2c_pa_pr_theft_prevention_sold_items  
+group by 1 ;
+-- select * from p_InventoryPlanning_t.b2c_pa_pr_theft_tran_id   limit 1000;
+	
+	
+--- 3. SHIPPING ADDRESS TO GET POSTCODE
+Drop table  if exists  p_InventoryPlanning_t.b2c_pa_pr_theft_prevention_add;
+create table p_InventoryPlanning_t.b2c_pa_pr_theft_prevention_add as(
+   SELECT SSA.CK_TRANS_ID
+   ,x.BUYER_ID
+	, ADR.cntct_name
+	, ADR.ZIP
+	, ADR.ADDR1_TXT
+	, ADR.ADDR2_TXT
+	, ADR.CITY_TXT
+	, ADR.CNTRY_ID
+	, ADR.CNTRY_TXT
+	, LBL_AD.CNTCT_NAME AS LBL_CONTACT_NAME
+	, LBL_AD.ADDR1_TXT AS LBL_ADDR1
+	, LBL_AD.ADDR2_TXT AS LBL_ADDR2
+	, LBL_AD.CITY_TXT AS LBL_CITY
+	, LBL_AD.CNTRY_TXT AS LBL_COUNTRY
+	, LBL_AD.STATE_PRVNC_TXT AS LBL_STATE
+	, LBL_AD.PSTL_CODE_TXT AS LBL_ZIP
+FROM ( select * from  SSA_SHPMT_TRANS_FACT  where lstg_site_id =3 and ck_dt>='2022-03-01' and BUYER_CNTRY_ID = 3 and buyer_id  in ( select distinct buyer_id from p_InventoryPlanning_t.b2c_pa_pr_theft_tran_id )  ) SSA
+LEFT JOIN  (select * from PRS_SECURE_V.DW_USER_ADDRESSES where user_id  in ( select distinct buyer_id from p_InventoryPlanning_t.b2c_pa_pr_theft_tran_id ))  ADR -- 
+	ON SSA.CK_TO_ADDR_ID = ADR.ADDRESS_ID
+LEFT JOIN (select * from dw_shipment where buyer_id in ( select distinct buyer_id from p_InventoryPlanning_t.b2c_pa_pr_theft_tran_id ) )SHP
+	on SSA.SHIPMENT_ID = SHP.SHIPMENT_ID
+LEFT JOIN PRS_SECURE_V.DW_SHPMT_LABEL_ADDR LBL_AD
+	ON SHP.TO_ADDRESS_ID = LBL_AD.SHPMT_LABEL_ADDR_ID
+INNER JOIN p_InventoryPlanning_t.b2c_pa_pr_theft_tran_id X ON  SSA.CK_TRANS_ID =X.TRANSACTION_ID
+WHERE 1=1
+-- AND SSA.CK_DT > '2021-01-01'
+AND SSA.BUYER_CNTRY_ID = 3 ) ;	
+
+--select *  FROM SSA_SHPMT_TRANS_FACT SSA where  SSA.BUYER_CNTRY_ID = 3 limit 1000 
+--select * from  p_InventoryPlanning_t.b2c_pa_pr_theft_prevention_add  limit 100 ; 
+--select buyer_id, max(ZIP) ZIP from   p_InventoryPlanning_t.b2c_pa_pr_theft_prevention_add  group by 1 
+
+-- 4. Summary 
+drop table  p_InventoryPlanning_t.b2c_pa_pr_theft_prevention_summary;
+create table p_InventoryPlanning_t.b2c_pa_pr_theft_prevention_summary as 
+Select 
+ZIP,
+CATEG_LVL2_name, 
+CATEG_LVL3_name, 
+CATEG_LVL4_name, 
+Bsns_vrtcl_name, 
+sum(SI)  SI
+From P_INVENTORYPLANNING_T.b2c_pa_pr_theft_prevention_sold_items  a
+Left join  ( select buyer_id,  max(ZIP) ZIP from   p_InventoryPlanning_t.b2c_pa_pr_theft_prevention_add  group by 1 ) b on a.buyer_id =b.buyer_id 
+Group by 1,2,3,4,5
+
+select * from p_InventoryPlanning_t.b2c_pa_pr_theft_prevention_summary  limit 1000; 
+
+-- 5. Output 
+Drop table if exists  p_InventoryPlanning_t.b2c_pa_pr_theft_prevention_top  ;
+create table p_InventoryPlanning_t.b2c_pa_pr_theft_prevention_top as 
+select * from (
+Select row_number() over (partition by CATEG_LVL4_name order by SI desc ) as _rank , * 
+from  p_InventoryPlanning_t.b2c_pa_pr_theft_prevention_summary  ) where _rank <=1000 ; 
+
+select * from  p_InventoryPlanning_t.b2c_pa_pr_theft_prevention_top  where  CATEG_LVL4_name ='Steering Wheel Locks'
