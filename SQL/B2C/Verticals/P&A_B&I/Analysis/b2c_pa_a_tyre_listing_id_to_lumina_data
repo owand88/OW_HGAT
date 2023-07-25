@@ -1,0 +1,25 @@
+--UKPLAN-458
+--Tyre price competitiveness listing ids and sellers
+-- Task: To extract item ids from the comparison data from Lumina and match to ebay seller id and names
+-- Objective :Price comparison between ebay and competitors in the Tyre category
+------------------------------------------------------------------------------------------------
+
+--Select * from P_InventoryPlanning_T.lumina_tyre_listing_id ;
+
+Drop table  P_InventoryPlanning_T.lumina_tyre_listing_map ;
+create table P_InventoryPlanning_T.lumina_tyre_listing_map as 
+select 
+distinct 
+item_id
+,slr_id
+,U.USER_SLCTD_ID
+from DW_LSTG_ITEM lst
+inner  join  P_InventoryPlanning_T.lumina_tyre_listing_id  u on lst.item_id=u.listing_id
+inner join DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where 
+1=1
+--and lst.WACKO_YN = 'N'                      
+--AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+--and lst.SLR_site_ID = 3
+ ;
+ select * from P_InventoryPlanning_T.lumina_tyre_listing_map ;
