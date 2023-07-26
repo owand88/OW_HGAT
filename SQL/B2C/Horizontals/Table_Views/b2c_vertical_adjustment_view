@@ -10,7 +10,7 @@ create view P_INVENTORYPLANNING_T.dw_category_groupings_adj as
 select cat.*
 ,case when site_id = 3 and cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics'
       when site_id = 3 and cat.meta_categ_id in (26395) then 'Lifestyle'
-      when site_id = 3 and cat.categ_lvl3_id in (260325) then 'Lifestyle'
+      when site_id = 3 and cat.categ_lvl3_id in (260325) and cat.categ_lvl4_id not in (3937, 31387, 260326) then 'Lifestyle'
       when site_id = 3 and cat.categ_lvl2_id in (386, 238, 1202, 2624, 61573) then 'Home & Garden'
       when site_id = 3 and cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
       when site_id = 3 and cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
