@@ -1,0 +1,88 @@
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--	UKPLAN-415
+-- Certified Recycled UK - Pricing Substantiation
+--- Chan, Irene 
+-- Task: To provide eBay listing information for the 87 sellers with the following information: listing ID, MPN, OEM, Part Number, and Brand.
+-- Objective: Ebay would like to claim as the site providing savings on Used Car parts against competitors. P&A are working with Lumina to web-scrape 19 other competitor sites. 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Drop table if exists   P_INVENTORYPLANNING_T.pa_gp_ll_pricing_sub;
+create table  P_INVENTORYPLANNING_T.pa_gp_ll_pricing_sub as 
+(
+select 
+distinct 
+lst.Item_id,
+MPN,
+ManufacturerPartNumber,
+OEM,
+Brand,
+lst.Slr_ID,
+U.USER_SLCTD_ID
+from  DW_LSTG_ITEM lst
+inner join ( select distinct seller_id from  P_InventoryPlanning_T.certified_recyclers_reg_date   where year(end_date) =2023 and seller_id is not null  and seller_id not in ( 984957913,1196033479) )  c on lst.slr_id=c.seller_id
+
+left join (select  item_id, max(MPN) MPN from ( select 
+						upper(ASPCT_VLU_NM) as MPN,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('mpn' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2023-01-01' group by 1,2,3,4) where mpn not in ('DO NOT APPLY', 'NA','N/A' ) group by 1) bbase
+				ON lst.ITEM_ID = bbase.ITEM_ID
+		
+				
+left join (select  item_id, max(ManufacturerPartNumber) ManufacturerPartNumber from ( select 
+						upper(ASPCT_VLU_NM) as ManufacturerPartNumber,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('manufacturer part number' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2023-01-01' group by 1,2,3,4 ) where ManufacturerPartNumber not in ('DO NOT APPLY', 'NA','N/A' ) group by 1 ) cbase
+				ON lst.ITEM_ID = cbase.ITEM_ID
+				
+left join (select item_id, max(OEM) OEM from ( select 
+						upper(ASPCT_VLU_NM) as OEM,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('reference oe/oem number' ) and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2023-01-01' group by 1,2,3,4 ) where OEM not in ('DO NOT APPLY', 'NA','N/A' ) group by 1 ) obase
+				ON lst.ITEM_ID = obase.ITEM_ID
+
+left join (select item_id , max(Brand) as Brand from (select 
+						upper(ASPCT_VLU_NM) as Brand,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('brand' )--- and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2020-01-01' group by 1,2,3,4 )where brand not in ('DO NOT APPLY', 'NA','N/A' ) group by 1 ) gbase
+				ON lst.ITEM_ID = gbase.ITEM_ID
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  AND  COND.CNDTN_ROLLUP_ID =  3  
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL  ON lst.AUCT_START_DT < CAL.CAL_DT AND lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR >= 2021  
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and categ_lvl2_id in (6030)
+and lst.AUCT_end_dt >= CURRENT_DATE
+ );
+ 
+--Assign row number in order to enable sending the massive files separately 
+Drop table if exists   P_INVENTORYPLANNING_T.pa_gp_ll_pricing_sub_row  ; 
+Create table  P_INVENTORYPLANNING_T.pa_gp_ll_pricing_sub_row as 
+select ROW_NUMBER() OVER (order by item_id  ) row_number,  * from  P_INVENTORYPLANNING_T.pa_gp_ll_pricing_sub ;
+
+-- END OF CODE
+ 

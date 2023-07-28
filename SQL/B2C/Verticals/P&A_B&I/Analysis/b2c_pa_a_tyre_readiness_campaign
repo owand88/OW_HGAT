@@ -1,0 +1,671 @@
+-- UKPLAN-449
+-- Tyre Fitting Readiness Campaign
+-- -- Part 1 :
+-- - Provide the aspect filled rates of the 50 sellers sent by Akash. The three aspects are :
+-- 1. Rim diameter,
+-- 2. Tyre Width,
+-- 3. Aspect Ratio
+
+-- - Define pre campaign metric for each of the aspects, and then can monitor progress against this on a week by week basis
+-- - The report will have a summary function that will provide week on week progress at a cohort and seller level
+-- - Also providing an output at a seller level that will provide listing ID’s of listings that are affecting the metrics.
+-- Objective (multi-line):
+-- This purpose of the campaign is to increase the rate of fitting available listings we have available for fitting in the UK
+
+-- -- Part 2:
+-- According to the VI count data, the primary reason for the gap is the absence of installation information in the listings. As mentioned in my previous email, the completion rate for key aspects is already above 99%. To raise the overall percentage of Tire VI with Installation available, the focus should be on enhancing the listings without installation that currently have the highest VI count.
+-- I have included the data that shows my findings and have highlighted the target sellers along with their corresponding Listing IDs for your reference. Please find the attached. 
+-- The sellers with the largest VI count of listings without installations are:
+-- tyres_direct_online
+-- tyresonline-ltd
+-- baigtyres2013
+-- isaactyres
+-- tyresuppliers
+
+-- ---------------------------------------------------------------------------
+
+select* from  p_ichan_t.Tyre_seller_heatmap_OUTPUT 
+where user_slctd_id in (
+'tyresonline-ltd',
+'baigtyres2013',
+'ctyres-online',
+'save_on_tyres_direct',
+'ityrescom',
+'elitetyresolutions',
+'autojama',
+'roundtrip_tyres',
+'getoffroad4x4',
+'tyremenonline',
+'lobancouk',
+'demontweeksdirect',
+'zimcitytyres',
+'top-notch-tires',
+'next_wheels_tyres',
+'citytyresukltd',
+'lr90gmc',
+'halmerendwheelandtyres_ltd',
+'ava_tyres',
+'tyre-bayuk',
+'s.r.tyres',
+'dgtalloys_n_tyres',
+'zoom-tyres',
+'kengtyres',
+'jjcraceandrally',
+'tyre.direct',
+'new-online-tyres',
+'tgc_automotive',
+'bargain-studio',
+'the.tyre.stop',
+'tegiwaimports',
+'zoomtyres',
+'xo-tyres',
+'ostry98',
+'oem_refurbished_wheels',
+'totaltyrecontrol',
+'ava_tyres',
+'emara.tyres',
+'autotradegb',
+'kilnhursttyres',
+'Rochfordtyres',
+'image-tyres-ltd',
+'tyrekingwholesale',
+'cashandcarrytyres',
+'a-grade-tyres',
+'expresstyres01',
+'uk-tradetyres',
+'evolutioncarspares',
+'bordesleytyreservices',
+'suttonroadtyres2012',
+'vanstyle_4x4style')
+
+limit 1000;
+
+drop table  P_INVENTORYPLANNING_T.Tyre_heatmap_ll_choose_camp_sellers  
+create table   P_INVENTORYPLANNING_T.Tyre_heatmap_ll_choose_camp_sellers  as  
+select
+Retail_week,
+slr_id, 
+user_slctd_id,
+max( Tyre_readiness_campaign )  Tyre_readiness_campaign,
+count(distinct item_id ) as Total_ll,
+sum(Tyre_width_flag	)   as  Tyre_width_pc, 
+sum(Aspect_ratio_flag)  as  Aspect_ratio_pc	,
+sum(Rim_diameter_flag)  as  Rim_diameter_pc, 
+sum(Load_Index_flag)    as  Load_Index_pc,
+sum(Speed_rating_flag)  as 	Speed_rating_pc,
+sum(Unit_quantity_flag) as  Unit_quantity_pc,
+sum(Unit_quantity)      as  Avg_Unit_quantity
+from  P_INVENTORYPLANNING_T.Tyre_heatmap_ll_second_ouput
+where retail_week =28
+group by 1,2,3;  
+
+select * from   P_INVENTORYPLANNING_T.Tyre_heatmap_ll_choose_camp_sellers 
+limit 
+
+
+-------------------------
+-- full list 
+Drop table if exists   p_ichan_t.ll_tyre_installation_full ;
+create table  p_ichan_t.ll_tyre_installation_full as 
+(
+select * from (
+select 
+age_for_rtl_week_id,
+--rim_diameter,
+--ManufacturerPartNumber,
+--Grade,
+active_seller,
+lst.Slr_ID,
+U.USER_SLCTD_ID,
+cal.retail_year,
+cal.retail_week,
+CAT.meta_categ_id, 
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name, 
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name, 
+CAT.CATEG_LVL4_ID, 
+CAT.categ_lvl4_name,
+count( distinct lst.item_id) as ll
+-- site_id
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id 
+inner join (select user_id  from p_InventoryPlanning_T.ETRS_TYRE_SELLER where SPS_SLR_LEVEL_CD in (1,2,3) ) etrs on lst.slr_id=etrs.user_id		
+inner join ( select distinct seller_id, max(active_seller) active_seller  from   p_InventoryPlanning_t.tyres_install_sellers  group by 1 ) w on lst.slr_id=w.seller_id 
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and cat.site_id =3 and CATEG_LVL4_ID in (179680)-- select distinct site_id from 
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID AND  COND.CNDTN_ROLLUP_ID =  1  /*THEN 'Used' */  
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL 	ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT AND RETAIL_YEAR =2022 -- and AGE_FOR_RTL_WEEK_ID <= -1 
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+inner join (select item_id, max(rim_diameter) as rim_diameter  from ( select 
+						upper(ASPCT_VLU_NM) as rim_diameter,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('rim diameter' )and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt >=  date '2022-01-01' group by 1,2,3,4) where rim_diameter in (13,14,15,16,17,18,19,20 ,21,22) group by 1 )  base
+						 on base.item_id=lst.item_id
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.ITEM_CNTRY_ID=3
+and lst.SLR_site_ID = 3 
+and CATEG_LVL4_ID in (179680)
+and lst.AUCT_end_dt between '2022-01-01' and   '2024-12-31'
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13) where retail_year >=2023  and AGE_FOR_RTL_WEEK_ID <= -1 
+ );
+ 
+ ------------------------------------------------------------------------------------------------
+ --- 26 07 2023
+ --TI VI code  from sophie 
+ 
+DROP TABLE IF EXISTS TIRE_INSTALL_VI_EVENTS;
+CREATE TEMPORARY TABLE TIRE_INSTALL_VI_EVENTS AS
+SELECT E.*,L.INSTALL_ELIGIBLE,L.B2C_C2C,CASE WHEN ITEM_CNDTN_ID=1000 THEN 1 ELSE 0 END AS NEW,L.IN_STOCK_FLAG,I.SHIP_OPTION_CODE
+FROM
+(SELECT
+  GUID,
+  SESSION_SKEY,
+  SESSION_START_DT,
+  SEQNUM,
+  SITE_ID,
+  COBRAND,
+  PAGE_ID,
+  EXPRNC_NAME AS EXPERIENCE_LEVEL2,
+  COALESCE(PARENT_UID, SIGNEDIN_UID, MAPPED_UID) AS USER_ID,
+  ITEM_ID,
+  SOJLIB.SOJ_NVL(SOJ, 'IS_TIRE_INSTALLATION_STATUS') AS TIRE_INSTALL_STATUS,
+  SOJLIB.SOJ_NVL(SOJ, 'zip') AS ZIP_CODE,
+  SOJ,
+  EVENT_TIMESTAMP,
+  CHECKOUT_FLOW_TYPE_TXT
+FROM
+  ACCESS_VIEWS.VI_EVENT_FACT
+WHERE
+  1 = 1
+  AND SPS_FLAG = 0
+  AND EXCLUDE = 0
+  AND COBRAND IN (0, 6, 7)
+  AND SESSION_START_DT BETWEEN '2023-07-12' AND '2023-07-23'
+  AND SITE_ID IN (3)
+  ) E 
+  INNER JOIN (SELECT CAL_DT,ITEM_ID,ITEM_SITE_ID,B2C_C2C,ITEM_CNDTN_ID,INSTALL_ELIGIBLE,IN_STOCK_FLAG
+  FROM P_MOTORS_FUNNEL_T.TIRE_LISTINGS
+  WHERE CAL_DT BETWEEN '2023-07-12' AND '2023-07-23') L 
+  ON E.ITEM_ID=L.ITEM_ID AND L.ITEM_SITE_ID IN (3) AND E.SESSION_START_DT=L.CAL_DT
+  LEFT JOIN ACCESS_VIEWS.DW_LSTG_ITEM I
+	ON L.ITEM_ID=I.ITEM_ID AND L.CAL_DT BETWEEN I.AUCT_START_DT AND I.AUCT_END_DT;
+  
+  select ship_option_code, count(*), count( tire_install_status), count(install_eligible), sum(install_eligible )   from  TIRE_INSTALL_VI_EVENTS where b2c_c2c='B2C' and new =1 and in_stock_flag =1  group by 1 ; 
+-- SELECT CAL_DT
+-- ,COUNT(1)
+-- ,sum(case when b.SHIP_OPTION_CODE=3 then 1 else 0 end) as collection_only_cnt
+-- ,SUM(CASE WHEN IN_STOCK_FLAG=1 AND A.B2C_C2C='B2C' AND A.ITEM_CNDTN_ID=1000 THEN 1 ELSE 0 END) as eligible_cnt
+-- ,sum(CASE WHEN IN_STOCK_FLAG=1 AND A.B2C_C2C='B2C' AND A.ITEM_CNDTN_ID=1000 and b.SHIP_OPTION_CODE=3
+-- 	then 1 else 0 end) as collection_only_eligible_cnt
+-- FROM (SELECT CAL_DT,ITEM_ID,ITEM_SITE_ID,B2C_C2C,ITEM_CNDTN_ID,INSTALL_ELIGIBLE,IN_STOCK_FLAG
+-- FROM P_MOTORS_FUNNEL_T.TIRE_LISTINGS
+-- WHERE CAL_DT BETWEEN '2023-04-01' AND '2023-04-05') A 
+-- LEFT JOIN ACCESS_VIEWS.DW_LSTG_ITEM B
+-- ON A.ITEM_ID=B.ITEM_ID AND A.CAL_DT BETWEEN B.AUCT_START_DT AND B.AUCT_END_DT
+-- WHERE 1=1 
+-- AND A.ITEM_SITE_ID=3
+-- AND B.ITEM_SITE_ID=3
+-- AND B.AUCT_END_DT>='2023-01-01' 
+-- AND A.CAL_DT BETWEEN '2023-04-01' AND '2023-04-05'
+-- group by 1
+-- order by 1;  
+
+-- select cal_dt,item_site_id,count(1)
+-- from P_MOTORS_FUNNEL_T.TIRE_LISTINGS
+--   WHERE CAL_DT >='2023-07-01' 
+--   and item_site_id=3
+--   group by 1,2
+--   order by 1,2;
+  
+-- select SHIPPING_TYPE,SHIP_OPTION_CODE
+-- from ACCESS_VIEWS.DW_LSTG_ITEM
+-- where 1=1  
+-- and item_id=126002419926
+-- and AUCT_END_DT>=CURRENT_DATE;
+
+
+-- For Tire Installation 2.0 : Tire VI Available Status
+drop table if exists vi_available;
+create  table p_ichan_t.vi_available as
+select
+s.SITE_ID
+,s.SESSION_START_DT
+,s.GUID
+,s.SESSION_SKEY
+,e.SEQNUM
+,s.cobrand
+,e.PAGE_ID
+,e.PAGE_NAME
+,s.EXPERIENCE_LEVEL2
+,coalesce(s.parent_uid, s.signedin_user_id, s.mapped_user_id, 0)        as user_id
+,sojlib.SOJ_NVL(e.soj, 'sid') as sid
+,sojlib.SOJ_NVL(e.soj, 'itm') as item_id
+,sojlib.SOJ_NVL(e.soj, 'efam') as eventFamily
+,sojlib.SOJ_NVL(e.soj, 'eactn') as eventAction
+-- ,sojlib.SOJ_NVL(e.soj, 'actionKind') as actionKind
+,sojlib.SOJ_NVL(e.soj, 'VAS_MP_ELIGIBLE_ADDONS') as VAS_MP_ELIGIBLE_ADDONS
+,sojlib.SOJ_NVL(e.soj, 'VAS_MP_ELIGIBLE_ADDON_TYPES') as VAS_MP_ELIGIBLE_ADDON_TYPES
+,sojlib.SOJ_NVL(e.soj, 'VAS_MP_IS_HUB') as VAS_MP_IS_HUB
+,sojlib.SOJ_NVL(e.soj, 'VAS_MP_IS_SPOKE') as VAS_MP_IS_SPOKE
+,sojlib.SOJ_NVL(e.soj, 'VAS_MP_IS_VAS_DETAILS') as VAS_MP_IS_VAS_DETAILS
+,sojlib.SOJ_NVL(e.soj, 'VAS_MP_IS_INTERSTITIAL') as VAS_MP_IS_INTERSTITIAL
+,sojlib.SOJ_NVL(e.soj, 'VAS_MP_VENDOR_ID') as VAS_MP_VENDOR_ID
+,sojlib.SOJ_NVL(e.soj, 'VAS_MP_TIRE_INSTALLATION_POSTAL_CODE') as VAS_MP_TIRE_INSTALLATION_POSTAL_CODE
+,sojlib.SOJ_NVL(e.soj, 'VAS_MP_TIRE_INSTALLATION_RADIUS') as VAS_MP_TIRE_INSTALLATION_RADIUS
+from UBI_V.UBI_EVENT e
+inner join P_SOJ_CL_V.CLAV_SESSION_EXT s 
+on e.guid=s.guid and e.SESSION_SKEY=s.session_skey and e.SESSION_START_DT=s.session_start_dt and e.SITE_ID=s.site_id
+inner join ACCESS_VIEWS.PAGES p
+on e.PAGE_ID=p.PAGE_ID
+where 1=1 
+and e.SITE_ID IN (3)
+and e.SESSION_START_DT BETWEEN '2023-07-12' AND '2023-07-23'
+and s.cobrand in (0,6,7)
+-- and sojlib.SOJ_NVL(e.soj, 'sid') like '%p2349624.m108487%'
+-- and sojlib.SOJ_NVL(e.soj, 'eventFamily')='ITM'
+-- and sojlib.SOJ_NVL(e.soj, 'VAS_MP_ELIGIBLE_ADDONS')='INSTALLATION'
+-- and sojlib.SOJ_NVL(e.soj, 'VAS_MP_VENDOR_ID') is null
+and e.PAGE_ID=3755718
+;  
+select * from p_ichan_t.vi_available; 
+
+-- Get seller level available rate
+DROP TABLE IF EXISTS P_INVENTORYPLANNING_T.TIRE_VI_INSTALLATION_ELIGIBLE_SLR;
+CREATE  TABLE P_INVENTORYPLANNING_T.TIRE_VI_INSTALLATION_ELIGIBLE_SLR
+SELECT SITE
+, SESSION_START_DT
+, CASE WHEN EXPERIENCE_LEVEL2 IS NULL THEN 'All' ELSE EXPERIENCE_LEVEL2 END AS EXPERIENCE_LEVEL2
+, SLR_ID
+, SLR_NM
+, DOMESTIC_FLAG
+, B2C_C2C
+, NEW_FLAG
+, ship_option_code
+, COUNT(1) AS VI_CNT
+, sum(has_addons_eq_installation) AS VI_AVAILABLE_CNT
+, COUNT(DISTINCT ITEM_ID) AS ITM_CNT
+, COUNT(DISTINCT CASE WHEN has_addons_eq_installation=1 THEN ITEM_ID END) AS ITM_AVAILABLE_CNT
+, 0 AS LL_ELIGIBLE_VI_NOT_NULL_CNT
+, 0 AS LL_ELIGIBLE_VI_AVAILABLE_CNT
+FROM (SELECT 
+a.site_id
+,a.site
+,a.guid
+,a.session_skey
+,a.session_start_dt
+,a.seqnum
+,a.cobrand
+,a.experience_level2
+,a.item_id
+,L.SLR_ID
+,L.SLR_NM
+,a.install_eligible
+, CASE WHEN (INT(L.SLR_CNTRY_ID),INT(L.ITEM_SITE_ID)) IN ((1,100)) OR L.SLR_CNTRY_ID=L.ITEM_SITE_ID THEN 1 ELSE 0 END AS DOMESTIC_FLAG
+, COALESCE(L.B2C_C2C,'C2C') AS B2C_C2C
+, COALESCE(L.NEW_FLAG,0) AS NEW_FLAG
+, a.ship_option_code
+,max(case when b.seqnum is not null then 1 else 0 end) as has_vas_event
+,max(case when b.VAS_MP_ELIGIBLE_ADDONS='INSTALLATION' then 1 else 0 end) as has_addons_eq_installation
+FROM (SELECT *
+, CASE WHEN SITE_ID IN (0,100) THEN 'US'
+WHEN SITE_ID=3 THEN 'UK'
+WHEN SITE_ID=77 THEN 'DE'
+WHEN SITE_ID=71 THEN 'FR'
+WHEN SITE_ID=101 THEN 'IT'
+WHEN SITE_ID=186 THEN 'ES' 
+WHEN SITE_ID=2 THEN 'CA'
+END AS SITE
+FROM TIRE_INSTALL_VI_EVENTS 
+WHERE 1=1 
+AND (
+(SITE_ID IN (0,100,3,71,101)
+AND SESSION_START_DT>'2022-12-08')
+OR (SITE_ID IN (77)
+AND SESSION_START_DT>'2022-11-21')
+)
+AND SESSION_START_DT BETWEEN '2023-07-01' AND '2023-07-23'
+) a
+left join p_ichan_t.vi_available b 
+on a.site_id=b.site_id and a.session_skey=b.session_skey and a.session_start_dt=b.session_start_dt and a.guid=b.guid and a.item_id=b.item_id
+left join (SELECT CAL_DT
+	,ITEM_ID
+	,SLR_ID
+	,B.USER_SLCTD_ID AS SLR_NM
+	,B2C_C2C
+	,SLR_CNTRY_ID
+	,ITEM_SITE_ID
+    ,CASE WHEN ITEM_CNDTN_ID = 1000 THEN 1 ELSE 0 END AS NEW_FLAG
+  FROM P_MOTORS_FUNNEL_T.TIRE_LISTINGS A
+  LEFT JOIN ACCESS_VIEWS.DW_USERS_INFO B 
+  ON A.SLR_ID=B.USER_ID) L 
+  ON A.ITEM_ID = L.ITEM_ID
+  AND A.session_start_dt = L.CAL_DT
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
+GROUP BY 
+	GROUPING SETS(
+	(SITE,SESSION_START_DT,DOMESTIC_FLAG,B2C_C2C,NEW_FLAG,ship_option_code,SLR_ID,SLR_NM),
+	(SITE,SESSION_START_DT,EXPERIENCE_LEVEL2,DOMESTIC_FLAG,B2C_C2C,NEW_FLAG,ship_option_code,SLR_ID,SLR_NM)
+	)
+ORDER BY 1,2,3;  
+
+Select sum(vi_cnt), SUM(VI_AVAILABLE_CNT)  from TIRE_VI_INSTALLATION_ELIGIBLE_SLR where B2C_C2C= 'B2C' and new_flag =1 and domestic_flag=1 limit 1000; 
+Select * from  TIRE_VI_INSTALLATION_ELIGIBLE_SLR  ;
+
+-- Get seller + item level available rate
+DROP TABLE IF EXISTS P_INVENTORYPLANNING_T.TIRE_VI_INSTALLATION_ELIGIBLE;
+create table P_INVENTORYPLANNING_T.TIRE_VI_INSTALLATION_ELIGIBLE AS 
+SELECT SITE
+, SESSION_START_DT
+, CASE WHEN EXPERIENCE_LEVEL2 IS NULL THEN 'All' ELSE EXPERIENCE_LEVEL2 END AS EXPERIENCE_LEVEL2
+, SLR_ID
+, SLR_NM
+, ITEM_ID
+, DOMESTIC_FLAG
+, B2C_C2C
+, NEW_FLAG
+, in_stock_flag
+, ship_option_code
+, COUNT(1) AS VI_CNT
+, sum(has_addons_eq_installation) AS VI_AVAILABLE_CNT
+FROM (
+SELECT 
+a.site_id
+,a.site
+,a.guid
+,a.session_skey
+,a.session_start_dt
+,a.seqnum
+,a.cobrand
+,a.experience_level2
+,a.item_id
+,L.SLR_ID
+,L.SLR_NM
+,a.install_eligible
+, COALESCE(L.IN_STOCK_FLAG,0) AS IN_STOCK_FLAG
+, CASE WHEN (INT(L.SLR_CNTRY_ID),INT(L.ITEM_SITE_ID)) IN ((1,100)) OR L.SLR_CNTRY_ID=L.ITEM_SITE_ID THEN 1 ELSE 0 END AS DOMESTIC_FLAG
+, COALESCE(L.B2C_C2C,'C2C') AS B2C_C2C
+, COALESCE(L.NEW_FLAG,0) AS NEW_FLAG
+, a.ship_option_code
+,max(case when b.seqnum is not null then 1 else 0 end) as has_vas_event
+,max(case when b.VAS_MP_ELIGIBLE_ADDONS='INSTALLATION' then 1 else 0 end) as has_addons_eq_installation
+FROM (SELECT *
+, CASE WHEN SITE_ID IN (0,100) THEN 'US'
+WHEN SITE_ID=3 THEN 'UK'
+WHEN SITE_ID=77 THEN 'DE'
+WHEN SITE_ID=71 THEN 'FR'
+WHEN SITE_ID=101 THEN 'IT'
+WHEN SITE_ID=186 THEN 'ES' 
+WHEN SITE_ID=2 THEN 'CA'
+END AS SITE
+FROM TIRE_INSTALL_VI_EVENTS 
+WHERE 1=1 
+AND (
+(SITE_ID IN (0,100,3,71,101)
+AND SESSION_START_DT>'2022-12-08')
+OR (SITE_ID IN (77)
+AND SESSION_START_DT>'2022-11-21')
+)
+AND SESSION_START_DT BETWEEN '2023-07-12' AND '2023-07-23'
+) a
+left join p_ichan_t.vi_available b 
+on a.site_id=b.site_id and a.session_skey=b.session_skey and a.session_start_dt=b.session_start_dt and a.guid=b.guid and a.item_id=b.item_id
+left join (SELECT CAL_DT
+	,ITEM_ID
+	,SLR_ID
+	,B.USER_SLCTD_ID AS SLR_NM
+	,B2C_C2C
+	,SLR_CNTRY_ID
+	,ITEM_SITE_ID
+    ,CASE WHEN ITEM_CNDTN_ID = 1000 THEN 1 ELSE 0 END AS NEW_FLAG
+	,IN_STOCK_FLAG
+  FROM P_MOTORS_FUNNEL_T.TIRE_LISTINGS A
+  LEFT JOIN ACCESS_VIEWS.DW_USERS_INFO B 
+  ON A.SLR_ID=B.USER_ID) L 
+  ON A.ITEM_ID = L.ITEM_ID
+  AND A.session_start_dt = L.CAL_DT
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)
+group by 1,2,3,4,5,6,7,8,9,10,11;
+
+select * from TIRE_VI_INSTALLATION_ELIGIBLE --- WHERE ITEM_ID =166244153805
+where 1=1 
+and site='UK' 
+and domestic_flag=1
+and new_flag=1
+and b2c_c2c='B2C'
+and in_stock_flag=1
+and ship_option_code<>3
+and vi_available_cnt=0;
+
+select * from tire_vi_installation_eligible
+where 1=1
+and item_id in (144950207813);
+
+ ---- include all aspects------------
+ Drop table if exists   P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_all ;
+create table  P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_all as 
+(select * from ( 
+select distinct 
+Retail_week,
+AGE_FOR_RTL_WEEK_ID,
+attribute_1 as Tyre_width,
+attribute_2 as Aspect_ratio,
+attribute_3 as Rim_diameter,
+attribute_4  as Load_Index,
+attribute_5 as Speed_rating,
+attribute_6 as Unit_quantity,
+ifnull( Tyre_readiness_campaign,'N') as Tyre_readiness_campaign,
+case when lst.slr_id=c.seller_id then 'tyre_install_seller' else 'other' end as tyre_install_seller,
+case when  lst.slr_id=etrs.user_id	 then 'Y' else 'N' end as ETRS_seller,
+lst.Item_id,
+lst.Slr_ID,
+U.USER_SLCTD_ID
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705b2c_  and lst.AUCT_end_dt >= CURRENT_DATE
+left join  (select user_id  from p_InventoryPlanning_T.ETRS_TYRE_SELLER where SPS_SLR_LEVEL_CD in (1,2,3) ) etrs on lst.slr_id=etrs.user_id	
+left join  (select distinct seller_id from p_InventoryPlanning_t.tyres_install_sellers)  c on lst.slr_id=c.seller_id-- select * from   p_InventoryPlanning_t.tyres_install_sellers
+left join ( select user_id, max( Tyre_readiness_campaign )  Tyre_readiness_campaign  from P_INVENTORYPLANNING_T.tableau_tyre_campaign_seller_flag group by 1 ) r on  lst.slr_id= r.user_id
+left join (select
+						upper(ASPCT_VLU_NM) as attribute_1,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('tyre width' ) --and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) abase
+				ON lst.ITEM_ID = abase.ITEM_ID
+		
+				
+left join (select
+						upper(ASPCT_VLU_NM) as attribute_2,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('aspect ratio' )-- and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) bbase
+				ON lst.ITEM_ID = bbase.ITEM_ID
+left join (Select * from ( select
+						upper(ASPCT_VLU_NM) as attribute_3,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('rim diameter' )-- and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2022-01-01'  group by 1,2,3,4   )/* where  attribute_3 in (13,14,15,16,17,18,19,20 ,21,22)*/ ) cbase
+				ON lst.ITEM_ID = cbase.ITEM_ID
+left join (select
+						upper(ASPCT_VLU_NM) as attribute_4,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('load index' ) --and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) dbase
+				ON lst.ITEM_ID = dbase.ITEM_ID
+left join (select
+						upper(ASPCT_VLU_NM) as attribute_5,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('speed rating' )-- and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) ebase
+				ON lst.ITEM_ID =ebase.ITEM_ID
+left join (select
+						upper(ASPCT_VLU_NM) as attribute_6,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('unit quantity' ) --and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2018-01-01' group by 1,2,3,4) fbase
+				ON lst.ITEM_ID = fbase.ITEM_ID
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  AND  COND.CNDTN_ROLLUP_ID =  1  
+INNER JOIN (select CAL_DT,RETAIL_YEAR, Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4 ) CAL   ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT  
+---and age_for_rtl_week_id  in ( -1) 
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'      
+and lst.ITEM_CNTRY_ID=3
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and categ_lvl4_id in (179680) ) where AGE_FOR_RTL_WEEK_ID = -1 
+ );
+
+Select * from  P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_all limit 100; 
+
+-- de dupe
+
+
+drop table if exists P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_all_dedupe; 
+Create table  P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_all_dedupe as  (
+Select *, 
+ case when Tyre_width is not null then 1 else 0 end as Tyre_width_flag	, 
+ case when Aspect_ratio is not null then 1 else 0 end as Aspect_ratio_flag	,
+ case when Rim_diameter is not null then 1 else 0 end as Rim_diameter_flag,
+
+CASE WHEN  Tyre_width is not null AND   Aspect_ratio is not null  AND Rim_diameter is not null   THEN 1 ELSE 0 END AS COMBINED_3_KEY_FLAG,
+
+ case when Load_Index is not null then 1 else 0 end as Load_Index_flag	,
+ case when Speed_rating is not null then 1 else 0 end as Speed_rating_flag	,
+ case when Unit_quantity is not null then 1 else 0 end as Unit_quantity_flag
+ from   ( 
+select retail_week,
+item_id, 
+max( Slr_ID )                   as Slr_ID,
+max(USER_SLCTD_ID ) 			as USER_SLCTD_ID,
+max( Tyre_readiness_campaign )  as Tyre_readiness_campaign,
+max(tyre_install_seller) 		as tyre_install_seller,
+max(ETRS_seller)  				as ETRS_seller ,
+max(Tyre_width ) 				as Tyre_width,
+max(Aspect_ratio ) 				as Aspect_ratio ,
+max(Rim_diameter) 				as Rim_diameter  ,
+max(Load_Index ) 				as Load_Index,
+max(Speed_rating )  			as Speed_rating ,
+max(Unit_quantity) 				as Unit_quantity  
+from   P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_all group by 1,2 ) sub 
+);
+select * from P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_all_dedupe limit 1000; 
+
+
+drop table if exists P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_lvl_seller; 
+Create table  P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_lvl_seller as  (
+select 
+Retail_week, 
+slr_id,
+USER_SLCTD_ID,
+Tyre_readiness_campaign,
+tyre_install_seller,
+ETRS_seller,
+
+count(distinct item_id )  as Total_LL,
+
+sum(Tyre_width_flag	)  as  Tyre_width_fill   , 
+sum(Aspect_ratio_flag) as  Aspect_ratio_fill ,
+sum(Rim_diameter_flag) as  Rim_diameter_fill , 
+sum(Load_Index_flag)   as  Load_Index_fill   ,
+sum(Speed_rating_flag) as  Speed_rating_fill ,
+sum(Unit_quantity_flag)as  Unit_quantity_fill,
+sum(COMBINED_3_KEY_FLAG)  AS  COMBINED_3_KEY_FILL,
+
+sum(Tyre_width_flag	)  /count(distinct item_id ) as  Tyre_width_pc , 
+sum(Aspect_ratio_flag) /count(distinct item_id ) as  Aspect_ratio_pc,
+sum(Rim_diameter_flag) /count(distinct item_id ) as  Rim_diameter_pc, 
+sum(COMBINED_3_KEY_FLAG)/count(distinct item_id ) as  TI_pc,
+sum(Load_Index_flag)   /count(distinct item_id ) as  Load_Index_pc  ,
+sum(Speed_rating_flag) /count(distinct item_id ) as  Speed_rating_pc,
+sum(Unit_quantity_flag) /count(distinct item_id )as  Unit_quantity_pc
+ from P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_all_dedupe
+ Group by 1,2,3,4,5,6 ); 
+ 
+Select * from  P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_lvl_seller; 
+
+drop table if exists P_INVENTORYPLANNING_T.b2c_pa_tyre_gap; 
+Create table  P_INVENTORYPLANNING_T.b2c_pa_tyre_gap as  (
+SELECT B.VI_CNT,B.VI_AVAILABLE_CNT, b.ship_option_code,A.* 
+FROM   P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_all_dedupe  A 
+LEFT JOIN ( 
+Select SLR_ID,
+SLR_NM,
+item_id, ship_option_code,sum(VI_CNT) VI_CNT, sum(VI_AVAILABLE_CNT) VI_AVAILABLE_CNT
+from  P_INVENTORYPLANNING_T.TIRE_VI_INSTALLATION_ELIGIBLE-- select * from   P_INVENTORYPLANNING_T.TIRE_VI_INSTALLATION_ELIGIBLE limit 100;
+WHERE B2C_C2C='B2C'AND
+NEW_FLAG=1
+AND IN_STOCK_FLAG=1
+GROUP BY 1,2,3,4) B ON A.ITEM_ID=B.ITEM_ID)
+;
+select count(*) from  P_INVENTORYPLANNING_T.b2c_pa_tyre_gap where vi_cnt is not null;
+-------
+ 
+ select item_id,  from p_ichan_t.vi_available; 
+drop table if exists P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_lvl_top; 
+Create table  P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_lvl_top as  (
+select 
+Retail_week, 
+--slr_id,
+--USER_SLCTD_ID,
+Tyre_readiness_campaign,
+tyre_install_seller,
+ETRS_seller,
+
+count(distinct item_id )  as Total_LL,
+
+sum(Tyre_width_flag	)  as  Tyre_width_fill   , 
+sum(Aspect_ratio_flag) as  Aspect_ratio_fill ,
+sum(Rim_diameter_flag) as  Rim_diameter_fill , 
+sum(Load_Index_flag)   as  Load_Index_fill   ,
+sum(Speed_rating_flag) as  Speed_rating_fill ,
+sum(Unit_quantity_flag)as  Unit_quantity_fill,
+sum(COMBINED_3_KEY_FLAG)  AS  COMBINED_3_KEY_FILL,
+
+sum(Tyre_width_flag	)  /count(distinct item_id ) as  Tyre_width_pc , 
+sum(Aspect_ratio_flag) /count(distinct item_id ) as  Aspect_ratio_pc,
+sum(Rim_diameter_flag) /count(distinct item_id ) as  Rim_diameter_pc, 
+sum(COMBINED_3_KEY_FLAG)/count(distinct item_id ) as  TI_pc,
+sum(Load_Index_flag)   /count(distinct item_id ) as  Load_Index_pc  ,
+sum(Speed_rating_flag) /count(distinct item_id ) as  Speed_rating_pc,
+sum(Unit_quantity_flag) /count(distinct item_id )as  Unit_quantity_pc
+ from P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_all_dedupe
+ Group by 1,2,3,4); 
+ 
+ select* from P_INVENTORYPLANNING_T.b2c_pa_tyre_total_vi_lvl_top; 
+ 
+ 
+ 

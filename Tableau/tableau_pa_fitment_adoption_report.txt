@@ -1,0 +1,434 @@
+-- --UKPLAN-251
+--Tableau: Fitment Adoption Report
+--------------------------------------------------------------------------v
+-- Purpose:
+-- The purpose of this dashboard is to provide users with a comprehensive overview and analysis of fitment adoption rates, top sellers, GMV, and the fitment in specific focus categories. It allows users to track and monitor the adoption of fitment across various metrics and filter the data based on different parameters such as sellers, item condition, and category levels. This dashboard enables users to make informed decisions, identify trends, and assess the performance of fitment adoption.
+-- Objective (multi-line):
+-- Dashboard Contents:
+--   Fitment Adoption Trend
+--        -The Fitment Dashboard provides an overview of fitment adoption rates for the current week, including week-on-week changes. It includes key metrics such as total fitment-enabled listings, fitment-adopted listings, and fitment gap.
+--        -The dashboard displays graphs and a data table showcasing the metrics for each week.
+--        -Users can apply filters based on Sellers Group, Seller Names (and ID), Item Condition, and Category levels (L2 and L3).
+
+--   Fitment Adoption by Seller
+--        - This dashboard presents the fitment rates and metrics for the top sellers. Users can delve into the fitment trend and identify fitment opportunities through various filters. These filters include Sellers Group, Retail Year, Retail Week, Item Condition, and Category levels 2 and 3.
+
+--   Seller GMV Weekly
+--        - This view provides the GMV of each top seller within Fitment enabled categories.
+
+--  Fitment Focus Overview
+--        -This overview highlights the adoption rates summary for the low fitment categories appearing high on serach. The categories are grouped by the fitment adoption rates recorded in 2022.
+------------------------------- ------------------------------------------------------
+-- 1. GMV
+Drop table if exists P_UKPLAN_REPORT_T.tableau_pa_fitment_gmv;
+ CREATE TABLE P_UKPLAN_REPORT_T.tableau_pa_fitment_gmv as 
+(
+SELECT 
+case when cal.retail_week between 1 and 13 then 'Q1'
+ 		when cal.retail_week between 14 and 26 then 'Q2'
+		when cal.retail_week between 27 and 39 then 'Q3'
+		when cal.retail_week between 40 and 52 then 'Q4' else 'Q' end as Quarter,
+cal.retail_year,
+cal.retail_week,
+CK.SELLER_ID,
+A.USER_SLCTD_ID AS Seller_name ,
+CASE WHEN CNDTN_ROLLUP_ID = 1 THEN 'New'
+	 WHEN CNDTN_ROLLUP_ID = 2 THEN 'Refurb'
+	 WHEN CNDTN_ROLLUP_ID = 3 THEN 'Used'
+	 ELSE 'UNKNOWN' END AS ITEM_CONDITION,
+CATEG_LVL2_name, 
+CATEG_LVL3_name, 
+case when categ_lvl2_id in (20710, 69197) then 'Electronics'
+when categ_lvl2_id in (11778, 31414,31769, 67588, 67659, 180959, 183497) then 'lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486) then 'Home & Garden'
+else bsns_vrtcl_name end as new_vertical, 
+CASE WHEN HIST.USEGM_ID = 206 THEN 'B2C' ELSE 'C2C' END SEGMENT,
+SUM(CK.gmv_plan_usd) AS Total_GMV, 
+SUM(QUANTITY) AS BI
+from  DW_CHECKOUT_TRANS AS CK 
+--inner  JOIN  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR  ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL  ON CAL.CAL_DT = CK.CREATED_DT  and retail_year >= 2022 and  AGE_FOR_RTL_WEEK_ID  >=(-52) AND CK.GMV_DT >= '2022-01-01'
+INNER JOIN (select LEAF_CATEG_ID, meta_categ_id, meta_categ_name, CATEG_LVL2_ID, CATEG_LVL2_name, categ_lvl3_name, categ_lvl3_id, categ_lvl4_name, categ_lvl4_id, bsns_vrtcl_name
+			from DW_CATEGORY_GROUPINGS CAT where CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) and site_id = 3 
+			group by LEAF_CATEG_ID, meta_categ_id, meta_categ_name, CATEG_LVL2_ID, CATEG_LVL2_name, categ_lvl3_name, categ_lvl3_id, categ_lvl4_name, categ_lvl4_id, bsns_vrtcl_name) cat
+ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+LEFT  JOIN DW_USEGM_HIST HIST 
+ON HIST.USER_ID=ck.Seller_ID 
+AND HIST.USEGM_GRP_ID  = 48 
+AND CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+left join DW_USERS A ON A.USER_ID=CK.SELLER_ID
+    LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+LEFT JOIN (SELECT distinct SLR_id FROM  P_UKPLAN_REPORT_T.tableau_pa_fitment_seller_rank WHERE ROW_N  <=1000 ) D ON CK.SELLER_ID=D.SLR_ID
+INNER JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_NEW WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   ON CK.SITE_ID=F.SITE_ID AND CK.LEAF_CATEG_ID=F.LEAF_CATEG_ID 
+WHERE 1=1
+and CNDTN_ROLLUP_ID IN(1,3)
+AND CK.CK_WACKO_YN  =  'N'
+AND CK.SALE_TYPE NOT IN (10,15)
+AND CK.SLR_CNTRY_ID = 3
+and ck.byr_cntry_id =3
+and HIST.USEGM_ID = 206
+and bsns_vrtcl_name = 'Parts & Accessories'
+AND FMT_ENABLED = 'Y'
+
+GROUP BY
+1,2,3,4,5,6,7,8,9,10
+ );
+	-- 2098704  
+	--
+	SELECT * FROM P_UKPLAN_REPORT_T.tableau_pa_fitment_gmv LIMIT 100; 
+	
+--2. order sellers by listing  
+DROP TABLE if exists P_UKPLAN_REPORT_T.tableau_pa_fitment_seller_rank; -- SELECT COUNT(*), COUNT(DISTINCT SLR_ID) FROM   P_UKPLAN_REPORT_T.tableau_pa_fitment_adoption_report ;
+CREATE TABLE  P_UKPLAN_REPORT_T.tableau_pa_fitment_seller_rank AS 
+select 
+ row_number () over ( order by LL desc ) as row_n ,* from ( 
+ select slr_id
+, (count(distinct item_id)) LL
+ from P_InventoryPlanning_T.FITMENT_CAPTURE_2018  -- select * from 
+WHERE RETAIL_YEAR  in ( select distinct retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID =-1)  
+group by 1) ; 
+
+--select * from   P_UKPLAN_REPORT_T.tableau_pa_fitment_seller_rank where row_n =3000;
+--select max(row_n)  from  P_UKPLAN_REPORT_T.tableau_pa_fitment_seller_rank;  row_n	slr_id	LL
+--1000	1827592409	4342
+
+
+-- 3. Fitment Adoption weekly view
+
+DROP TABLE if exists P_UKPLAN_REPORT_T.tableau_pa_fitment_adoption_report; -- SELECT COUNT(*), COUNT(DISTINCT SLR_ID) FROM   P_UKPLAN_REPORT_T.tableau_pa_fitment_adoption_report ;
+CREATE TABLE  P_UKPLAN_REPORT_T.tableau_pa_fitment_adoption_report AS 
+(
+select 
+A.RETAIL_YEAR
+, A.RETAIL_WEEK
+,case 	when CAL.AGE_FOR_RTL_WEEK_ID =-1 THEN 'RW'
+		WHEN CAL.AGE_FOR_RTL_WEEK_ID =-2 THEN 'RW-1' ELSE 'OTHER' END AS RW_FILTER
+,CASE WHEN  CAR_FLAG =1 THEN 'CT' WHEN MCYCL_FLAG =1 then  'MOTO' ELSE 'CT' END AS CT_MOTO
+, case when a. categ_lvl2_name in('Motorcycle Parts','Motorcycle Tuning & Styling','Motorcycle Accessories')  then 'Y'
+	   when A.CATEG_LVL2_ID  in ( 10063,122304)   thEN 'Y' else' N' end as Motorcycle_Cateories
+---, case when a.CATEG_LVL3_ID	= 96382  then 'Moto_Tuning' else 'Other' end as Moto_tuning_flag
+, A.CATEG_LVL2_NAME
+, A.CATEG_LVL3_NAME
+, CASE WHEN A.SLR_ID =D.SLR_ID THEN 'Y' ELSE 'N' END AS Seller_view_include
+, CASE WHEN A.SLR_ID =D.SLR_ID THEN A.SLR_ID ELSE 'OTHER' END AS SLR_ID
+, CASE WHEN A.SLR_ID =D.SLR_ID THEN  A.USER_SLCTD_ID ELSE 'All other sellers' end as USER_SLCTD_ID
+, ifnull(A.ITEM_COND,'Other') as ITEM_CONDITION
+, CASE WHEN A.SLR_ID = B.seller_id THEN 'Green Parts Sellers' else 'All Other P&A sellers' end as Sellers_group
+
+, count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end)) FA_LL
+, (count(distinct item_id)) LL
+, (count(distinct item_id)) -count(distinct(case when FITMENT_ADOPTD_Flag =1 then item_id end))  FA_gap
+from  (SELect * FROM P_InventoryPlanning_T.FITMENT_CAPTURE_2018 WHERE RETAIL_YEAR  in ( select distinct retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID =-1)   )A
+LEFT JOIN ( select distinct seller_id from  P_InventoryPlanning_T.certified_recyclers_reg_date  where year(end_date) =2023 and seller_id is not null  and seller_id not in ( 984957913,1196033479)   )B ON A.SLR_ID = B.seller_id
+left join  ( select distinct RETAIL_YEAR, retail_week, AGE_FOR_RTL_WEEK_ID from    DW_CAL_DT where  AGE_FOR_RTL_WEEK_ID <=-1 and  AGE_FOR_RTL_WEEK_ID >=-53) CAL  ON A.RETAIL_YEAR =CAL.RETAIL_YEAR AND  A.RETAIL_WEEK =CAL.RETAIL_WEEK
+LEFT JOIN (SELECT * FROM  P_UKPLAN_REPORT_T.tableau_pa_fitment_seller_rank WHERE ROW_N  <=3000 ) D ON A.SLR_ID=D.SLR_ID 
+GROUP BY 
+1,2,3,4,5,6,7,8,9,10,11,12
+);
+--SELECT  RETAIL_WEEK  ,  COUNT(*), COUNT(DISTINCT SLR_ID) , SUM(FA_LL) ,SUM(LL) ,SUM(FA_GAP) FROM   P_UKPLAN_REPORT_T.tableau_pa_fitment_adoption_report  WHERE RETAIL_WEEK in (25,26) group by 1  ;
+--count(1)	count(DISTINCT SLR_ID)
+--10870876	49175
+
+--SELECT * FROM P_UKPLAN_REPORT_T.tableau_pa_fitment_adoption_report WHERE RETAIL_YEAR =2023 AND RETAIL_WEEK >=24  LIMIT 1000;
+-- select * from  P_UKPLAN_REPORT_T.tableau_pa_fitment_adoption_report limit 1000; 
+ 
+ --4.  FITMENT TOP LEVEL SUMMARY TABLE 
+DROP TABLE if exists P_UKPLAN_REPORT_T.tableau_pa_fitment_adoption_summary; -- SELECT COUNT(*), COUNT(DISTINCT SLR_ID) FROM   P_UKPLAN_REPORT_T.tableau_pa_fitment_adoption_report ;
+CREATE TABLE  P_UKPLAN_REPORT_T.tableau_pa_fitment_adoption_summary AS 
+SELECT 
+RETAIL_YEAR,
+(select distinct RETAIL_WEEK from dw_cal_dt where age_for_rtl_week_id = -1) as RETAIL_WEEK,
+CT_MOTO,
+SUM( CASE WHEN RW_FILTER='RW'   THEN FA_LL  ELSE 0 END ) /SUM(CASE WHEN RW_FILTER='RW' THEN LL ELSE  0 END ) FA_PC_TW,
+SUM( CASE WHEN RW_FILTER='RW'   THEN FA_LL  ELSE 0 END ) FA_LL_TW,
+SUM( CASE WHEN RW_FILTER='RW'   THEN LL     ELSE 0 END ) LL_TW,
+SUM( CASE WHEN RW_FILTER='RW'   THEN FA_GAP ELSE 0 END ) FA_GAP_TW,
+SUM( CASE WHEN RW_FILTER='RW-1' THEN FA_LL  ELSE 0 END ) /SUM(CASE WHEN RW_FILTER='RW-1' THEN LL ELSE  0 END ) FA_PC_LW,
+SUM( CASE WHEN RW_FILTER='RW-1' THEN FA_LL  ELSE 0 END ) FA_LL_LW,
+SUM( CASE WHEN RW_FILTER='RW-1' THEN LL     ELSE 0 END ) LL_LW,
+SUM( CASE WHEN RW_FILTER='RW-1' THEN FA_GAP ELSE 0 END ) FA_GAP_LW
+FROM  P_UKPLAN_REPORT_T.tableau_pa_fitment_adoption_report
+WHERE RW_FILTER IN ( 'RW','RW-1')
+GROUP BY 1,2,3
+UNION ALL 
+SELECT 
+RETAIL_YEAR,
+(select distinct RETAIL_WEEK from dw_cal_dt where age_for_rtl_week_id = -1) as RETAIL_WEEK,
+'TOTAL' AS CT_MOTO,
+SUM( CASE WHEN RW_FILTER='RW'   THEN FA_LL  ELSE 0 END ) /SUM(CASE WHEN RW_FILTER='RW' THEN LL ELSE  0 END ) FA_PC_TW,
+SUM( CASE WHEN RW_FILTER='RW'   THEN FA_LL  ELSE 0 END ) FA_LL_TW,
+SUM( CASE WHEN RW_FILTER='RW'   THEN LL     ELSE 0 END ) LL_TW,
+SUM( CASE WHEN RW_FILTER='RW'   THEN FA_GAP ELSE 0 END ) FA_GAP_TW,
+SUM( CASE WHEN RW_FILTER='RW-1' THEN FA_LL  ELSE 0 END ) /SUM(CASE WHEN RW_FILTER='RW-1' THEN LL ELSE  0 END ) FA_PC_LW,
+SUM( CASE WHEN RW_FILTER='RW-1' THEN FA_LL  ELSE 0 END ) FA_LL_LW,
+SUM( CASE WHEN RW_FILTER='RW-1' THEN LL     ELSE 0 END ) LL_LW,
+SUM( CASE WHEN RW_FILTER='RW-1' THEN FA_GAP ELSE 0 END ) FA_GAP_LW
+FROM  P_UKPLAN_REPORT_T.tableau_pa_fitment_adoption_report
+WHERE RW_FILTER IN ( 'RW','RW-1')
+GROUP BY 1,2,3
+;
+
+--5. This query includes all sellers detail for latest week only 
+DROP TABLE IF EXISTS P_UKPLAN_REPORT_T.tableau_pa_fitment_LL_UK_user; -- SELECT * FROM P_UKPLAN_REPORT_T.tableau_pa_fitment_LL_UK_user  USER_ID =270271228 ;
+CREATE  TABLE P_UKPLAN_REPORT_T.tableau_pa_fitment_LL_UK_user
+SELECT RETAIL_YEAR,
+	RETAIL_WEEK,
+	  a.USER_ID,
+	  u.user_slctd_id,
+	  Green_Parts_sellers,
+	  Motorcycle_categories,
+	  CATEG_LVL2_ID, CATEG_LVL2_name, categ_lvl3_name, categ_lvl3_id,
+      ct_mtrcycle,
+      DomesticCBT,
+      SELLER_SEGMENT,
+      ifnull(ITEM_COND,'Other') Item_cond,
+      SUM(case when FA ='Y' THEN LL_f ELSE 0  END ) AS ADOPTED_LL,
+	  SUM( LL_f  )  AS ENABLED_LL
+	  FROM ( SELECT
+			(select distinct RETAIL_WEEK from dw_cal_dt where age_for_rtl_week_id = -1) as RETAIL_WEEK,
+			(select distinct RETAIL_YEAR from dw_cal_dt where age_for_rtl_week_id = -1) as retail_year,
+                I.SLR_ID AS USER_ID,
+				case when  I.SLR_ID = B.seller_id then 'Green Parts Sellers' else 'Other' end as Green_Parts_sellers,
+				case when  categ_lvl2_name in('Motorcycle Parts','Motorcycle Tuning & Styling','Motorcycle Accessories')  thEN 'Motorcycle_categories'
+					when CATEG_LVL2_ID  in ( 10063,122304)   thEN 'Motorcycle_categories' 
+					else 'Other' end as Motorcycle_categories,
+				CATEG_LVL2_ID, CATEG_LVL2_name, categ_lvl3_name, categ_lvl3_id,
+                I.AUCT_START_DT,
+                I.AUCT_END_DT,
+				CASE WHEN COND.CNDTN_ROLLUP_ID =  1 THEN 'New'
+				WHEN COND.CNDTN_ROLLUP_ID = 2 THEN 'Refurb'
+				WHEN COND.CNDTN_ROLLUP_ID = 3 THEN 'Used'
+				else COND.CNDTN_ROLLUP_ID END AS ITEM_COND,
+            CASE WHEN(CAST (CASE WHEN CAST (I.flags10 as INT) < 0  THEN CAST (I.flags10 as INT) + 2147483648 ELSE CAST (I.flags10 AS INT  )  END AS   INT  ) & 64 )  >= 1 THEN 'Y' ELSE 'N' END AS FA,
+                ct_mtrcycle,
+                CASE WHEN U.USER_DSGNTN_ID = 2 THEN 'B2C' ELSE 'C2C' END AS SELLER_SEGMENT,
+                CASE WHEN I.SLR_CNTRY_ID = 3 AND I.item_site_id = 3  THEN 'Domestic'
+                     WHEN I.SLR_CNTRY_ID <> 3 AND I.item_site_id = 3 THEN 'Import Active'
+                     WHEN I.SLR_CNTRY_ID = 3 AND I.item_site_id <> 3 THEN 'Export Active' END AS DomesticCBT,
+                COUNT(DISTINCT I.ITEM_ID) AS LL_f
+            FROM DW_LSTG_ITEM I
+           -- LEFT JOIN LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = I.AUCT_END_DT AND COND.ITEM_ID = I.ITEM_ID
+           LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN WHERE AUCT_END_DT >current_date group by 1,2 ) AS COND    ON COND.ITEM_ID = i.ITEM_ID
+		    INNER JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled , ct_mtrcycle FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_new WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   ON I.ITEM_SITE_ID=F.SITE_ID AND I.LEAF_CATEG_ID=F.LEAF_CATEG_ID 							  
+			INNER JOIN DW_USERS U ON U.USER_ID = I.SLR_ID
+			INNER JOIN (selECT CAL_DT,RETAIL_YEAR, Retail_week,QTR_OF_YEAR_ID, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT where retail_year >=2021 and age_for_rtl_week_id = -1 group by 1,2, 3, 4,5 ) CAL ON I.AUCT_START_DT < CAL.CAL_DT AND I.AUCT_END_DT >= CAL.CAL_DT 			
+			INNER JOIN (select LEAF_CATEG_ID, meta_categ_id, meta_categ_name, CATEG_LVL2_ID, CATEG_LVL2_name, categ_lvl3_name, categ_lvl3_id, categ_lvl4_name, categ_lvl4_id, bsns_vrtcl_name
+			from DW_CATEGORY_GROUPINGS CAT where CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999) and site_id = 3 
+			group by LEAF_CATEG_ID, meta_categ_id, meta_categ_name, CATEG_LVL2_ID, CATEG_LVL2_name, categ_lvl3_name, categ_lvl3_id, categ_lvl4_name, categ_lvl4_id, bsns_vrtcl_name) cat 					ON CAT.LEAF_CATEG_ID = I.LEAF_CATEG_ID 
+           LEFT JOIN ( select distinct seller_id from  P_InventoryPlanning_T.certified_recyclers_reg_date  where year(end_date) =2023 and seller_id is not null  and seller_id not in ( 984957913,1196033479)   )B ON I.SLR_ID = B.seller_id
+		   LEFT JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE 
+		   						from DW_USEGM_HIST 
+		   						where  USEGM_GRP_ID = 48 
+        						AND USEGM_ID = 206 
+        						AND END_DATE >= '2020-01-01' group by 1,2,3,4,5   )AS HIST         ON HIST.USER_ID =  I.SLR_ID        AND  I.AUCT_START_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE                
+		   WHERE 1=1
+		     AND I.WACKO_YN = 'N'
+AND I.AUCT_END_DT > CURRENT_DATE
+-- AND COLD.AUCT_END_DT > current_date
+AND I.ITEM_SITE_ID IN (3)         
+AND F.SITE_ID = 3
+AND I.AUCT_TYPE_CODE NOT IN (10,15)
+AND I.SLR_CNTRY_ID=3 
+AND CAT.bsns_vrtcl_name='Parts & Accessories'
+AND  HIST.USEGM_ID = 206
+AND fmt_enabled = 'Y'
+            GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+					
+            ) A
+      ---INNER JOIN DW_CAL_DT CAL ON A.AUCT_START_DT < CAL.CAL_DT AND A.AUCT_END_DT >= CAL.CAL_DT AND AGE_FOR_RTL_WEEK_ID = -1
+	  LEFT JOIN  DW_USERs U ON U.USER_ID= A.USER_ID 
+	  where DomesticCBT ='Domestic'
+	  and SELLER_SEGMENT ='B2C'
+	  AND ct_mtrcycle IN (	'Mtrcycle','C&T') 
+      GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14;
+	 
+ --Select * from  P_UKPLAN_REPORT_T.tableau_pa_fitment_LL_UK_user  limit 1000; 
+ --Select RETAIL_YEAR, RETAIL_WEEK,  SUM(ADOPTED_LL )  ADOPTED_LL, SUM(ENABLED_LL)   ENABLED_LL  from  P_UKPLAN_REPORT_T.tableau_pa_fitment_LL_UK_user group by 1,2;
+
+
+-------/**/CREATE TABLE  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_upload  AS SELECT * FROM  P_ICHAN_T.focus_fitment_upload  ;*/
+ --6.  --- FITMENT FOCUS
+  
+drop table if exists   P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_weekly  ; -- select distinct retail_year, retail_week from   P_ICHAN_T.fitment_focus_cat_L5_weekly 
+create table P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_weekly as 
+Select 
+Retail_year, 
+Retail_week,
+BSNS_VRTCL_NAME,
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name,
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name,
+CAT.CATEG_LVL4_ID, 
+CAT.CATEG_LVL4_NAME,
+CAT.CATEG_LVL5_ID, 
+CAT.CATEG_LVL5_NAME,
+case when ftmnt_adopted_rate_grp ='01.30-70%' then  '02.30-70%' else ftmnt_adopted_rate_grp end as ftmnt_adopted_rate_grp ,
+CASE WHEN(CAST (CASE WHEN CAST (lst.flags10 as INT) < 0  THEN
+CAST (lst.flags10 as INT) + cast (2147483648  as int)
+ELSE CAST (lst.flags10 AS INT  )  END AS   INT  ) & 64 ) >= 1 THEN 'Y' ELSE 'N' END 
+AS FITMENT_ADOPTD_Flag,
+count(distinct lst.item_id) LL
+from  DW_LSTG_ITEM lst --on ck.item_id=lst.item_id SELECT * FROM DW_LSTG_ITEM  WEHRE  slr_id =1077516705  and lst.AUCT_end_dt >= CURRENT_DATE
+INNER JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_new WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   ON lst.ITEM_SITE_ID=F.SITE_ID AND lst.LEAF_CATEG_ID=F.LEAF_CATEG_ID 
+INNER JOIN (select CAL_DT,RETAIL_YEAR, QTR_OF_YEAR_ID,Retail_week, AGE_FOR_RTL_WEEK_ID,age_for_rtl_year_id,age_for_qtr_id  from DW_CAL_DT group by 1,2, 3, 4,5,6,7 ) CAL 
+ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT and AGE_FOR_RTL_WEEK_ID in (-2,-1)
+INNER  JOIN 	DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 --and cASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and cat.site_id =3
+INNER JOIN (select categ_lvl5_name, max(ftmnt_adopted_rate_grp) ftmnt_adopted_rate_grp from  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_upload  group by 1 )  c on CAT.categ_lvl5_name=c.categ_lvl5_name
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID 
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 
+and lst.SLR_CNTRY_ID =3
+group by 1,2,3,4 ,5,6,7,8  ,9,10,11,12,13;
+ --Select distinct retail_year , retail_week  from P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_weekly ;  
+ 
+ -- fitment  focus weekly output 
+Drop table if exists  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_weekly  ; 
+Create table P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_weekly as 
+Select
+cat.Retail_year,
+cat.Retail_Week,
+BSNS_VRTCL_NAME,
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name,
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name,
+CAT.CATEG_LVL4_ID, 
+CAT.CATEG_LVL4_NAME,
+CAT.CATEG_LVL5_ID, 
+CAT.CATEG_LVL5_NAME,
+ftmnt_adopted_rate_grp,
+sum(case when fitment_adoptd_flag ='Y' then ll else 0 end ) as fitment_ll,
+sum( ll) total_enabled_lL
+from  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_weekly  cat 
+left join (SELECT DISTINCT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID in (-1,-2)  GROUP BY 1)  b on cat.retail_week=b.retail_week 
+ group by 1,2,3,4 ,5,6,7,8  ,9,10 ,11,12; 
+ --select distinct retail_year, retail_week from P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_weekly  ;
+
+Drop table if exists P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_weekly_twlw ;
+Create table  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_weekly_twlw as 
+Select a.*,
+case when a.retail_week=b.retail_week  then 'Y' else 'N' end as report_tw_lw
+From P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_weekly a
+left join (SELECT DISTINCT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID in (-1,-2)  GROUP BY 1)  b on a.retail_week=b.retail_week ;
+-- select * from  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_weekly ;
+
+--create table  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_history as 
+--select * from   P_ICHAN_T.fitment_focus_cat_L5_base_history
+--select * from  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_history 
+
+CONVERT TO DELTA P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_history ;
+insert  into P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_history 
+select * from P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_weekly  -- select distinct retail_year, retail_week from  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_weekly 
+WHERE
+(RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+) ; 
+/*update   P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_history
+set ftmnt_adopted_rate_grp ='02.30-70%'
+where  ftmnt_adopted_rate_grp ='01.30-70%';*/
+--select distinct retail_year, retail_week  from P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_history  limit 1000;
+--select * from P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_L5_base_weekly  limit 1000; 
+ ------------------------------------------------------------------
+ -----------------------------------------
+ -----------------------------------------
+ -----------------------------------------
+ -- /*create table   P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller as  select * from  P_ICHAN_T.fitment_focus_sub_seller ; */ -- 49483  select * from   P_ICHAN_T.fitment_focus_sub_seller  limit 1000; 
+ 
+ -- Fitment Focus Seller weekly track
+Drop table if exists   P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_1  ; 
+Create table P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_1 as 
+Select 
+Retail_year,
+Retail_week, 
+BSNS_VRTCL_NAME,
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name,
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name,
+CAT.CATEG_LVL4_ID, 
+CAT.CATEG_LVL4_NAME,
+CAT.CATEG_LVL5_ID, 
+CAT.CATEG_LVL5_NAME,
+ftmnt_adopted_rate_grp,
+slr_id,
+CASE WHEN(CAST (CASE WHEN CAST (lst.flags10 as INT) < 0  THEN
+CAST (lst.flags10 as INT) + cast (2147483648  as int)
+ELSE CAST (lst.flags10 AS INT  )  END AS   INT  ) & 64 ) >= 1 THEN 'Y' ELSE 'N' END 
+AS FITMENT_ADOPTD_Flag,
+count(distinct lst.item_id) LL
+from  DW_LSTG_ITEM lst 
+INNER JOIN (select CAL_DT,RETAIL_YEAR, QTR_OF_YEAR_ID,Retail_week, AGE_FOR_RTL_WEEK_ID,age_for_rtl_year_id,age_for_qtr_id  from DW_CAL_DT group by 1,2, 3, 4,5,6,7 ) CAL 
+ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT and cal.age_for_rtl_year_id in (0) and age_for_qtr_id =0   and AGE_FOR_RTL_WEEK_ID =-1
+INNER  JOIN 	DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 --and cASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and site_id =3
+INNER JOIN (select categ_lvl5_name, max(ftmnt_adopted_rate_grp) ftmnt_adopted_rate_grp from P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_cat_upload  group by 1 )  c on CAT.categ_lvl5_name=c.categ_lvl5_name
+INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID  --AND  COND.CNDTN_ROLLUP_ID =  3  /*THEN 'Used' */  
+left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+where lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and lst.SLR_CNTRY_ID =3
+and SLR_ID in ( select distinct slr_id from  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller   where ftmnt_adopted_rate_grp ='01.< 30%' and rank_order <=300) 
+--and lst.AUCT_END_DATE>=CURRENT_DATE
+ group by 1,2,3,4 ,5,6,7,8  ,9,10,11,12,13,14;
+ 
+-- Select * from P_ICHAN_T.fitment_focus_sub_seller_1  ; 
+ 
+ ---select * from  P_ICHAN_T.fitment_focus_sub; ----  select sum(total_enabled_lL) from  P_ICHAN_T.fitment_focus_sub_cat  where slr_id =82983844
+
+Drop table if exists  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_2 ; -- select * from  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_2 ;  
+Create table  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_2 as 
+Select  slr_id,USER_SLCTD_ID ,
+Retail_year,
+Retail_week,
+CAT.CATEG_LVL2_ID, 
+CAT.categ_lvl2_name,
+CAT.CATEG_LVL3_ID, 
+CAT.categ_lvl3_name,
+CAT.CATEG_LVL4_ID, 
+CAT.CATEG_LVL4_NAME,
+CAT.CATEG_LVL5_ID, 
+CAT.CATEG_LVL5_NAME,
+ftmnt_adopted_rate_grp,
+sum(case when fitment_adoptd_flag ='Y' then ll else 0 end ) as fitment_ll,
+sum( ll) total_enabled_lL
+from  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_1  cat
+left outer JOIN DW_USERs U ON U.USER_ID= cat.Slr_ID 
+Where 1=1
+and retail_week in (  Select distinct retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID in (0,-1,-2,-3) )
+and SLR_ID in ( select distinct slr_id from  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller  where ftmnt_adopted_rate_grp ='01.< 30%' and rank_order <=300) 
+Group by 1,2,3,4 ,5,6,7,8 ,9,10,11,12,13 ; 
+ 
+ 
+--Create table  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_history  as select * from P_ICHAN_T.fitment_focus_sub_seller_history   ;
+ -- 112847 
+
+CONVERT TO DELTA P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_history ;
+DELETE FROM  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_history  
+WHERE
+(RETAIL_YEAR = (SELECT RETAIL_YEAR FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+AND
+RETAIL_WEEK= (SELECT RETAIL_WEEK FROM ACCESS_VIEWS.DW_CAL_DT WHERE AGE_FOR_RTL_WEEK_ID=-1 GROUP BY 1)
+) ; 
+
+-- select distinct retail_year,  retail_week from   P_ICHAN_T.fitment_focus_sub_seller_history 
+
+INSERT INTO    P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_history
+SELECT * FROM  P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_2  ;
+
+--DELETE FROM  P_ICHAN_T.fitment_focus_sub_seller_history where retail_year =2022 and retail_week in (36,37,38) --- between 26 to 39 ;
+
+--select distinct retail_year, retail_week from   P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_history   ;
+--select * from   P_UKPLAN_REPORT_T.tableau_pa_fitment_focus_sub_seller_history limit 100;

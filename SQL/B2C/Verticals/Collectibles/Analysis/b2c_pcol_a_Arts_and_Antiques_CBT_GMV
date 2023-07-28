@@ -1,0 +1,80 @@
+-- JIRA:            UKPLAN-459
+-- Task:            CBT Deep Dive for Art & Antiques
+
+-- Author: 			Tugrul Ates
+-- Date:            2023-07-19
+
+-- Stakeholder: 	Amy Kent
+-- Description: 	Historical CBT GMV data for Arts and Antiques categories
+
+
+select
+	 cal.RETAIL_YEAR
+	,cal.RETAIL_WEEK
+	,cal.RTL_QTR_OF_RTL_YEAR_ID as quarter_id
+	,cat.new_vertical as adjusted_vertical
+	,cat.meta_categ_id
+	,cat.meta_categ_name
+	,cat.categ_lvl2_id
+	,cat.categ_lvl2_name
+	,cat.categ_lvl3_id
+	,cat.categ_lvl3_name
+	,cat.categ_lvl4_id
+	,cat.categ_lvl4_name
+	,upper(cty.cntry_code) as buyer_country
+	,tran.site_group_name as site_country
+	,case when tran.slr_cntry_id != tran.byr_cntry_id then 'CBT' else 'DOM' end as dom_cbt_flag
+	,tran.EU_B2C_C2C_FLAG as b2c_c2c_flag
+	,case 
+	when tran.item_cndtn_id in (1000, 1500, 1750) then 'New'
+	when tran.item_cndtn_id in (2000, 2010, 2020, 2030, 2500) then 'Refurb'
+	when tran.item_cndtn_id in (3000, 4000, 5000, 6000, 7000) then 'Used'
+	else 'Other'
+	end as item_condition_group
+	,case
+		when tran.item_cndtn_id = 1000 then 'New'
+		when tran.item_cndtn_id = 1500 then 'New - Other'
+		when tran.item_cndtn_id = 1750 then 'New - With defects'
+		when tran.item_cndtn_id = 2000 then 'Refurb - Certified'
+		when tran.item_cndtn_id = 2010 then 'Refurb - Excellent'
+		when tran.item_cndtn_id = 2020 then 'Refurb - Very Good'
+		when tran.item_cndtn_id = 2030 then 'Refurb - Good'
+		when tran.item_cndtn_id = 2500 then 'Refurb - Seller'			
+		when tran.item_cndtn_id = 3000 then 'Used'
+		when tran.item_cndtn_id = 4000 then 'Used - Very Good'
+		when tran.item_cndtn_id = 5000 then 'Used - Good'
+		when tran.item_cndtn_id = 6000 then 'Used - Acceptable'
+		when tran.item_cndtn_id = 7000 then 'Used - For parts / not working'
+		else 'Other'
+		end as item_condition_detailed
+	,sum(tran.GMV20_PLAN) as gmv_plan_usd
+	,sum(tran.GMV20_SOLD_QUANTITY) as sold_items
+	
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT as tran
+
+join ACCESS_VIEWS.DW_CAL_DT as cal  
+	on tran.GMV_DT = cal.CAL_DT 
+
+join P_INVENTORYPLANNING_T.dw_category_groupings_adj as cat 
+	on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID 
+	and tran.LSTG_SITE_ID = cat.SITE_ID
+
+left join access_views.focused_vert_txn focus 
+	on tran.ITEM_ID=focus.LSTG_ID 
+	and tran.CK_TRANS_ID=focus.CK_TRANS_ID 
+	and tran.LSTG_SITE_ID = focus.LSTG_SITE_ID 
+	and tran.LEAF_CATEG_ID = focus.LEAF_CATEG_ID
+
+left join dw_countries as cty on cty.cntry_id = tran.byr_cntry_id
+
+where 1=1
+	and tran.slr_cntry_id = 3
+	and year(tran.gmv_dt) >= year(current_date) - 4  --This is to return the results for the last 4 years
+	and year(tran.gmv_dt) <= year(current_date)  --This is to return the results for the last 4 years
+	and cat.meta_categ_id in (870, 550, 20081)   -- Meta IDs for Arts and Antiques
+	and tran.ck_wacko_yn = 'N'
+	and tran.iscore = 1
+	and cat.sap_category_id not in (5, 7, 41,23,-999)
+	
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18
+;
