@@ -1,0 +1,72 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-477
+
+Objective: Understand repair and replace performance for selected L4 categories
+
+Description: I'll be looking at:
+•	GMV 
+•	SI
+•	ASP
+
+
+This should be split by focus sellers, condition and retail week for YTD
+Date: 28/07/2023
+
+Author: Oliver Wand
+
+*/
+
+DROP TABLE IF EXISTS P_OLWAND_T.UKPLAN_REPAIR_REPLACE;
+CREATE TABLE P_OLWAND_T.UKPLAN_REPAIR_REPLACE AS
+
+select 
+cal.RETAIL_YEAR
+,cal.RETAIL_WEEK
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,cat.CATEG_LVL4_NAME
+,coalesce(fcs.initiative_name,'Non-Focus') as focus_seller
+,tran.SELLER_ID
+,user.USER_SLCTD_ID as SELLER_NAME
+,case tran.item_cndtn_id when 1000 then 'New'
+	  			when 1500 then 'New - Other'
+	  			when 1750 then 'New - With defects'
+	  			when 2000 then 'Refurb - Certified' 
+	  			when 2010 then 'Refurb - Excellent'
+	  			when 2020 then 'Refurb - Very Good'
+	  			when 2030 then 'Refurb - Good'
+	  			when 2500 then 'Refurb - Seller' 
+				when 3000 then 'Used'
+	  			when 4000 then 'Used - Very Good'
+	  			when 5000 then 'Used - Good'
+	  			when 6000 then 'Used - Acceptable'
+	  			when 7000 then 'Used - For parts / not working'
+	  			else 'Other' end as item_condition
+,sum(tran.GMV20_PLAN) as GMV
+,sum(tran.QUANTITY) as SI
+FROM PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and tran.SITE_ID = cat.SITE_ID
+inner join ACCESS_VIEWS.DW_CAL_DT cal on cal.cal_dt = tran.GMV_DT
+inner join ACCESS_VIEWS.dw_users user on tran.SELLER_ID = user.USER_ID
+					left join (select distinct seller_id
+										,seller_name
+										,min(initcap(trim(initiative_name))) as initiative_name
+										from P_awang_ops_t.seller_ops_83
+										where initcap(trim(seller_vertical)) in ('Electronics','Media')
+										and focused_flag = 'Focus'
+										group by 1,2) fcs on tran.SELLER_ID = fcs.seller_id
+where 1=1
+and cat.CATEG_LVL4_ID in (172513,260144,172514,64352,30038,151236,32943,29954,74923,74925,167938,74926,4702,183066,260317,43304,175735,48703,48704,48706,175736,48705,15050,48701,48707,48694,175737,40059,48708,175738,48709,48710,48711,262427,262428,262429,262431,262430,184618,163769,184613,184614,122649,31197
+,71585,64619,169025,21997,169024,141249,163768,163851,71573,39996,168088,73372,67815,64627,183072,171833,99565,43566,116026,184666,259342,42146,159903,260155,99697,185048,257927,257926,257932,260302,260301,85915,159930,261020,261015,71278,260923,177018,181075,181064,181071,181070,261027,260939,260558,259850
+,147155,260567,42025,260568,259841,46249,260573,147147,112553,260572,260570,71282,147153,147148,147151,259834,112555,260574,259853,259861,259860,37637,101408,180961,259151,259152,259153,41973,259155,259156,259159,134642,180963,167125,66739,180964,180965,180966,259162,126439,259161,259169,259170,259172,259173
+,259174,179687,85899,259175,259176,259177,179688,83847,45816,180978,130126,30541,125034,170412,180976,83852,180977,259242,45812,159895,260450,260451,260452,260453,260454,260455,260457,260458,260459,260460,260461,260462,260497,260464,260465,260466,260478,260467,126208,260468,260469,260470,260471,260472,260473
+,260474,260475,260476,260477,260479,260480,260481,260482,260483,112566,260485,260486,260487,260488,260489,260490,260491,260624,259864,259835,3191,260630,259838,259845,42132,260622,259859,116400,260589,259858,259837,259836,260620)
+and tran.RPRTD_WACKO_YN = 'N'
+and cal.AGE_FOR_RTL_YEAR_ID = 0
+and cal.AGE_FOR_RTL_WEEK_ID <= -1
+and tran.B2C_C2C = 'B2C'
+and tran.SITE_ID = 3
+group by 1,2,3,4,5,6,7,8,9,10,11
+;
