@@ -1,3 +1,14 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-480
+
+Objective: Split tech and media report by promotional GMV
+
+Date: 03/08/2023
+
+Author: Oliver Wand
+
+*/
+
 drop table if exists P_OLWAND_T.COUPON_SPLITS;
 create table P_OLWAND_T.COUPON_SPLITS as
 select uki.vertical
