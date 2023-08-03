@@ -1,0 +1,55 @@
+drop table if exists P_OLWAND_T.COUPON_SPLITS;
+create table P_OLWAND_T.COUPON_SPLITS as
+select uki.vertical
+, uki.retail_year
+, uki.retail_week
+,case when uki.inventory_prop like ('%Focus%') then uki.inventory_prop else 'Other' end as inventory_prop
+,case when  uki.inventory_prop like ('% New Focus%') then 'New'
+	when  uki.inventory_prop like ('%Focus%') then 'Better Than New' else 'Other' end as New_BTN_focus
+, max(uki.GMV) as TY_GMV
+,max(case when promotion_type = 'DAILY DEALS' then seller_offer_GMV end) as dailydeal_promo_gmv
+,max(case when promotion_type = 'SME' then seller_offer_GMV end) as SME_promo_gmv
+,max(case when promotion_type = 'RPP' then seller_offer_GMV end) as RPP_promo_gmv
+,max(case when promotion_type = 'CODED COUPONS' then seller_offer_GMV end) as coded_coupon_promo_gmv
+,max(case when promotion_type = 'STP' then seller_offer_GMV end) as STP_promo_gmv
+from P_CSI_TBS_T.UKI_FINAL uki
+
+inner join (SELECT distinct RETAIL_YEAR, RETAIL_WEEK, AGE_FOR_RTL_YEAR_ID, AGE_FOR_RTL_WEEK_ID  from ACCESS_VIEWS.DW_CAL_DT) cal on uki.retail_year = cal.RETAIL_YEAR and uki.retail_week = cal.RETAIL_WEEK
+left join (
+	select 
+	retail_year
+	,retail_week
+	,vertical
+	,case when  inventory_prop_flag = 'Focused' then inventory_prop else 'Other' end as inventory_prop
+	,promotion_type
+	,sum(promotion_GMV) as seller_offer_GMV
+	from P_SLR_TRACKER_T.seller_union_all_hist 
+	where retail_year = 2023
+	and vertical in ('Electronics','Media')
+-- 	and inventory_prop_flag in ('Focused') 
+	and promotion_type in ('DAILY DEALS','SME','RPP','CODED COUPONS')
+	group by 1,2,3,4,5
+
+	union all
+
+	select
+	retail_year
+	,retail_week_2 as retail_week
+	,STP_Vertical as vertical
+	,case when  inv_prop_flag = 'Focused' then inventory_prop else 'Other' end as inventory_prop
+	,'STP' as promotion_type
+	,sum(STP_GMV) as seller_offer_GMV
+	from P_SLR_TRACKER_T.STP_FINAL_HIST
+	where retail_year = 2023
+	and STP_vertical in ('Electronics','Media')
+-- 	and inv_prop_flag in ('Focused') 
+	group by 1,2,3,4,5) promo on uki.retail_week = promo.retail_week and uki.inventory_prop = promo.inventory_prop and uki.vertical = promo.vertical
+	
+	 where 1=1
+	 and uki.retail_year = 2023 
+	 and uki.vertical in ('Electronics','Media') 
+	 and cal.AGE_FOR_RTL_WEEK_ID <= -1
+	 and cal.AGE_FOR_RTL_YEAR_ID = 0
+	 group by 1,2,3,4,5
+	 
+	;
