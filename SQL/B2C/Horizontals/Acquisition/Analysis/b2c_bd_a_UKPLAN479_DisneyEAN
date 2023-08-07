@@ -1,0 +1,58 @@
+
+SELECT *
+
+---FROM P_ndourish_T.akzo_eans
+---FROM P_ndourish_T.tool_bank_barcode
+FROM P_OLWAND_T.DGI_EAN
+
+LIMIT 100
+
+
+;
+
+SELECT
+
+ean_num
+,SUM(GMV) gmv
+,SUM(BI) bi
+
+
+FROM 
+
+(
+
+
+
+SELECT 
+cal.retail_year
+,cal.RETAIL_WEEK
+,vrtn.EAN_NUM
+,case lstg.CNDTN_ROLLUP_ID
+	when 1 then 'New'
+	when 2 then 'Refurb'
+	when 3 then 'Used' else 'Other' end as item_cndtn
+,SUM(tran.GMV20_PLAN) AS GMV 
+,SUM(tran.QUANTITY) AS BI
+,AVG(item_price) ASP
+,count(distinct(tran.item_id)) as converted_lll
+,sum(lstg.QTY_AVAIL) as QTY_AVAILABLE
+FROM LSTG_ITEM_VRTN vrtn 
+INNER JOIN P_OLWAND_T.dgi_ean en on en.EAN = vrtn.ean_num
+LEFT JOIN PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran on tran.ITEM_VRTN_ID = vrtn.item_vrtn_id and vrtn.item_id = tran.item_id
+
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = tran.GMV_DT and cal.AGE_FOR_RTL_WEEK_ID between -52 and -1
+LEFT join PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg on lstg.item_id = tran.item_id and lstg.AUCT_END_DT = tran.auct_end_Dt
+
+WHERE 1=1
+AND tran.CK_WACKO_YN  =  'N'
+AND tran.SALE_TYPE NOT IN (10,15)
+and tran.byr_cntry_id =3 -- UK filter
+AND tran.SLR_CNTRY_ID = 3 
+
+GROUP BY 1,2,3,4
+
+
+
+) as a
+
+GROUP BY 1
