@@ -1,14 +1,32 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-479
+
+Objective: Look at EANs sell through rates on eBay platform
+GMV 
+Converted LL
+SI
+ASP
+
+Date: 04/08/2023
+
+Author: Oliver Wand
+
+*/
+
+
+--STEP ONE load EANs via Zeta Data Move tool 
 
 SELECT *
 
----FROM P_ndourish_T.akzo_eans
----FROM P_ndourish_T.tool_bank_barcode
+
 FROM P_OLWAND_T.DGI_EAN
 
 LIMIT 100
 
 
 ;
+
+-- STEP 2 
 
 SELECT
 
