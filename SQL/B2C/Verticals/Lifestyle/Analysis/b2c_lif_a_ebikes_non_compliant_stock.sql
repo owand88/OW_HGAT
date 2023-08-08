@@ -12,16 +12,19 @@
 ---------------------------------Currently Live Listings----------------------------
 
 select
-case when lstg.SLR_CNTRY_ID = 3 then 'UK'
+lstg.ITEM_ID
+,lstg.AUCT_TITLE
+,lstg.SLR_ID
+,case when lstg.SLR_CNTRY_ID = 3 then 'UK'
 	else 'International' end as seller_cntry
-,aspct.POWER
-,aspct.SPEED
-,count(distinct lstg.item_id) as ll
+,pwr.POWER
+,spd.SPEED
+,case when lstg.START_PRICE_LSTG_CURNCY_AMT > lstg.RSRV_PRICE_LSTG_CURNCY_AMT then lstg.START_PRICE_LSTG_CURNCY_AMT else lstg.RSRV_PRICE_LSTG_CURNCY_AMT End as price
 
 from PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT_EXT lstg
 INNER JOIN DW_CAL_DT cal
 	on lstg.AUCT_START_DT <= CURRENT_DATE --- live listings only
-	and lstg.AUCT_END_DT >= CURRENT_DATE --- live listings only
+	and lstg.AUCT_END_DT > CURRENT_DATE --- live listings only
 INNER JOIN P_INVENTORYPLANNING_T.dw_category_groupings_adj CAT
 	ON lstg.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
 	AND cat.site_id = 3
@@ -29,18 +32,35 @@ LEFT JOIN
 	(
 	SELECT
 		ITEM_ID
-		,coalesce(case when tag_name = 'Maximum Speed' then tag_value_txt End,"") as SPEED
-		,coalesce(case when tag_name = 'Motor Power' then tag_value_txt End,"") as POWER
-	FROM DW_ATTR_LSTG_TAG_DTL ASPCT
-	GROUP BY 1,2,3
-	) aspct
-		on lstg.item_id = aspct.item_id
+		,coalesce(tag_value_txt,"") as SPEED
+	FROM
+		DW_ATTR_LSTG_TAG_DTL ASPCT
+	WHERE
+		tag_name = 'Maximum Speed'
+	GROUP BY
+		1,2
+	) spd
+		on lstg.item_id = spd.item_id
+LEFT JOIN 
+	(
+	SELECT
+		ITEM_ID
+		,coalesce(tag_value_txt,"") as POWER
+	FROM
+		DW_ATTR_LSTG_TAG_DTL ASPCT
+	WHERE
+		tag_name = 'Motor Power'
+	GROUP BY
+		1,2
+	) pwr
+		on lstg.item_id = pwr.item_id
 
 Where 1=1
 and cat.LEAF_CATEG_ID = 74469 --- eBikes
 and lstg.ITEM_SITE_ID = 3
 
-Group By 1,2,3;
+Group By 1,2,3,4,5,6,7
+;
 
 
 
@@ -68,4 +88,9 @@ and cat.LEAF_CATEG_ID = 74469 --- eBikes
 and ck.SITE_ID = 3
 
 group by 1,2
+
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+
 
