@@ -61,8 +61,7 @@ where 1 = 1
 	and tran.lstg_site_id = 3	
 	-- Pro Trader Forecast Quarter Config (Change these values according to the Forecast Year and Quarter that you are after --------
 	and pro.cohort_year = 2023
-	and pro.cohort_quarter_id = 3
-	and pro.cohort_name in ('UKPT-Q3-2023-Christmas V2','UKPT-Q3-2023-Luxury')
+	and pro.cohort_quarter_id = 4
 	----------------------------------------------------------------------------------------------------------------------------------
 group by 1,2,3,4,5,6;
 	
@@ -123,8 +122,7 @@ where 1 = 1
 	and tran.lstg_site_id = 3	
 	-- Pro Trader Forecast Quarter Config (Change these values according to the Forecast Year and Quarter that you are after --------
 	and pro.cohort_year = 2023
-	and pro.cohort_quarter_id = 3
-	and pro.cohort_name in ('UKPT-Q3-2023-Christmas V2','UKPT-Q3-2023-Luxury')
+	and pro.cohort_quarter_id = 4
 	----------------------------------------------------------------------------------------------------------------------------------
 
 group by 1,2,3,4,5,6,7,8,9;	
