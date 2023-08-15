@@ -8,6 +8,72 @@
 
 
 
+-- drop table if exists P_ROBEVANS_T.lif_okr_targets;
+-- Create table P_ROBEVANS_T.lif_okr_targets
+-- (
+--     meta_category_name string,
+-- 	retail_week decimal(4,0),
+--     gmv decimal(38,6)
+-- )
+-- ;
+-- INSERT INTO P_ROBEVANS_T.lif_okr_targets (retail_week, meta_category_name, gmv)
+-- VALUES
+--     (27, 'Health & Beauty', 7395899.591),
+--     (27, 'Sporting Goods', 6392314.021),
+--     (28, 'Health & Beauty', 7267229.712),
+--     (28, 'Sporting Goods', 6688617.962),
+--     (29, 'Health & Beauty', 7287569.906),
+--     (29, 'Sporting Goods', 6374636.034),
+--     (30, 'Health & Beauty', 7803841.575),
+--     (30, 'Sporting Goods', 6678620.37),
+--     (31, 'Health & Beauty', 7450629.033),
+--     (31, 'Sporting Goods', 6605063.767),
+--     (32, 'Health & Beauty', 6987706.727),
+--     (32, 'Sporting Goods', 6313873.56),
+--     (33, 'Health & Beauty', 7102826.172),
+--     (33, 'Sporting Goods', 6031874.348),
+--     (34, 'Health & Beauty', 7479772.527),
+--     (34, 'Sporting Goods', 5808225.64),
+--     (35, 'Health & Beauty', 7128441.194),
+--     (35, 'Sporting Goods', 5852573.4),
+--     (36, 'Health & Beauty', 6964168.662),
+--     (36, 'Sporting Goods', 5622776.292),
+--     (37, 'Health & Beauty', 6988569.421),
+--     (37, 'Sporting Goods', 5581603.139),
+--     (38, 'Health & Beauty', 6959249.909),
+--     (38, 'Sporting Goods', 5533749.211),
+--     (39, 'Health & Beauty', 7842182.224),
+--     (39, 'Sporting Goods', 6058024.255),
+--     (40, 'Health & Beauty', 7605679.408),
+--     (40, 'Sporting Goods', 5907369.644),
+--     (41, 'Health & Beauty', 8862072.238),
+--     (41, 'Sporting Goods', 6278538.431),
+--     (42, 'Health & Beauty', 8544023.867),
+--     (42, 'Sporting Goods', 6095021.295),
+--     (43, 'Health & Beauty', 9157872.355),
+--     (43, 'Sporting Goods', 6284297.924),
+--     (44, 'Health & Beauty', 9606231.766),
+--     (44, 'Sporting Goods', 6589908),
+--     (45, 'Health & Beauty', 10455942.35),
+--     (45, 'Sporting Goods', 6714510.279),
+--     (46, 'Health & Beauty', 10931574.94),
+--     (46, 'Sporting Goods', 6740480.81),
+--     (47, 'Health & Beauty', 11847967.98),
+--     (47, 'Sporting Goods', 6730518.107),
+--     (48, 'Health & Beauty', 11331411.32),
+--     (48, 'Sporting Goods', 7310772.125),
+--     (49, 'Health & Beauty', 10520776.01),
+--     (49, 'Sporting Goods', 6596158.778),
+--     (50, 'Health & Beauty', 7981142.076),
+--     (50, 'Sporting Goods', 4970473.621),
+--     (51, 'Health & Beauty', 5226949.044),
+--     (51, 'Sporting Goods', 3577060.183),
+--     (52, 'Health & Beauty', 6319782.613),
+--     (52, 'Sporting Goods', 4440150.678);
+
+
+
+
 
 
 Drop table if exists p_robevans_t.lifestyle_inv_props;
@@ -116,13 +182,14 @@ LEFT JOIN
 	) INV
 		on inv.item_id = lstg.item_id
 
+
 			
 WHERE 1=1
 	AND lstg.SLR_CNTRY_ID = 3
 	AND lstg.LSTG_SITE_ID = 3
 	AND cat.new_vertical = 'Lifestyle'
 
-GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18
 ;
 
 --------------------------------------------------------------------------------------------------------------------------------------------------
@@ -363,6 +430,35 @@ Group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
 
 
 ---------------------------------------------------------------------------------------------------------------------------------------
+---------------------------------------------------------- OKR Targets ----------------------------------------------------------------
+---------------------------------------------------------------------------------------------------------------------------------------
+
+Drop table if exists P_UKPLAN_REPORT_T.Lifestyle_okr_targets;
+Create table P_UKPLAN_REPORT_T.Lifestyle_okr_targets as
+
+Select ck.retail_week
+	,ck.meta_categ_name
+	,sum(ck.gmv) as gmv_actual
+	,sum(okr.gmv) as gmv_target
+FROM
+	(
+	Select retail_week
+		,META_CATEG_NAME
+		,sum(GMV_Dom) as GMV
+	FROM p_robevans_t.lifestyle_subcat_gmv ck
+	Where 1=1
+		and ck.retail_year = 2023
+		and upper(Business_flag) = 'B2C'
+		and (retail_week between 27 and 52)
+		and meta_categ_name in ('Health & Beauty','Sporting Goods')
+	Group by 1,2
+	) ck
+LEFT JOIN P_ROBEVANS_T.lif_okr_targets okr
+	on ck.retail_week = okr.retail_week
+	and lower(ck.meta_categ_name) = lower(okr.meta_category_name)
+Group by 1,2
+;
+---------------------------------------------------------------------------------------------------------------------------------------
 --------------------------------------------------- Top Sellers -----------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------------------------------------------
 
@@ -381,12 +477,14 @@ From
 		,cat.CATEG_LVL2_ID
 		,cat.CATEG_LVL3_ID
 		,cat.CATEG_LVL4_ID
+		,inv.INVENTORY_PROP
 		,seller_id
 		,sum(GMV20_PLAN) as gmv
 		,dense_rank() over (partition by cat.META_CATEG_ID order by sum(GMV20_PLAN) desc) as rank_meta
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID order by sum(GMV20_PLAN) desc) as rank_L2
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID,cat.CATEG_LVL3_ID order by sum(GMV20_PLAN) desc) as rank_L3
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID,cat.CATEG_LVL3_ID,cat.CATEG_LVL4_ID order by sum(GMV20_PLAN) desc) as rank_L4
+		,dense_rank() over (partition by cat.CATEG_LVL2_ID order by sum(GMV20_PLAN) desc) as rank_L2
+		,dense_rank() over (partition by cat.CATEG_LVL3_ID order by sum(GMV20_PLAN) desc) as rank_L3
+		,dense_rank() over (partition by cat.CATEG_LVL4_ID order by sum(GMV20_PLAN) desc) as rank_L4
+		,dense_rank() over (partition by inv.INVENTORY_PROP order by sum(GMV20_PLAN) desc) as rank_inv
 	From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck	
 	INNER JOIN DW_CAL_DT cal 
 		ON ck.GMV_DT = cal.CAL_DT
@@ -394,38 +492,56 @@ From
 	INNER JOIN P_INVENTORYPLANNING_T.dw_category_groupings_adj CAT
 		ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
 		AND cat.site_id = 3
+	LEFT JOIN	
+		(select ITEM_ID
+			,INVENTORY_PROP
+		from p_robevans_t.lifestyle_inv_props
+		group by 1,2
+		) INV
+			on inv.item_id = ck.item_id
 	Where 1=1
 		and ck.SLR_CNTRY_ID = 3
 		and ck.SITE_ID = 3
 		and cat.new_vertical = 'Lifestyle'
-	Group by 1,2,3,4,5
+	Group by 1,2,3,4,5,6
+	
 	
 	UNION ALL
-	
+
 	----------Latest Quarter Top Sellers----------------
 	Select 
 		cat.META_CATEG_ID
 		,cat.CATEG_LVL2_ID
 		,cat.CATEG_LVL3_ID
 		,cat.CATEG_LVL4_ID
+		,inv.INVENTORY_PROP
 		,seller_id
 		,sum(GMV20_PLAN) as gmv
 		,dense_rank() over (partition by cat.META_CATEG_ID order by sum(GMV20_PLAN) desc) as rank_meta
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID order by sum(GMV20_PLAN) desc) as rank_L2
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID,cat.CATEG_LVL3_ID order by sum(GMV20_PLAN) desc) as rank_L3
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID,cat.CATEG_LVL3_ID,cat.CATEG_LVL4_ID order by sum(GMV20_PLAN) desc) as rank_L4
+		,dense_rank() over (partition by cat.CATEG_LVL2_ID order by sum(GMV20_PLAN) desc) as rank_L2
+		,dense_rank() over (partition by cat.CATEG_LVL3_ID order by sum(GMV20_PLAN) desc) as rank_L3
+		,dense_rank() over (partition by cat.CATEG_LVL4_ID order by sum(GMV20_PLAN) desc) as rank_L4
+		,dense_rank() over (partition by inv.INVENTORY_PROP order by sum(GMV20_PLAN) desc) as rank_inv
 	From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck	
 	INNER JOIN DW_CAL_DT cal 
 		ON ck.GMV_DT = cal.CAL_DT
 		AND cal.RTL_QTR_OF_RTL_YEAR_ID = (select RTL_QTR_OF_RTL_YEAR_ID from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
+		and cal.retail_year = (select RETAIL_YEAR from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
 	INNER JOIN P_INVENTORYPLANNING_T.dw_category_groupings_adj CAT
 		ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
 		AND cat.site_id = 3
+	LEFT JOIN	
+		(select ITEM_ID
+			,INVENTORY_PROP
+		from p_robevans_t.lifestyle_inv_props
+		group by 1,2
+		) INV
+			on inv.item_id = ck.item_id
 	Where 1=1
 		and ck.SLR_CNTRY_ID = 3
 		and ck.SITE_ID = 3
 		and cat.new_vertical = 'Lifestyle'
-	Group by 1,2,3,4,5
+	Group by 1,2,3,4,5,6
 	
 	UNION ALL
 	
@@ -435,12 +551,14 @@ From
 		,cat.CATEG_LVL2_ID
 		,cat.CATEG_LVL3_ID
 		,cat.CATEG_LVL4_ID
+		,inv.INVENTORY_PROP
 		,seller_id
 		,sum(GMV20_PLAN) as gmv
 		,dense_rank() over (partition by cat.META_CATEG_ID order by sum(GMV20_PLAN) desc) as rank_meta
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID order by sum(GMV20_PLAN) desc) as rank_L2
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID,cat.CATEG_LVL3_ID order by sum(GMV20_PLAN) desc) as rank_L3
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID,cat.CATEG_LVL3_ID,cat.CATEG_LVL4_ID order by sum(GMV20_PLAN) desc) as rank_L4
+		,dense_rank() over (partition by cat.CATEG_LVL2_ID order by sum(GMV20_PLAN) desc) as rank_L2
+		,dense_rank() over (partition by cat.CATEG_LVL3_ID order by sum(GMV20_PLAN) desc) as rank_L3
+		,dense_rank() over (partition by cat.CATEG_LVL4_ID order by sum(GMV20_PLAN) desc) as rank_L4
+		,dense_rank() over (partition by inv.INVENTORY_PROP order by sum(GMV20_PLAN) desc) as rank_inv
 	From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck	
 	INNER JOIN DW_CAL_DT cal 
 		ON ck.GMV_DT = cal.CAL_DT
@@ -448,16 +566,24 @@ From
 	INNER JOIN P_INVENTORYPLANNING_T.dw_category_groupings_adj CAT
 		ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
 		AND cat.site_id = 3
+	LEFT JOIN	
+		(select ITEM_ID
+			,INVENTORY_PROP
+		from p_robevans_t.lifestyle_inv_props
+		group by 1,2
+		) INV
+			on inv.item_id = ck.item_id
 	Where 1=1
 		and ck.SLR_CNTRY_ID = 3
 		and ck.SITE_ID = 3
 		and cat.new_vertical = 'Lifestyle'
-	Group by 1,2,3,4,5
+	Group by 1,2,3,4,5,6
 	)
-Where rank_meta <= 20
- OR rank_L2 <= 20
- OR rank_L3 <= 20
- OR rank_L4 <= 20
+Where rank_meta <= 25
+ OR rank_L2 <= 25
+ OR rank_L3 <= 25
+ OR rank_L4 <= 25
+ OR rank_inv <= 25
  
 Group by 1
 )
@@ -700,12 +826,14 @@ From
 		,cat.CATEG_LVL2_ID
 		,cat.CATEG_LVL3_ID
 		,cat.CATEG_LVL4_ID
+		,inv.INVENTORY_PROP
 		,brnd.brand
 		,sum(GMV20_PLAN) as gmv
 		,dense_rank() over (partition by cat.META_CATEG_ID order by sum(GMV20_PLAN) desc) as rank_meta
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID order by sum(GMV20_PLAN) desc) as rank_L2
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID,cat.CATEG_LVL3_ID order by sum(GMV20_PLAN) desc) as rank_L3
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID,cat.CATEG_LVL3_ID,cat.CATEG_LVL4_ID order by sum(GMV20_PLAN) desc) as rank_L4
+		,dense_rank() over (partition by cat.CATEG_LVL2_ID order by sum(GMV20_PLAN) desc) as rank_L2
+		,dense_rank() over (partition by cat.CATEG_LVL3_ID order by sum(GMV20_PLAN) desc) as rank_L3
+		,dense_rank() over (partition by cat.CATEG_LVL4_ID order by sum(GMV20_PLAN) desc) as rank_L4
+		,dense_rank() over (partition by inv.INVENTORY_PROP order by sum(GMV20_PLAN) desc) as rank_inv
 	From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck	
 	INNER JOIN DW_CAL_DT cal 
 		ON ck.GMV_DT = cal.CAL_DT
@@ -744,30 +872,41 @@ From
 					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
 				)SB
 			GROUP BY 1) brnd ON ck.ITEM_ID = brnd.ITEM_ID
+	LEFT JOIN	
+		(select ITEM_ID
+			,INVENTORY_PROP
+		from p_robevans_t.lifestyle_inv_props
+		group by 1,2
+		) INV
+			on inv.item_id = ck.item_id
 	Where 1=1
 		and ck.SLR_CNTRY_ID = 3
 		and ck.SITE_ID = 3
 		and cat.new_vertical = 'Lifestyle'
-	Group by 1,2,3,4,5
+	Group by 1,2,3,4,5,6
 	
 	UNION ALL
-	
+
+
 	----------Latest Quarter Top Brands----------------
 	Select 
 		cat.META_CATEG_ID
 		,cat.CATEG_LVL2_ID
 		,cat.CATEG_LVL3_ID
 		,cat.CATEG_LVL4_ID
+		,inv.INVENTORY_PROP
 		,brnd.brand
 		,sum(GMV20_PLAN) as gmv
 		,dense_rank() over (partition by cat.META_CATEG_ID order by sum(GMV20_PLAN) desc) as rank_meta
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID order by sum(GMV20_PLAN) desc) as rank_L2
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID,cat.CATEG_LVL3_ID order by sum(GMV20_PLAN) desc) as rank_L3
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID,cat.CATEG_LVL3_ID,cat.CATEG_LVL4_ID order by sum(GMV20_PLAN) desc) as rank_L4
+		,dense_rank() over (partition by cat.CATEG_LVL2_ID order by sum(GMV20_PLAN) desc) as rank_L2
+		,dense_rank() over (partition by cat.CATEG_LVL3_ID order by sum(GMV20_PLAN) desc) as rank_L3
+		,dense_rank() over (partition by cat.CATEG_LVL4_ID order by sum(GMV20_PLAN) desc) as rank_L4
+		,dense_rank() over (partition by inv.INVENTORY_PROP order by sum(GMV20_PLAN) desc) as rank_inv
 	From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck	
 	INNER JOIN DW_CAL_DT cal 
 		ON ck.GMV_DT = cal.CAL_DT
 		AND cal.RTL_QTR_OF_RTL_YEAR_ID = (select RTL_QTR_OF_RTL_YEAR_ID from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
+		and cal.retail_year = (select RETAIL_YEAR from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)
 	INNER JOIN P_INVENTORYPLANNING_T.dw_category_groupings_adj CAT
 		ON ck.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
 		AND cat.site_id = 3
@@ -802,11 +941,18 @@ From
 					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
 				)SB
 			GROUP BY 1) brnd ON ck.ITEM_ID = brnd.ITEM_ID
+	LEFT JOIN	
+		(select ITEM_ID
+			,INVENTORY_PROP
+		from p_robevans_t.lifestyle_inv_props
+		group by 1,2
+		) INV
+			on inv.item_id = ck.item_id
 	Where 1=1
 		and ck.SLR_CNTRY_ID = 3
 		and ck.SITE_ID = 3
 		and cat.new_vertical = 'Lifestyle'
-	Group by 1,2,3,4,5
+	Group by 1,2,3,4,5,6
 	
 	UNION ALL
 	
@@ -816,12 +962,14 @@ From
 		,cat.CATEG_LVL2_ID
 		,cat.CATEG_LVL3_ID
 		,cat.CATEG_LVL4_ID
+		,inv.INVENTORY_PROP
 		,brnd.brand
 		,sum(GMV20_PLAN) as gmv
 		,dense_rank() over (partition by cat.META_CATEG_ID order by sum(GMV20_PLAN) desc) as rank_meta
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID order by sum(GMV20_PLAN) desc) as rank_L2
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID,cat.CATEG_LVL3_ID order by sum(GMV20_PLAN) desc) as rank_L3
-		,dense_rank() over (partition by cat.META_CATEG_ID,cat.CATEG_LVL2_ID,cat.CATEG_LVL3_ID,cat.CATEG_LVL4_ID order by sum(GMV20_PLAN) desc) as rank_L4
+		,dense_rank() over (partition by cat.CATEG_LVL2_ID order by sum(GMV20_PLAN) desc) as rank_L2
+		,dense_rank() over (partition by cat.CATEG_LVL3_ID order by sum(GMV20_PLAN) desc) as rank_L3
+		,dense_rank() over (partition by cat.CATEG_LVL4_ID order by sum(GMV20_PLAN) desc) as rank_L4
+		,dense_rank() over (partition by inv.INVENTORY_PROP order by sum(GMV20_PLAN) desc) as rank_inv
 	From PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT ck	
 	INNER JOIN DW_CAL_DT cal 
 		ON ck.GMV_DT = cal.CAL_DT
@@ -860,16 +1008,24 @@ From
 					AND lower(ns_type_cd) in (lower('nf'),lower('df' ) ) and upper(prdct_aspct_nm)= upper('BRAND')
 				)SB
 			GROUP BY 1) brnd ON ck.ITEM_ID = brnd.ITEM_ID
+	LEFT JOIN	
+		(select ITEM_ID
+			,INVENTORY_PROP
+		from p_robevans_t.lifestyle_inv_props
+		group by 1,2
+		) INV
+			on inv.item_id = ck.item_id
 	Where 1=1
 		and ck.SLR_CNTRY_ID = 3
 		and ck.SITE_ID = 3
 		and cat.new_vertical = 'Lifestyle'
-	Group by 1,2,3,4,5
+	Group by 1,2,3,4,5,6
 	)
-Where rank_meta <= 20
- OR rank_L2 <= 20
- OR rank_L3 <= 20
- OR rank_L4 <= 20
+Where rank_meta <= 25
+ OR rank_L2 <= 25
+ OR rank_L3 <= 25
+ OR rank_L4 <= 25
+ OR rank_inv <= 25
  
 Group by 1
 )
