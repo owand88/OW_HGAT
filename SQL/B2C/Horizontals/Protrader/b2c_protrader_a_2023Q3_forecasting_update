@@ -1,0 +1,129 @@
+/*
+Jira: UKPLAN-505
+
+Title: Pro Trader Q4 Forecast Data
+Author: Tugrul Ates
+Date: 2023-08-11
+*/
+
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Pro Trader Cohorts GMV L3Y
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select
+	cal.retail_year
+	,cal.retail_week
+	,cal.rtl_qtr_of_rtl_year_id
+	,cat.new_vertical
+	,pro.cohort_name as inventory_prop
+	--Legacy columns. I am leaving these to avoid having any issues when pasting the resultset to the current Excel file
+	,case when inventory_prop like ('%Focus%') then 'Focused'
+	when inventory_prop like ('%Scal%') then 'Scaling'
+	when inventory_prop like ('%Protrader%') then 'Protrader'
+	when inventory_prop like ('%Other%') then 'ROnew_vertical'
+	else 'NA'
+	end as focus_flag
+
+	,sum(tran.gmv20_sold_quantity) AS BI
+	,sum(tran.gmv20_plan) as GMV
+
+from prs_restricted_v.slng_trans_super_fact as tran
+
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ as cat
+	on tran.leaf_categ_id=cat.leaf_categ_id
+	and tran.lstg_site_id=cat.site_id 
+	and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal
+	on tran.gmv_dt = cal.cal_dt 
+	and cal.AGE_FOR_RTL_YEAR_ID >= -3
+	and cal.AGE_FOR_RTL_QTR_ID <= -1
+ 
+inner join P_ukplan_report_T.protrader_quarterly_cohorts as pro
+	on pro.item_condition_id = tran.item_cndtn_id
+	and pro.meta_categ_id = cat.meta_categ_id
+	and pro.categ_lvl2_id = cat.categ_lvl2_id
+	and pro.categ_lvl3_id = cat.categ_lvl3_id
+	and (pro.categ_lvl4_id = '' or pro.categ_lvl4_id IS NULL OR pro.categ_lvl4_id = cat.categ_lvl4_id)
+	
+where 1 = 1
+	and tran.eu_b2c_c2c_flag = 'B2C'
+	and tran.slr_cntry_id = 3 
+	and tran.byr_cntry_id = 3  
+	and tran.slr_cntry_id = tran.byr_cntry_id 
+	and tran.ck_wacko_yn = 'N'
+	and cat.sap_category_id not in (5, 7, 41,23,-999) 
+	and tran.gmv_dt > '2019-12-28'  
+	and tran.auct_end_dt > '2019-12-28'
+	and tran.auct_type_cd not in (10,15)
+	and tran.lstg_site_id = 3	
+	-- Pro Trader Forecast Quarter Config (Change these values according to the Forecast Year and Quarter that you are after --------
+	and pro.cohort_year = 2023
+	and pro.cohort_quarter_id = 3
+	and pro.cohort_name in ('UKPT-Q3-2023-Christmas V2','UKPT-Q3-2023-Luxury')
+	----------------------------------------------------------------------------------------------------------------------------------
+group by 1,2,3,4,5,6;
+	
+
+	
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- YTD GMV to show Cohort Definitions	
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+select
+	cat.new_vertical	  
+	,cat.meta_categ_id
+	,cat.meta_categ_name
+	,cat.categ_lvl2_id
+	,cat.categ_lvl2_name
+	,cat.categ_lvl3_id
+	,cat.categ_lvl3_name
+	,pro.cohort_name as inventory_prop
+	--Legacy columns. I am leaving these to avoid having any issues when pasting the resultset to the current Excel file			
+	,case when inventory_prop like ('%Focus%') then 'Focused'
+	when inventory_prop like ('%Scal%') then 'Scaling'
+	when inventory_prop like ('%Protrader%') then 'Protrader'
+	when inventory_prop like ('%Other%') then 'ROnew_vertical'
+	else 'NA'
+	end as focus_flag
+
+	,sum(tran.gmv20_sold_quantity) AS BI
+	,sum(tran.gmv20_plan) as GMV
+
+from prs_restricted_v.slng_trans_super_fact as tran
+
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ as cat
+	on tran.leaf_categ_id=cat.leaf_categ_id
+	and tran.lstg_site_id=cat.site_id 
+	and cat.site_id=3
+        
+inner join access_views.dw_cal_dt as cal
+	on tran.gmv_dt = cal.cal_dt 
+	and cal.AGE_FOR_RTL_YEAR_ID=0 
+	and age_for_rtl_week_id<=-1
+
+inner join P_ukplan_report_T.protrader_quarterly_cohorts as pro
+	on pro.item_condition_id = tran.item_cndtn_id
+	and pro.meta_categ_id = cat.meta_categ_id
+	and pro.categ_lvl2_id = cat.categ_lvl2_id
+	and pro.categ_lvl3_id = cat.categ_lvl3_id
+	and (pro.categ_lvl4_id = '' or pro.categ_lvl4_id IS NULL OR pro.categ_lvl4_id = cat.categ_lvl4_id)
+	
+where 1 = 1
+	and tran.eu_b2c_c2c_flag = 'B2C'
+	and tran.slr_cntry_id = 3 
+	and tran.byr_cntry_id = 3  
+	and tran.slr_cntry_id = tran.byr_cntry_id 
+	and tran.ck_wacko_yn = 'N'
+	and cat.sap_category_id not in (5, 7, 41,23,-999) 
+	and tran.gmv_dt > '2019-12-28'  
+	and tran.auct_end_dt > '2019-12-28'
+	and tran.auct_type_cd not in (10,15)
+	and tran.lstg_site_id = 3	
+	-- Pro Trader Forecast Quarter Config (Change these values according to the Forecast Year and Quarter that you are after --------
+	and pro.cohort_year = 2023
+	and pro.cohort_quarter_id = 3
+	and pro.cohort_name in ('UKPT-Q3-2023-Christmas V2','UKPT-Q3-2023-Luxury')
+	----------------------------------------------------------------------------------------------------------------------------------
+
+group by 1,2,3,4,5,6,7,8,9;	

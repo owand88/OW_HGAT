@@ -19,6 +19,7 @@ with protrader_cohorts_for_new_quarter as
 		and (seller_id is null and seller_name is null)  -- By doing this we are only retreiving the rows where the cohort definition is based on categories and item conditions, not seller_ids. Because for this report, we are trying to extract the top sellers from those category + item condition combinations
 		and cohort_year is not null
 		and cohort_year != ''
+		and add_to_forecast = 1
 	)
 
 
