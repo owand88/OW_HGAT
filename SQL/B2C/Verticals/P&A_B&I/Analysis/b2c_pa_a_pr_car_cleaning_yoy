@@ -1,0 +1,65 @@
+--UKPLAN-500
+-- REQUESTED BY ANNIE SHIELD
+--FOR PR DATA
+
+-- I have another PR P&A data ask it would be great to please get your support on. We’re looking for some sales info on car cleaning products to support a Detailing Masterclass event. Please could take a look at the ask below and advise when we could get this back? Hoping for the 7th of August if at all possible:
+
+ 
+-- •	2022 and 2023 sales data for car cleaning products with monthly breakdown. 
+-- •	From this we’re hoping to extrapolate:
+-- •	The YOY% change in sales across different cleaning products
+-- •	The best selling car cleaning products this year vs last year 
+-- •	The top month for sales of car cleaning products based on 2022 data 
+ 
+--------------
+
+drop table if exists    P_INVENTORYPLANNING_T.b2c_pa_pr_car_cleaning ;-- select * FROM  P_INVENTORYPLANNING_T.b2c_pa_pr_car_cleaning;
+create table  P_INVENTORYPLANNING_T.b2c_pa_pr_car_cleaning as 
+(
+SELECT 
+RETAIL_YEAR,
+categ_lvl4_id, 
+categ_lvl4_name,
+RETAIL_WEEK,
+month_of_cal_id,
+Case when Retail_week between 1 and 31 then 'YTD' else 'Other' end as YTD,
+CASE 
+WHEN retail_week between 1 and 13 then 'Q1'
+WHEN retail_week between 14 and 26 then 'Q2'
+WHEN retail_week between 27 and 39 then 'Q3'
+WHEN retail_week between 40 and 53 then 'Q4'
+ELSE 'OTHER' END AS Quarter,
+--SELLER_ID,
+--USER_SLCTD_ID,
+SUM(CK.QUANTITY) AS BI,
+SUM(GMV_PLAN_USD) AS GMV 
+FROM  DW_CHECKOUT_TRANS ck 
+INNER JOIN ( select meta_categ_id, meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_id, categ_lvl4_name,
+LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+        AND USEGM_ID = 206 
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5)AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+		
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+       AND RETAIL_YEAR >=2022
+		and age_for_rtl_week_id <= -1 
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+left outer JOIN DW_USERs U ON U.USER_ID= CK.SELLER_ID 
+WHERE 1=1
+and  SLR_CNTRY_ID = 3 --UK sellers
+and  BYR_CNTRY_ID = 3 --UK buyers
+and ck.site_id = 3 
+AND RPRTD_WACKO_YN = 'N'
+        AND AUCT_END_DT >= '2017-12-20'
+        AND CREATED_DT >= '2017-12-20'    
+and bsns_vrtcl_name in ('Parts & Accessories')
+and CATEG_LVL3_ID= 179448
+GROUP BY 1,2,3,4,5,6,7) ;	
+select * FROM  P_INVENTORYPLANNING_T.b2c_pa_pr_car_cleaning;
