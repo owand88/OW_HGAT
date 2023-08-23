@@ -7,7 +7,7 @@
 -- Stakeholder: 	Pro Trader Team
 -- Description: 	Provides performance stats for the Pro Trader cohorts created in each quarter
 
-
+ 
 create view P_ukplan_report_T.vw_protrader_performance as 
 
 -- Pro Trader Sellers and Cohorts
@@ -41,7 +41,8 @@ with pro_trader_sellers as
 
 	where chrt_mngt_type =  'LTTM Managed'
 	and chrt_cntry_id = 3
-	and campign_cd in (select distinct cohort_name from P_ukplan_report_T.protrader_quarterly_cohorts where add_to_forecast = 1 )
+	--and campign_cd in (select distinct cohort_name from P_ukplan_report_T.protrader_quarterly_cohorts where add_to_forecast = 1 )
+	and campign_cd ilke 'UKPT-Q%'
 )
 
 
