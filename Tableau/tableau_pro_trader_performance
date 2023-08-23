@@ -1,0 +1,225 @@
+-- JIRA:            UKPLAN-360 & UKPLAN-12
+-- Task:            Tableau: Pro Trader Performance
+
+-- Author: 			Tugrul Ates
+-- Date:            2023-08-21
+
+-- Stakeholder: 	Pro Trader Team
+-- Description: 	Provides performance stats for the Pro Trader cohorts created in each quarter
+
+
+create view P_InventoryPlanning_T.vw_protrader_performance as 
+
+-- Pro Trader Sellers and Cohorts
+with pro_trader_sellers as 
+(
+	select 
+		distinct lttm.campign_cd as cohort_name
+		,lttm.seller_id 
+		,usr.user_slctd_id as seller_name
+		,substr(lttm.campign_cd,7,1) as cohort_quarter_id
+		,substr(lttm.campign_cd,9,4) as cohort_year
+		,lttm.CHRT_NAME as simplified_cohort_name
+		,lttm.CHRT_LTTM_GRP as cohort_lttm_group
+		,lttm.MNGT_SGMNT as managed_segment
+		,lttm.CALL_OUTCOME as call_outcome
+		,lttm.CALL_ATTMEMPT as call_attempt
+		,lttm.CHRT_CNTRY_ID as cohort_country_id
+		,lttm.CHRT_VRTCL as cohort_vertical
+		,lttm.CHRT_REG_STS as cohort_registration_status
+		,lttm.SELLER_SIGN_UP as seller_signup_flag
+		,lttm.MANAGER_NAME as cohort_manager_name
+		,lttm.SLR_SIGN_UP_DT as seller_signup_date
+		,lttm.INVITED_FLAG as seller_invited_flag
+		,lttm.CRE_DT as created_date
+		,lttm.UPD_DT as updated_date
+
+	from  P_MDALL_V.SFDC_HIVE_LTTM_SELLER as lttm
+	
+	join DW_USERS as usr
+		on lttm.seller_id = usr.user_id
+
+	where chrt_mngt_type =  'LTTM Managed'
+	and chrt_cntry_id = 3
+	and campign_cd like 'UKPT-Q%'
+)
+
+
+
+
+--GMV and CBT
+,seller_gmv_cbt as 
+(
+select 
+	t1.slr_id as seller_id
+	,t3.retail_week
+	,t3.retail_year
+	,t3.rtl_qtr_of_rtl_year_id as retail_quarter_id
+	--GMV
+	,sum(t1.gmv20_plan) as gmv_plan
+
+	--CBT/GSP
+	,sum(
+		case when t1.byr_cntry_id != t1.slr_cntry_id then t1.gmv20_plan
+		else 0 
+		end) as cbt_gmv_plan
+	
+	
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT as t1
+
+inner join pro_trader_sellers as t2
+on t1.slr_id = t2.seller_id 
+
+left join dw_cal_dt as t3
+on t1.gmv_dt = t3.CAL_DT
+
+where 1=1
+
+and t1.slr_cntry_id = 3
+and t1.ck_wacko_yn = 'N'
+and t1.iscore = 1
+and t3.retail_year >= 2022
+--and t1.slr_id = 306693225
+--and t1.slr_id in (784524240, 16662420)
+group by 1,2,3,4
+)
+
+
+
+--Live Listings and Promoted Listings Adoption
+, seller_LL_PLS as 
+(
+select 
+	distinct t1.seller_id 
+	,t4.retail_week
+	,t4.retail_year
+	--LL
+	,count(distinct t2.item_id) as live_listings
+
+	--Promoted Listings Standard
+	,count(distinct
+		case
+		when (date(t3.end_ts) BETWEEN t4.RETAIL_START_DATE and t4.RETAIL_WK_END_DATE ) or t3.end_ts is null then t2.item_id 
+		else null 
+		end) as active_promoted_listings
+		
+	,count(distinct t5.item_id) as free_in_3_live_listings_count
+	
+from pro_trader_sellers as t1
+
+left join prs_restricted_v.slng_lstg_super_fact_ext as t2 
+on t1.seller_id = t2.slr_id 
+
+left join PRS_RESTRICTED_V.PL_ADS_CMPGN_ITEM as t3
+on t1.seller_id = t3.slr_id
+and t2.slr_id = t3.slr_id
+and t2.item_id = t3.item_id
+
+left join dw_cal_dt as t4
+on t2.auct_start_dt <= t4.cal_dt 
+and t2.auct_end_dt >= t4.cal_dt 
+
+
+-- Free shipping in 3 days
+left join 
+(
+	select
+		distinct s.item_id   
+	from DW_ITEMS_SHIPPING as s    
+	left join DW_SHPMT_MTHD_lkp as lkp 
+	on s.shipping_method = lkp.SHPMT_MTHD_ID    
+	where s.shpmt_fee_amt_lstg_curncy = 0    
+	and lkp.site_id = 3    
+	and lkp.domstc_yn_id = 1   
+	and lkp.MAX_DLVRY_TM_IN_HOUR <= 3*24  -- Free shipping in 3 days or less  
+) as t5 
+	on t2.item_id = t5.item_id  
+
+where 1=1 
+
+and t2.lstg_site_id = 3
+--and t2.wacko_yn = 'N'
+and t2.auct_type_cd NOT IN (10,15)  --10: CreditPartialSale, 15: AWCredit --> This exclusion logic was taken from "GitHub/uk-planning/Home_Garden/b2c_hg_a_Large Merchant Migration Listings" scrip
+and t4.RETAIL_YEAR >= 2022
+--and t1.seller_id = 306693225
+--and t1.seller_id in (784524240, 16662420)
+group by 1,2,3
+)
+
+
+
+--Price Promotions via Seller Marketing Engine 
+,seller_price_promotions as 
+(
+SELECT 
+	t1.seller_id 
+	,t1.retail_year 
+	,t1.retail_week
+	,SUM(t1.GMV) AS gmv_plan_on_promo
+
+FROM P_DLSS_V.GMV_ON_PROMO_TXN as t1
+
+INNER JOIN pro_trader_sellers as t2
+	on t1.seller_id = t2.seller_id
+
+WHERE 1=1
+and t1.retail_year >= 2022
+--and t1.seller_id = 306693225
+--and t1.seller_id in (784524240, 16662420)
+--AND t1.B2C_IND = 1 -- Self identified B2C flag for EU
+--AND t1.CK_SLR_CNTRY_ID = 3 -- UK seller transactions
+--AND t1.CORE_CAT = 1 -- only core categories
+AND
+(t1.BO_IND = 1 -- Best offer transactions
+OR t1.SIO_IND = 1 -- Seller initiated offer
+OR t1.SIO_M2M_IND = 1 -- Seller initiated offer via M2M
+OR t1.SHIPPING_DISCOUNT = 32 -- shipping discount triggered
+OR t1.ORDER_DISCOUNT = 32 -- order discount triggered
+OR t1.SALE_EVENT = 32 -- sale event triggered
+OR t1.VOLUME_DISCOUNT_P = 32 -- MB triggered
+OR t1.VOLUME_DISCOUNT = 32 -- MB triggered
+OR t1.CODED_COUPON_PUBLIC = 32 -- SME Coded coupon triggered
+OR t1.CODED_COUPON_PRIVATE = 32 -- SME Coded coupon triggered
+OR t1.NEW_MDM_IND = 1 -- Markdown
+-- OR t1.STP_NEW_IND = 1 -- Strike through pricing
+)
+group by 1,2,3
+)
+
+
+
+select 
+	t1.*
+	,t2.retail_week
+	,t2.retail_year
+	,t2.retail_quarter_id
+	,t2.gmv_plan
+	,t2.cbt_gmv_plan
+	,t3.live_listings
+	,t3.active_promoted_listings
+	,t3.free_in_3_live_listings_count
+	,t4.gmv_plan_on_promo
+
+from pro_trader_sellers as t1
+
+left join seller_gmv_cbt as t2
+	on t1.seller_id = t2.seller_id
+
+
+left join seller_LL_PLS as t3
+	on t1.seller_id = t3.seller_id 
+	and t2.seller_id = t3.seller_id
+	and t2.retail_year = t3.retail_year
+	and t2.retail_week = t3.retail_week
+
+left join seller_price_promotions as t4
+	on t1.seller_id = t4.seller_id 
+	and t2.seller_id = t4.seller_id 
+	and t3.seller_id = t4.seller_id
+	and t2.retail_year = t4.retail_year
+	and t2.retail_year = t4.retail_year
+	and t3.retail_week = t4.retail_week
+	and t3.retail_week = t4.retail_week
+;
+
+ 
