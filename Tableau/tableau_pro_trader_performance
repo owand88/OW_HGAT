@@ -2,13 +2,13 @@
 -- Task:            Tableau: Pro Trader Performance
 
 -- Author: 			Tugrul Ates
--- Date:            2023-08-21
+-- Date:            2023-08-23
 
 -- Stakeholder: 	Pro Trader Team
 -- Description: 	Provides performance stats for the Pro Trader cohorts created in each quarter
 
 
-create view P_InventoryPlanning_T.vw_protrader_performance as 
+create view P_ukplan_report_T.vw_protrader_performance as 
 
 -- Pro Trader Sellers and Cohorts
 with pro_trader_sellers as 
@@ -41,7 +41,7 @@ with pro_trader_sellers as
 
 	where chrt_mngt_type =  'LTTM Managed'
 	and chrt_cntry_id = 3
-	and campign_cd like 'UKPT-Q%'
+	and campign_cd in (select distinct cohort_name from P_ukplan_report_T.protrader_quarterly_cohorts where add_to_forecast = 1 )
 )
 
 
