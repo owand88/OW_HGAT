@@ -130,11 +130,12 @@ having max(gmv_dt) <= CURRENT_DATE - 360
 and sum(case when cat.CATEG_LVL2_ID in (3187,631,26677,177073,3197) then GMV20_PLAN end) > 10
 ;
 
+
 drop table if exists h_g_churned_sellers_fnl;
 create TEMPORARY table h_g_churned_sellers_fnl as
 with max_category as (
 select SELLER_ID
-, greatest(diy_mat_gmv,diy_tool_gmv,bathroom_gmv,kitchen_mat_gmv) as max_gmv
+, greatest(diy_mat_gmv,diy_tool_gmv,bathroom_gmv,kitchen_mat_gmv, furniture_gmv) as max_gmv
 from h_g_churned_sellers
 )
 
