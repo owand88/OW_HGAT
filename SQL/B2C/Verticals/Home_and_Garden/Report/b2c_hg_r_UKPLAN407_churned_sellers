@@ -85,3 +85,84 @@ select *
 from h_g_churned_sellers_fnl
 order by H_G_rolling_12m_gmv desc
 ;
+
+
+
+
+
+
+--- This code was rerun as per Sam Howard's request on 24th Aug 2023. Please see UKPLAN-407 ticket for details. 
+
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-407
+
+Author: Tugrul Ates
+Date: 24th Aug 2023
+
+Note: Furniture (3197) L2 category has been added to the script
+*/
+
+drop table if exists h_g_churned_sellers;
+create TEMPORARY table h_g_churned_sellers as
+select tran.SELLER_ID
+,user.USER_SLCTD_ID as seller_name
+,coalesce(sum(case when cat.CATEG_LVL2_ID = 3187 then GMV20_PLAN end),0) as diy_mat_gmv
+,coalesce(sum(case when cat.CATEG_LVL2_ID = 631 then GMV20_PLAN end),0) as diy_tool_gmv
+,coalesce(sum(case when cat.CATEG_LVL2_ID = 26677 then GMV20_PLAN end),0) as bathroom_gmv
+,coalesce(sum(case when cat.CATEG_LVL2_ID = 177073 then GMV20_PLAN end),0) as kitchen_mat_gmv
+,coalesce(sum(case when cat.CATEG_LVL2_ID = 3197 then GMV20_PLAN end),0) as furniture_gmv
+,coalesce(sum(case when cat.CATEG_LVL2_ID in (3187,631,26677,177073,3197) then GMV20_PLAN end),0) as hg_gmv
+,sum(gmv) as ttl_gmv
+,max(gmv_dt) as last_sale_dt
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+inner join ACCESS_VIEWS.DW_CAL_DT cal on tran.gmv_dt = cal.cal_dt
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and tran.SITE_ID = cat.SITE_ID
+inner join ACCESS_VIEWS.dw_users user on tran.SELLER_ID = user.USER_ID and tran.SITE_ID = user.USER_CNTRY_ID and user.USER_STS_CODE = 1
+where 1=1
+and tran.SITE_ID = 3
+and tran.SLR_CNTRY_ID = 3
+and tran.B2C_C2C = 'B2C'
+and tran.RPRTD_WACKO_YN = 'N'
+and cal.AGE_FOR_RTL_WEEK_ID between -156 and -1
+
+group by 1,2
+having max(gmv_dt) <= CURRENT_DATE - 360
+and sum(case when cat.CATEG_LVL2_ID in (3187,631,26677,177073,3197) then GMV20_PLAN end) > 10
+;
+
+drop table if exists h_g_churned_sellers_fnl;
+create TEMPORARY table h_g_churned_sellers_fnl as
+with max_category as (
+select SELLER_ID
+, greatest(diy_mat_gmv,diy_tool_gmv,bathroom_gmv,kitchen_mat_gmv) as max_gmv
+from h_g_churned_sellers
+)
+
+select hg.seller_name
+,hg.seller_id as ORACLE_ID
+,users.user_name as contact_name
+,users.EMAIL as email_address
+,users.DAYPHONE as contact_number
+,hg.last_sale_dt
+,case when max.max_gmv = diy_mat_gmv then 'DIY Materials'
+ when max.max_gmv = diy_tool_gmv then 'DIY Tools'
+  when max.max_gmv = bathroom_gmv then 'Bathroom'
+   when max.max_gmv = kitchen_mat_gmv then 'Kitchen' 
+    when max.max_gmv = furniture_gmv then 'Furniture' 
+   end as PRIMARY_CATEGORY
+,sum(GMV20_PLAN) as rolling_12m_gmv   
+,sum(case when tran.CATEG_LVL2_ID in (3187,631,26677,177073,3197) then GMV20_PLAN end) as H_G_rolling_12m_gmv
+from h_g_churned_sellers hg
+inner join  PRS_SECURE_V.DW_USERS_INFO users on hg.seller_id = users.USER_ID
+left join max_category max on hg.seller_id = max.seller_id
+left join PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran on hg.seller_id = tran.SELLER_ID and tran.gmv_dt between hg.last_sale_dt - 364 and hg.last_sale_dt and tran.SITE_ID = 3 and tran.SLR_CNTRY_ID = 3 and tran.B2C_C2C = 'B2C' and tran.RPRTD_WACKO_YN = 'N'
+
+group by 1,2,3,4,5,6,7
+;
+
+-- drop table if exists P_OLWAND_T.UKPLAN407_churned_sellers;
+-- create table P_OLWAND_T.UKPLAN407_churned_sellers as
+select *
+from h_g_churned_sellers_fnl
+order by H_G_rolling_12m_gmv desc
+;
