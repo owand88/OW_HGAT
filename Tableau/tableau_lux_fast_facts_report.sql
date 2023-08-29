@@ -8,13 +8,12 @@
 
 
 
----------------------------------Highest Priced Items Sold-----------------------------------
+---------------------------------All Lux Transactions - Past 3 Years-----------------------------------
 
+Drop table if exists all_trxns;
+Create temp table all_trxns as
 
-drop table if exists P_ukplan_report_T.lux_facts_dashboard_top_items;
-
-Create table P_ukplan_report_T.lux_facts_dashboard_top_items as
-
+(
 select 
 ck.*
 ,lstg.AUCT_TITLE
@@ -22,6 +21,7 @@ ck.*
 From
 	(Select 
 	cal.retail_year
+	,cal.RETAIL_WEEK
 	, case when ck.item_id = psa.item_id then 'AG' else 'Non-AG' end as ag_flag
 	, ck.item_id
 	, brand
@@ -30,12 +30,17 @@ From
 	, cs.CNTRY_DESC as seller_country
 	, cb.CNTRY_DESC as buyer_country
 	, case when (cat.CATEG_LVL2_ID = 260324) then 'Watches'
-	when (cat.CATEG_LVL3_ID = 169291) OR (cat.CATEG_LVL4_ID IN (52357,163570,169285,45258,2996,45237,169271)) then 'Handbags'
-	when cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) then 'Sneakers'
-	when (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) then 'Jewellery'
-	Else 'Other'
-	End as category
-	,ck.gmv_dt as purchase_dt
+		when (cat.CATEG_LVL3_ID = 169291) OR (cat.CATEG_LVL4_ID IN (52357,163570,169285,45258,2996,45237,169271)) then 'Handbags'
+		when cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) then 'Sneakers'
+		when (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) then 'Jewellery'
+		Else 'Other'
+		End as category
+	, cat.CATEG_LVL2_NAME
+	, cat.CATEG_LVL3_NAME
+	, cat.CATEG_LVL4_NAME
+	, ck.gmv_dt as purchase_dt
+	, sum(ck.gmv_plan_usd) as gmv
+	, sum(ck.QUANTITY) as si
 	,dense_rank() over (partition by retail_year, category order by ck.item_price desc) as price_rank
 	
 	From DW_CHECKOUT_TRANS ck
@@ -73,15 +78,18 @@ From
 		(select item_id
 		from
 			(
-			Select ITEM_ID
-			From (
-				select hist.item_id, hist.ELGBL_YN_IND, Row_Number() Over (partition by hist.item_id order by hist.EVLTN_TS desc)
-				from access_views.DW_PES_ELGBLT_HIST hist
-				where hist.BIZ_PRGRM_NAME in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK') -- Handbags AG program
-				qualify (Row_Number() Over (partition by item_id order by EVLTN_TS desc)) = 1
-				)
-			Where ELGBL_YN_IND = 'Y'
-
+			select
+				item_id	
+			from
+				access_views.DW_PES_ELGBLT_HIST
+			where
+				evltn_end_ts = '2099-12-31 00:00:00'
+				and BIZ_PRGRM_NAME in ('PSA_SNEAKER_EBAY_UK','PSA_HANDBAGS_UK','PSA_WATCHES_UK')
+				and elgbl_yn_ind ='Y'										--Only eligible items
+				and ag_ind = 1
+			Group by
+				1
+			
 			UNION ALL
 
 			Select ITEM_ID
@@ -113,8 +121,9 @@ From
 		OR cat.CATEG_LVL4_ID IN (15709,95672,155202,57974,57929) --Sneakers
 		OR (cat.META_CATEG_ID = 281 AND cat.CATEG_LVL2_ID <> 260324) --Jewellery
 		)
+	and ck.CHECKOUT_STATUS = 2
 		
-	Group by 1,2,3,4,5,6,7,8,9,10) ck
+	Group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14) ck
 LEFT JOIN
 	(Select lstg.item_id, lstg.auct_end_dt, lstg.AUCT_TITLE
 	From PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
@@ -122,17 +131,52 @@ LEFT JOIN
 	Group by 1,2,3) LSTG 
 		on ck.item_id = lstg.item_id
 		and ck.AUCT_END_DT = lstg.auct_end_dt
+)
+;
 
+---------------------------------Highest Priced Items Sold-----------------------------------
+
+
+drop table if exists P_ukplan_report_T.lux_facts_dashboard_top_items;
+
+Create table P_ukplan_report_T.lux_facts_dashboard_top_items as
+(
+select *
+from all_trxns
 Where price_rank <= 20
-
+)
 ;
 
 
 
 ------------------------------------------------Fast Facts------------------------------------------------------------
+drop table if exists P_ukplan_report_T.lux_facts_dashboard_velocity_stats;
 
-
-
+Create table P_ukplan_report_T.lux_facts_dashboard_velocity_stats as
+(
+select
+	retail_year
+	, ag_flag
+	, category
+	, CATEG_LVL2_NAME
+	, CATEG_LVL3_NAME
+	, CATEG_LVL4_NAME
+	, days_in_ty
+	, sum(gmv) as gmv
+	, sum(si) as si
+from all_trxns
+left JOIN
+	(
+	select count(distinct cal_dt) as days_in_ty
+	from ACCESS_VIEWS.DW_CAL_DT 
+	Where AGE_FOR_DT_ID <= -1
+	and retail_year = (select retail_year from DW_CAL_DT where AGE_FOR_DT_ID = -1 group by 1)
+	) ty
+Where 1=1
+	and gmv_dt >= (select cal_dt from DW_CAL_DT where AGE_FOR_DT_ID = -365 group by 1)
+Group by 1,2,3,4,5,6,7
+)
+;
 
 ---------------------------------------------------Identify Top Brands and Models--------------------------------------------------------
 drop table if exists P_ukplan_report_T.lux_facts_dashboard_kpis_top_brands;
