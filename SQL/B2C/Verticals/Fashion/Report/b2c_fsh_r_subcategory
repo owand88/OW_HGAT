@@ -1,3 +1,20 @@
+
+drop table if exists FOCUS_CATS;
+create TEMPORARY table FOCUS_CATS as
+select distinct focus.FOCUSED_VERTICAL_LVL1
+
+from ACCESS_VIEWS.FOCUSED_VERT_TXN focus
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on focus.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and focus.LSTG_SITE_ID = cat.SITE_ID
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON focus.CK_DATE = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0
+			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
+			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
+WHERE 1=1
+and focus.LSTG_SITE_ID = 3
+and cat.NEW_VERTICAL = 'Fashion'
+;
+
 DROP TABLE IF EXISTS P_INVENTORYPLANNING_T.FASHION_WEEKLY_DATA;
 
 CREATE TABLE P_INVENTORYPLANNING_T.FASHION_WEEKLY_DATA as
@@ -10,26 +27,17 @@ From
 	,lstg.SLR_ID
 	,u.user_slctd_id as seller_name
 	,lstg.B2C_C2C as Business_flag
-	,FOCUS_FLAG
-	,case when cndtn.ITEM_CNDTN_ID = 1750 then 'New with defects'
-when cndtn.cndtn_rollup_id = 1 then 'New'
-when cndtn.cndtn_rollup_id = 2 then 'Refurbished'
-when cndtn.cndtn_rollup_id = 3 then 'Used'
-when cndtn.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
-	,INVENTORY_PROP
+,coalesce(fcats.FOCUSED_VERTICAL_LVL1,'Non-Focus') as FOCUS_FLAG
+	,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 	,META_CATEG_NAME
 	,CATEG_LVL2_NAME
 	,CATEG_LVL3_NAME
 	,CATEG_LVL4_NAME
-	,case when cat.categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
-	when cat.meta_categ_id in (26395) then 'Lifestyle'
-	when cat.categ_lvl3_id in (260325) then 'Lifestyle'
-	when cat.categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
-	when cat.categ_lvl3_id in (35000, 98989) then 'Home & Garden'
-	when cat.categ_lvl3_id in (3244) then 'Parts & Accessories'
-	when cat.categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
-	when cat.categ_lvl2_id in (46576) then 'Parts & Accessories'
-	else cat.bsns_vrtcl_name end as new_vertical
+	,cat.new_vertical
 
 			FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg 
 			INNER JOIN DW_CAL_DT CAL
@@ -41,24 +49,16 @@ when cndtn.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 -- 			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
 -- 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
-			INNER JOIN DW_CATEGORY_GROUPINGS CAT
-					ON lstg.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
-					AND cat.site_id = 3
-					AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
-			LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
-				ON lstg.ITEM_ID = CNDTN.ITEM_ID
-			Left join P_ROBEVANS_T.item_cndtn_descr cd on cd.cndtn_rollup_id = CNDTN.CNDTN_ROLLUP_ID
-			INNER JOIN DW_USERS u
-				on u.user_id = lstg.SLR_ID
-			LEFT JOIN (select ITEM_ID, new_vertical, INVENTORY_PROP, FOCUS_FLAG from P_awang_ops_t.item_invent_lstg Where new_vertical = 'Fashion' group by 1,2,3,4) INV
-				on inv.item_id = lstg.item_id
+			INNER JOIN P_INVENTORYPLANNING_T.dw_category_groupings_adj CAT ON lstg.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID AND cat.site_id = 3
+			INNER JOIN DW_USERS u on u.user_id = lstg.SLR_ID
+			LEFT JOIN FOCUS_CATS fcats on lstg.FCSD_VRTCL_NAME = fcats.FOCUSED_VERTICAL_LVL1
 
 			WHERE 1=1
 			AND lstg.SLR_CNTRY_ID = 3
 			AND lstg.LSTG_SITE_ID = 3
 			AND lstg.AUCT_END_DT >= '2018-12-25'
 			AND lstg.B2C_C2C = 'B2C'
-			GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12
+			GROUP BY 1,2,3,4,5,6,7,8,9,10,11
 			)
 Where new_vertical = 'Fashion'
 ;
@@ -73,12 +73,12 @@ SELECT
 ,cal.AGE_FOR_RTL_WEEK_ID
 -- ,raw.seller_name
 ,case when HIST.USEGM_ID = 206 then 'B2C' end as Business_flag
-,raw.FOCUS_FLAG
+,coalesce(fcats.FOCUSED_VERTICAL_LVL1,'Non-Focus') as FOCUS_FLAG
 ,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
 when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
 when lstg.cndtn_rollup_id = 3 then 'Used'
 when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
-,raw.INVENTORY_PROP
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
 ,cat.CATEG_LVL3_NAME
@@ -100,25 +100,17 @@ INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
 -- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
 
-INNER JOIN P_awang_ops_t.item_invent_lstg raw on ck.ITEM_ID = raw.item_id and raw.new_vertical = 'Fashion'
-INNER JOIN ( select *
-,case   when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
- 		when meta_categ_id in (26395) then 'Lifestyle'
- 		when categ_lvl3_id in (260325) then 'Lifestyle'
- 		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
- 		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
- 		when categ_lvl3_id in (3244) then 'Parts & Accessories'
- 		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
- 		when categ_lvl2_id in (46576) then 'Parts & Accessories'
- 		else bsns_vrtcl_name end as new_vertical
-from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS) cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
     INNER JOIN ACCESS_VIEWS.DW_USEGM_HIST AS HIST 
         ON HIST.USER_ID = CK.SELLER_ID
         AND HIST.USEGM_GRP_ID = 48 
         AND HIST.USEGM_ID = 206 --B2C only sellers
         AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
         AND HIST.END_DATE >= '2018-12-25'
-INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN LSTG on ck.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3		
+INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN LSTG on ck.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3
+LEFT JOIN ACCESS_VIEWS.FOCUSED_VERT_TXN raw on ck.ITEM_ID = raw.lstg_id and ck.TRANSACTION_ID = raw.CK_TRANS_ID and ck.SITE_ID = raw.LSTG_SITE_ID
+			LEFT JOIN FOCUS_CATS fcats on raw.FOCUSED_VERTICAL_LVL1 = fcats.FOCUSED_VERTICAL_LVL1
 WHERE 1=1
 AND ck.SLR_CNTRY_ID = 3
 and ck.BYR_CNTRY_ID = 3
@@ -129,7 +121,7 @@ AND ck.SALE_TYPE not in (10,12,15)
 AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
 --CHANGE HERE FOR VERTICAL
 AND cat.new_vertical = 'Fashion'
-GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+GROUP BY 1,2,3,4,5,6,7,8,9,10
 
 
 UNION ALL
@@ -141,13 +133,11 @@ SELECT
 ,cal.AGE_FOR_RTL_WEEK_ID
 -- ,raw.seller_name
 ,lstg.EU_B2C_C2C_FLAG as Business_flag
-,raw.FOCUS_FLAG
-,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
-when lstg.cndtn_rollup_id = 1 then 'New'
+,coalesce(fcats.FOCUSED_VERTICAL_LVL1,'Non-Focus') as FOCUS_FLAG
+,case when lstg.cndtn_rollup_id = 1 then 'New'
 when lstg.cndtn_rollup_id = 2 then 'Refurbished'
 when lstg.cndtn_rollup_id = 3 then 'Used'
 when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
-,raw.INVENTORY_PROP
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
 ,cat.CATEG_LVL3_NAME
@@ -169,19 +159,8 @@ INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
 -- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
 
-INNER JOIN P_awang_ops_t.item_invent_lstg raw on lstg.ITEM_ID = raw.item_id and raw.new_vertical = 'Fashion'
-INNER JOIN ( select *
-,case   when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
- 		when meta_categ_id in (26395) then 'Lifestyle'
- 		when categ_lvl3_id in (260325) then 'Lifestyle'
- 		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
- 		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
- 		when categ_lvl3_id in (3244) then 'Parts & Accessories'
- 		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
- 		when categ_lvl2_id in (46576) then 'Parts & Accessories'
- 		else bsns_vrtcl_name end as new_vertical
-from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS) cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID	and cat.site_id = 3
-			
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+			LEFT JOIN FOCUS_CATS fcats on lstg.FCSD_VRTCL_NAME = fcats.FOCUSED_VERTICAL_LVL1			
 WHERE 1=1
 AND lstg.SLR_CNTRY_ID = 3
 AND lstg.LSTG_SITE_ID = 3
@@ -201,13 +180,12 @@ SELECT
 ,cal.AGE_FOR_RTL_WEEK_ID
 -- ,raw.seller_name
 ,lstg.EU_B2C_C2C_FLAG as Business_flag
-,raw.FOCUS_FLAG
+,coalesce(fcats.FOCUSED_VERTICAL_LVL1,'Non-Focus') as FOCUS_FLAG
 ,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
 when lstg.cndtn_rollup_id = 1 then 'New'
 when lstg.cndtn_rollup_id = 2 then 'Refurbished'
 when lstg.cndtn_rollup_id = 3 then 'Used'
 when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
-,raw.INVENTORY_PROP
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
 ,cat.CATEG_LVL3_NAME
@@ -228,27 +206,18 @@ INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL on trfc.CAL_DT = cal.cal_dt
 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
 -- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
 
-INNER JOIN P_awang_ops_t.item_invent_lstg raw on trfc.ITEM_ID = raw.item_id and raw.new_vertical = 'Fashion'
-INNER JOIN ( select *
-,case   when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
- 		when meta_categ_id in (26395) then 'Lifestyle'
- 		when categ_lvl3_id in (260325) then 'Lifestyle'
- 		when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
- 		when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
- 		when categ_lvl3_id in (3244) then 'Parts & Accessories'
- 		when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
- 		when categ_lvl2_id in (46576) then 'Parts & Accessories'
- 		else bsns_vrtcl_name end as new_vertical
-from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS) cat on trfc.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on trfc.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
 INNER JOIN 
 (select 
 ITEM_ID
 ,ITEM_CNDTN_ID
 ,cndtn_rollup_id
 ,EU_B2C_C2C_FLAG
+,FCSD_VRTCL_NAME
 FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT
 WHERE SLR_CNTRY_ID = 3
 AND LSTG_SITE_ID = 3) lstg on trfc.ITEM_ID = lstg.ITEM_ID
+			LEFT JOIN FOCUS_CATS fcats on lstg.FCSD_VRTCL_NAME = fcats.FOCUSED_VERTICAL_LVL1
 WHERE 1=1
 and trfc.SITE_ID = 3
 AND lstg.EU_B2C_C2C_FLAG = 'B2C'
@@ -256,15 +225,15 @@ AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
 --CHANGE HERE FOR VERTICAL
 AND cat.new_vertical = 'Fashion'
 
-GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+GROUP BY 1,2,3,4,5,6,7,8,9,10
 ;
 
 
 
 ----------------------------------------------------------------Seller Level--------------------------------------------------------
-DROP TABLE if exists P_INVENTORYPLANNING_T.FASHION_WEEKLY_TOP_SELLERS;
+DROP TABLE if exists FASHION_WEEKLY_TOP_SELLERS;
 
-Create table P_INVENTORYPLANNING_T.FASHION_WEEKLY_TOP_SELLERS as
+Create temporary table FASHION_WEEKLY_TOP_SELLERS as
 select *
 from (
 select *
@@ -281,18 +250,7 @@ FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS ck
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
 			ON ck.gmv_dt = cal.CAL_DT and cal.AGE_FOR_RTL_WEEK_ID between -53 and -1
 
-INNER JOIN (
-select *
-,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
-	  when meta_categ_id in (26395) then 'Lifestyle'
-	  when categ_lvl3_id in (260325) then 'Lifestyle'
-	  when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
-	  when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
-	  when categ_lvl3_id in (3244) then 'Parts & Accessories'
-	  when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
-	  when categ_lvl2_id in (46576) then 'Parts & Accessories'
-	  else bsns_vrtcl_name end as new_vertical
-from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS) cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
     INNER JOIN ACCESS_VIEWS.DW_USEGM_HIST AS HIST
         ON HIST.USER_ID = CK.SELLER_ID
         AND HIST.USEGM_GRP_ID = 48 -- UK Sellers
@@ -301,12 +259,11 @@ from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS) cat on ck.LEAF_CATEG_ID = cat.LEAF_CATE
         AND HIST.END_DATE >= '2018-12-25'
 INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN LSTG on ck.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3
 INNER JOIN DW_USERS u on u.user_id = ck.SELLER_ID
-LEFT JOIN (select seller_id as slr_id
-,initiative_name as inventory_prop
-
+LEFT JOIN (select distinct seller_id as slr_id
+,min(INITCAP(initiative_name)) as inventory_prop
 from  P_awang_ops_T.seller_ops_83
-
-where seller_vertical = 'Fashion') focus on ck.SELLER_ID = focus.slr_id
+where seller_vertical = 'Fashion'
+group by 1) focus on ck.SELLER_ID = focus.slr_id
 WHERE 1=1
 AND ck.SLR_CNTRY_ID = 3
 and ck.BYR_CNTRY_ID = 3
@@ -340,10 +297,11 @@ when lstg.cndtn_rollup_id = 2 then 'Refurbished'
 when lstg.cndtn_rollup_id = 3 then 'Used'
 when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 ,raw.INVENTORY_PROP
+,coalesce(fcats.FOCUSED_VERTICAL_LVL1,'Non-Focus') as FOCUS_FLAG
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
 ,cat.CATEG_LVL3_NAME
---,cat.CATEG_LVL4_NAME
+-- ,cat.CATEG_LVL4_NAME
 ,sum(case when AGE_FOR_RTL_YEAR_ID = 0 then ck.GMV_PLAN_USD End) as TY_GMV
 ,sum(case when AGE_FOR_RTL_YEAR_ID = -1 then ck.GMV_PLAN_USD End) as LY_GMV
 ,sum(case when AGE_FOR_RTL_YEAR_ID = 0 then ck.QUANTITY End) as TY_SI
@@ -356,23 +314,13 @@ when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS ck 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
 			ON ck.gmv_dt = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
-			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
 			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
--- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
 
 INNER JOIN (
 select *
-,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
-	  when meta_categ_id in (26395) then 'Lifestyle'
-	  when categ_lvl3_id in (260325) then 'Lifestyle'
-	  when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
-	  when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
-	  when categ_lvl3_id in (3244) then 'Parts & Accessories'
-	  when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
-	  when categ_lvl2_id in (46576) then 'Parts & Accessories'
-	  else bsns_vrtcl_name end as new_vertical
-from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS) cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+,new_vertical
+from P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ) cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
     INNER JOIN ACCESS_VIEWS.DW_USEGM_HIST AS HIST 
         ON HIST.USER_ID = CK.SELLER_ID
         AND HIST.USEGM_GRP_ID = 48 
@@ -382,9 +330,10 @@ from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS) cat on ck.LEAF_CATEG_ID = cat.LEAF_CATE
 INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN LSTG on ck.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3		
 
 
-INNER JOIN P_INVENTORYPLANNING_T.FASHION_WEEKLY_TOP_SELLERS raw on ck.SELLER_ID = raw.seller_id
+INNER JOIN FASHION_WEEKLY_TOP_SELLERS raw on ck.SELLER_ID = raw.seller_id
 Left join P_ROBEVANS_T.item_cndtn_descr cd on cd.cndtn_rollup_id = lstg.CNDTN_ROLLUP_ID
-
+LEFT JOIN ACCESS_VIEWS.FOCUSED_VERT_TXN focus on ck.ITEM_ID = focus.lstg_id and ck.TRANSACTION_ID = focus.CK_TRANS_ID
+			LEFT JOIN FOCUS_CATS fcats on focus.FOCUSED_VERTICAL_LVL1 = fcats.FOCUSED_VERTICAL_LVL1
 			
 WHERE 1=1
 AND ck.SLR_CNTRY_ID = 3
@@ -393,10 +342,9 @@ AND ck.SITE_ID = 3
 AND CK.CK_WACKO_YN = 'N'
 AND CK.AUCT_END_DT >= '2018-12-25'
 AND ck.SALE_TYPE not in (10,12,15)
-AND cat.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
 --CHANGE HERE FOR VERTICAL
 AND cat.new_vertical = 'Fashion'
-GROUP BY 1,2,3,4,5,6,7,8,9,10
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
 		
 
 UNION ALL
@@ -414,10 +362,11 @@ when lstg.cndtn_rollup_id = 2 then 'Refurbished'
 when lstg.cndtn_rollup_id = 3 then 'Used'
 when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 ,raw.INVENTORY_PROP
+,coalesce(fcats.FOCUSED_VERTICAL_LVL1,'Non-Focus') as FOCUS_FLAG
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
 ,cat.CATEG_LVL3_NAME
---,cat.CATEG_LVL4_NAME
+-- ,cat.CATEG_LVL4_NAME
 ,0 as TY_GMV
 ,0 as LY_GMV
 ,0 as TY_SI
@@ -429,32 +378,22 @@ when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
 			ON lstg.AUCT_START_DT < cal.cal_dt and lstg.AUCT_END_DT >= cal.CAL_DT
-			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+						and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
 			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
--- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
-INNER JOIN P_INVENTORYPLANNING_T.FASHION_WEEKLY_TOP_SELLERS raw on lstg.slr_id = raw.seller_id
+INNER JOIN FASHION_WEEKLY_TOP_SELLERS raw on lstg.slr_id = raw.seller_id
 INNER JOIN (
 select *
-,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
-	  when meta_categ_id in (26395) then 'Lifestyle'
-	  when categ_lvl3_id in (260325) then 'Lifestyle'
-	  when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
-	  when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
-	  when categ_lvl3_id in (3244) then 'Parts & Accessories'
-	  when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
-	  when categ_lvl2_id in (46576) then 'Parts & Accessories'
-	  else bsns_vrtcl_name end as new_vertical
-from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS) cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
-Left join P_ROBEVANS_T.item_cndtn_descr cd on cd.cndtn_rollup_id = lstg.CNDTN_ROLLUP_ID			
-			
+,new_vertical
+from P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ) cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3		
+			LEFT JOIN FOCUS_CATS fcats on lstg.FCSD_VRTCL_NAME = fcats.FOCUSED_VERTICAL_LVL1		
 WHERE 1=1
 AND lstg.SLR_CNTRY_ID = 3
 AND lstg.LSTG_SITE_ID = 3
 AND lstg.AUCT_END_DT >= '2018-12-25'
 AND cat.new_vertical = 'Fashion'
 and lstg.eu_b2c_c2c_flag = 'B2C'
-GROUP BY 1,2,3,4,5,6,7,8,9,10
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
 	
 
 
@@ -467,16 +406,17 @@ SELECT
 ,cal.AGE_FOR_RTL_WEEK_ID
 ,raw.seller_name
 ,'B2C' as Business_flag
-,case when cndtn.ITEM_CNDTN_ID = 1750 then 'New with defects'
-when cndtn.cndtn_rollup_id = 1 then 'New'
-when cndtn.cndtn_rollup_id = 2 then 'Refurbished'
-when cndtn.cndtn_rollup_id = 3 then 'Used'
-when cndtn.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 ,raw.INVENTORY_PROP
+,coalesce(fcats.FOCUSED_VERTICAL_LVL1,'Non-Focus') as FOCUS_FLAG
 ,cat.META_CATEG_NAME
 ,cat.CATEG_LVL2_NAME
 ,cat.CATEG_LVL3_NAME
---,cat.CATEG_LVL4_NAME
+-- ,cat.CATEG_LVL4_NAME
 ,0 as TY_GMV
 ,0 as LY_GMV
 ,0 as TY_SI
@@ -489,28 +429,15 @@ when cndtn.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
 FROM PRS_RESTRICTED_V.SLNG_TRFC_SUPER_FACT trfc 
 INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
 			ON trfc.CAL_DT = cal.cal_dt
-			and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
+						and cal.AGE_FOR_RTL_YEAR_ID between -1 and 0 
 			and cal.retail_week >= 1 and cal.AGE_FOR_RTL_WEEK_ID < 0
 			and cal.retail_week <= (select max(retail_week) from access_views.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1)
--- 			and AGE_FOR_RTL_WEEK_ID in (-53,-2,-1)
-INNER JOIN P_INVENTORYPLANNING_T.FASHION_WEEKLY_TOP_SELLERS raw on trfc.SELLER_ID = raw.seller_id
-INNER JOIN (
-select *
-,case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
-	  when meta_categ_id in (26395) then 'Lifestyle'
-	  when categ_lvl3_id in (260325) then 'Lifestyle'
-	  when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
-	  when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
-	  when categ_lvl3_id in (3244) then 'Parts & Accessories'
-	  when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
-	  when categ_lvl2_id in (46576) then 'Parts & Accessories'
-	  else bsns_vrtcl_name end as new_vertical
-from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS) cat on trfc.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
-INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN CNDTN on trfc.ITEM_ID = cndtn.ITEM_ID
-Left join P_ROBEVANS_T.item_cndtn_descr cd on cd.cndtn_rollup_id = cndtn.CNDTN_ROLLUP_ID					
+INNER JOIN FASHION_WEEKLY_TOP_SELLERS raw on trfc.SELLER_ID = raw.seller_id
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on trfc.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+INNER JOIN PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT LSTG on trfc.ITEM_ID = lstg.ITEM_ID and trfc.SITE_ID = lstg.ITEM_SITE_ID
+			LEFT JOIN FOCUS_CATS fcats on lstg.FCSD_VRTCL_NAME = fcats.FOCUSED_VERTICAL_LVL1
 WHERE 1=1
 and trfc.SITE_ID = 3
 AND cat.new_vertical = 'Fashion'
-GROUP BY 1,2,3,4,5,6,7,8,9,10
-
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
 ;
