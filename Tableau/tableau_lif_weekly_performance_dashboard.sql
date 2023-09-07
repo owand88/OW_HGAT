@@ -136,61 +136,6 @@ and lstg.ITEM_SITE_ID = 3
 
 
 
-drop table if exists p_robevans_t.lifestyle_subcat_listings;
-
-Create table p_robevans_t.lifestyle_subcat_listings as
-
-SELECT
-'Listings' as target
-,cal.RETAIL_YEAR
-,cal.retail_week
-,case when cal.RETAIL_WEEK <= (select retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1) then 'YTD' else 'Other' end as ytd_flag
-,case when cal.RETAIL_YEAR = (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1) then 'Current Year' else 'Last Year' end as ty_flag
-,cal.AGE_FOR_RTL_WEEK_ID
-,lstg.B2C_C2C as Business_flag
-,cd.cndtn_descr
-,inv.INVENTORY_PROP
-,cat.META_CATEG_NAME
-,cat.META_CATEG_ID
-,cat.CATEG_LVL2_NAME
-,cat.CATEG_LVL2_ID
-,cat.CATEG_LVL3_NAME
-,cat.CATEG_LVL3_ID
-,cat.CATEG_LVL4_NAME
-,cat.CATEG_LVL4_ID
-,cat.new_vertical
-,count(distinct lstg.item_id) as LL
-
-From PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
-INNER JOIN P_INVENTORYPLANNING_T.dw_category_groupings_adj CAT
-	ON lstg.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
-	AND cat.site_id = 3
-INNER JOIN DW_CAL_DT CAL
-	ON lstg.AUCT_START_DT <= cal.cal_dt and lstg.AUCT_END_DT >= cal.CAL_DT
-	and (RETAIL_YEAR >= (select retail_year from ACCESS_VIEWS.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1)
-	and AGE_FOR_RTL_WEEK_ID <= -1
-LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
-	ON lstg.ITEM_ID = CNDTN.ITEM_ID
-LEFT JOIN P_ROBEVANS_T.item_cndtn_descr cd
-	on cd.cndtn_rollup_id = CNDTN.CNDTN_ROLLUP_ID
-LEFT JOIN
-	(
-	select ITEM_ID
-		,INVENTORY_PROP
-	from p_robevans_t.lifestyle_inv_props
-	group by 1,2
-	) INV
-		on inv.item_id = lstg.item_id
-
-
-			
-WHERE 1=1
-	AND lstg.SLR_CNTRY_ID = 3
-	AND lstg.LSTG_SITE_ID = 3
-	AND cat.new_vertical = 'Lifestyle'
-
-GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18
-;
 
 --------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -199,14 +144,8 @@ Drop table if exists p_robevans_t.lifestyle_subcat_vi;
 Create table p_robevans_t.lifestyle_subcat_vi as
 
 SELECT
-cat.META_CATEG_ID
-,cat.CATEG_LVL2_ID
-,cat.CATEG_LVL3_ID
-,cat.CATEG_LVL4_ID
+trfc.ITEM_ID
 ,cal.AGE_FOR_RTL_WEEK_ID
-,cd.cndtn_descr
-,inv.INVENTORY_PROP
-,case when u.USER_DSGNTN_ID=2 then 'B2C' else 'C2C' end as Business_flag
 ,sum(trfc.TTL_VI_CNT) as VI
 ,sum(trfc.SRP_IMPRSN_CNT)+sum(trfc.STORE_IMPRSN_CNT) as IMP
 
@@ -218,28 +157,112 @@ INNER JOIN DW_CAL_DT CAL
 	ON trfc.cal_dt = cal.CAL_DT
 	and (RETAIL_YEAR >= (select retail_year from ACCESS_VIEWS.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1)
 	and	AGE_FOR_RTL_WEEK_ID <= -1
-INNER JOIN DW_USERS u
-	on u.user_id = trfc.SELLER_ID
-LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
-	ON trfc.ITEM_ID = CNDTN.ITEM_ID
-LEFT JOIN P_ROBEVANS_T.item_cndtn_descr cd
-	on cd.cndtn_rollup_id = CNDTN.CNDTN_ROLLUP_ID
-LEFT JOIN
-	(
-	select ITEM_ID
-		,INVENTORY_PROP
-	from p_robevans_t.lifestyle_inv_props
-	group by 1,2
-	) INV
-		on inv.item_id = trfc.item_id
 			
 WHERE 1=1
 	AND trfc.SITE_ID = 3
 	and cat.NEW_VERTICAL = 'Lifestyle'
 
-GROUP BY 1,2,3,4,5,6,7,8
+GROUP BY 1,2
 ;
 --------------------------------------------------------------------------------------------------------------------------------------------------
+
+drop table if exists p_robevans_t.lifestyle_subcat_listings;
+
+Create table p_robevans_t.lifestyle_subcat_listings as
+
+SELECT
+'Listings' as target
+,lstg.RETAIL_YEAR
+,lstg.retail_week
+,lstg.ytd_flag
+,lstg.ty_flag
+,lstg.AGE_FOR_RTL_WEEK_ID
+,lstg.Business_flag
+,lstg.cndtn_descr
+,lstg.INVENTORY_PROP
+,lstg.META_CATEG_NAME
+,lstg.META_CATEG_ID
+,lstg.CATEG_LVL2_NAME
+,lstg.CATEG_LVL2_ID
+,lstg.CATEG_LVL3_NAME
+,lstg.CATEG_LVL3_ID
+,lstg.CATEG_LVL4_NAME
+,lstg.CATEG_LVL4_ID
+,lstg.new_vertical
+,count(distinct lstg.item_id) as ll
+,sum(trfc.vi) as VI
+,sum(trfc.imp) as IMP
+
+FROM
+	(
+	SELECT
+	lstg.item_id
+	,cal.RETAIL_YEAR
+	,cal.retail_week
+	,case when cal.RETAIL_WEEK <= (select retail_week from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1) then 'YTD' else 'Other' end as ytd_flag
+	,case when cal.RETAIL_YEAR = (select retail_year from DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1) then 'Current Year' else 'Last Year' end as ty_flag
+	,cal.AGE_FOR_RTL_WEEK_ID
+	,lstg.B2C_C2C as Business_flag
+	,cd.cndtn_descr
+	,inv.INVENTORY_PROP
+	,cat.META_CATEG_NAME
+	,cat.META_CATEG_ID
+	,cat.CATEG_LVL2_NAME
+	,cat.CATEG_LVL2_ID
+	,cat.CATEG_LVL3_NAME
+	,cat.CATEG_LVL3_ID
+	,cat.CATEG_LVL4_NAME
+	,cat.CATEG_LVL4_ID
+	,cat.new_vertical
+
+	From PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+	INNER JOIN P_INVENTORYPLANNING_T.dw_category_groupings_adj CAT
+		ON lstg.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+		AND cat.site_id = 3
+	INNER JOIN DW_CAL_DT CAL
+		ON lstg.AUCT_START_DT <= cal.cal_dt and lstg.AUCT_END_DT >= cal.CAL_DT
+		and (RETAIL_YEAR >= (select retail_year from ACCESS_VIEWS.DW_CAL_DT where AGE_FOR_RTL_WEEK_ID = -1 group by 1)-1)
+		and AGE_FOR_RTL_WEEK_ID <= -1
+	LEFT JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN AS CNDTN
+		ON lstg.ITEM_ID = CNDTN.ITEM_ID
+	LEFT JOIN P_ROBEVANS_T.item_cndtn_descr cd
+		on cd.cndtn_rollup_id = CNDTN.CNDTN_ROLLUP_ID
+	LEFT JOIN
+		(
+		select ITEM_ID
+			,INVENTORY_PROP
+		from p_robevans_t.lifestyle_inv_props
+		group by 1,2
+		) INV
+			on inv.item_id = lstg.item_id
+	left join 
+		(
+		select ITEM_ID
+			,incntv_cd
+			,incntv_desc
+		FROM P_CSI_TBS_T.cpn_trxns
+		Where country = 'UK'
+		Group by 1,2,3
+		) coupon
+			ON coupon.item_id = lstg.item_id
+
+	WHERE 1=1
+		AND lstg.SLR_CNTRY_ID = 3
+		AND lstg.LSTG_SITE_ID = 3
+		AND cat.new_vertical = 'Lifestyle'
+
+	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18
+	) lstg
+
+LEFT JOIN p_robevans_t.lifestyle_subcat_vi trfc
+	on lstg.ITEM_ID = trfc.item_id
+	and lstg.AGE_FOR_RTL_WEEK_ID = trfc.AGE_FOR_RTL_WEEK_ID
+
+Group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18
+;
+
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
 
 Drop table if exists p_robevans_t.lifestyle_subcat_gmv;
 
@@ -260,6 +283,10 @@ SELECT
 ,CAT.CATEG_LVL3_NAME
 ,CAT.CATEG_LVL4_NAME
 ,CAT.new_vertical
+,coupon.incntv_cd as coupon_code
+,coupon.incntv_desc as coupon_desc
+,cpn_det.POD_DESC as coupon_team
+,cpn_det.PROGRM_DESC as coupon_purpose
 ,CASE 
 		WHEN deal.item_id IS NOT NULL OR NERP.ITEM_ID IS NOT NULL THEN 'Promo Manager & Sub Deals' 
 		WHEN Lower((CASE  WHEN ck.byr_cntry_id=ck.slr_cntry_id AND ck.byr_cntry_id IN (3) THEN 'Domestic' ELSE 'CBT' end ))=Lower('CBT') THEN 'Exports' 
@@ -297,6 +324,8 @@ LEFT JOIN
 left join P_CSI_TBS_T.cpn_trxns   as coupon
 	ON coupon.item_id = ck.item_id 
 	AND coupon.transaction_id = ck.transaction_id
+LEFT join access_views.eip_cpn_dtl cpn_det
+	on coupon.INCNTV_CD = cpn_det.INCNTV_CD
 
 	-- Deals transactions (Promo manager deals)
 left join
@@ -323,9 +352,8 @@ AND ck.SITE_ID = 3
 AND ck.CK_WACKO_YN = 'N'
 and cat.NEW_VERTICAL = 'Lifestyle'
 
-GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
 ;
-
 
 
 ----------------------------------------------------------------------------------------------------------------------------------------------
@@ -350,10 +378,14 @@ SELECT
 	,lstg.CATEG_LVL3_NAME
 	,lstg.CATEG_LVL4_NAME
 	,lstg.new_vertical
+	,0 as coupon_code
+	,0 as coupon_desc
+	,0 as coupon_team
+	,0 as coupon_purpose
 	,0 as MECE_Bucket
-	,sum(lstg.LL) as LL
-	,sum(vi.VI) as VI
-	,sum(vi.IMP) as IMP
+	,LL
+	,VI
+	,IMP
 	,0 as GMV_Dom
 	,0 as GMV_CBT
 	,0 as GMV
@@ -362,15 +394,6 @@ SELECT
 	,0 as SI
 	
 From p_robevans_t.lifestyle_subcat_listings lstg
-LEFT JOIN p_robevans_t.lifestyle_subcat_vi vi
-	on lstg.meta_categ_id = vi.meta_categ_id
-	and lstg.categ_lvl2_id = vi.categ_lvl2_id
-	and lstg.categ_lvl3_id = vi.categ_lvl3_id
-	and lstg.categ_lvl4_id = vi.categ_lvl4_id
-	and lstg.Business_flag = vi.Business_flag
-	and lstg.AGE_FOR_RTL_WEEK_ID = vi.AGE_FOR_RTL_WEEK_ID
-	and lstg.cndtn_descr = vi.cndtn_descr
-	and lstg.inventory_prop = vi.inventory_prop
 LEFT JOIN
 	(Select RETAIL_YEAR
 	,RETAIL_WEEK
@@ -380,7 +403,7 @@ LEFT JOIN
 	Group by 1,2,3
 	) max_nums
 
-Group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+Group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24
 
 
 UNION ALL
@@ -403,6 +426,10 @@ Select
 	,CATEG_LVL3_NAME
 	,CATEG_LVL4_NAME
 	,new_vertical
+	,coupon_code
+	,coupon_desc
+	,coupon_team
+	,coupon_purpose
 	,MECE_Bucket
 	,0 as LL
 	,0 as VI
@@ -424,7 +451,7 @@ LEFT JOIN
 	Group by 1,2,3
 	) max_nums
 	
-Group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+Group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24
 ;
 
 
