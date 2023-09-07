@@ -1,0 +1,264 @@
+--UKPLAN-539
+--UKPLAN-499
+
+
+-- Requested by Nitin Govind
+-- Author: Irene Chan
+
+-- Task: Requesting a data table in the following format - 
+-- 1.	Table similar to query-2 sheet on the Seller Ops Excel spreadsheet
+-- 2.	Data for 2022 and 2023
+-- 3.	Rolled up at qtr level
+-- 4.	Flag to say if the seller is focus seller or top 200
+-- a.	All other sellers can be put into a single 'Other' bucket
+-- 5.	Can remain at the Inventory Prop level
+
+
+-- Objective: Understand the seller portfolio in the UK,
+-- primarily targetted at understanding our largest GMV sellers
+-- and focus seller groups.The objective is to feed the learnings into the 2024 planning exercise.
+
+-- ---- ---- ---- ---- ---- ---- ---- ----- ---- ---- ---- ---- ---- ---- ----- ---- ---- ---- ---- ---- ---- ----- ---- ---- ---- ---- ---- ---- --
+-- We can add the extra focus sellers from  Manish list.The sellers to be added are 
+-- 'jaguar_classic',
+--   'land_rover_classic',
+--   'colewood-automotive',
+--   'giga-tyres',
+--   'hillsmotors',
+--   'the-right-tool',
+--   'bergen-tools',
+--We can also add factors that go into Inventory Prop (L2, L3 and condition)
+--- ---- ---- ---- ---- ---- ---- ----- ---- ---- ---- ---- ---- ---- ----- ---- ---- ---- ---- ---- ---- ----- ---- ---- ---- ---- ---- ---- --
+-- TOP SELLERS
+
+drop table if exists    P_INVENTORYPLANNING_T.b2c_pa_a_top_seller_all ;-- select * FROM P_ICHAN_T.PA_BUSINESS_PERFORMANCE ;
+create table  P_INVENTORYPLANNING_T.b2c_pa_a_top_seller_all as 
+(
+SELECT 
+RETAIL_YEAR,
+/*RETAIL_WEEK,
+CASE 
+WHEN age_for_rtl_week_id = -1 THEN 'RW'
+WHEN age_for_rtl_week_id = -53  THEN 'RW' 
+ELSE 'OTHER' END AS LABEL_RW,*/
+SELLER_ID,
+USER_SLCTD_ID,
+SUM(CK.QUANTITY) AS BI,
+SUM(GMV_PLAN_USD) AS GMV 
+FROM  DW_CHECKOUT_TRANS ck 
+INNER JOIN ( select meta_categ_id, meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_id,
+LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+        AND USEGM_ID = 206 
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5)AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+		
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+       AND RETAIL_YEAR >=2023
+		and age_for_rtl_week_id <= -1 
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+left outer JOIN DW_USERs U ON U.USER_ID= CK.SELLER_ID 
+WHERE 1=1
+and  SLR_CNTRY_ID = 3 --UK sellers
+and  BYR_CNTRY_ID = 3 --UK buyers
+and ck.site_id = 3 
+AND RPRTD_WACKO_YN = 'N'
+        AND AUCT_END_DT >= '2017-12-20'
+        AND CREATED_DT >= '2017-12-20'    
+and bsns_vrtcl_name in ('Parts & Accessories')
+GROUP BY 1,2,3) ;	
+
+
+-- 2b.top 100 sellers list 
+drop table if exists  P_INVENTORYPLANNING_T.b2c_pa_a_top_seller_200;
+CREATE TABLE  P_INVENTORYPLANNING_T.b2c_pa_a_top_seller_200 as
+SELECT * from ( select  ROW_NUMBER() OVER(ORDER BY GMV desc ) AS rank, *  from ( select *  FROM P_INVENTORYPLANNING_T.b2c_pa_a_top_seller_all a WHERE RETAIL_YEAR =2023 ))  where rank <=200 ; 
+select * from P_INVENTORYPLANNING_T.b2c_pa_a_top_seller_200;;
+
+
+-- We can add the extra focus sellers from Manish's list. The sellers to be added are 
+Drop table if exists   P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_focus ; 
+create table P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_focus as 
+select distinct seller_id from  P_awang_ops_t.seller_ops_83 where seller_vertical ='Parts & Accessories'
+-- 224
+union all 
+select distinct user_id as seller_id from DW_USERS_INFO where USER_SLCTD_ID in (
+'jaguar_classic',
+'land_rover_classic',
+'colewood-automotive',
+'giga-tyres',
+'hillsmotors',
+'the-right-tool',
+'bergen-tools');
+-- 7
+select distinct user_id as seller_id , USER_SLCTD_ID  from DW_USERS_INFO where USER_SLCTD_ID in (
+'jaguar_classic',
+'land_rover_classic',
+'colewood-automotive',
+'giga-tyres',
+'hillsmotors',
+'the-right-tool',
+'bergen-tools');
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+-- after market brands
+select * from  ctlg_prod_Fact where ctlg_id = 2550 and LIVE_IND  = 1 ;
+
+Drop table if exists   P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_aftermarket  ; 
+create table  P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_aftermarket as 
+select distinct  ck.item_id  , s.prod_ref_id,s.prod_title
+from  prs_restricted_v.slng_lstg_super_fact   ck  -- select * from  prs_restricted_v.slng_trans_super_fact where site_id =3 limit 1000; 
+inner join ( select distinct prod_ref_id, prod_title from   ctlg_prod_Fact where ctlg_id = 2550 and LIVE_IND  = 1) s on ck.prod_ref_id=s.prod_ref_id
+group by 1 ,2,3 ;
+Select * from  P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_aftermarket  ;
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+-- GMV summary 
+Drop table if exists    P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_gmv ;--- select  * from  P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_gmv  where seller_id = 1363774003
+Create table  P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_gmv as 
+(
+SELECT 
+RETAIL_YEAR,
+CASE WHEN RETAIL_WEEK BETWEEN 1 AND 13 THEN 'Q1'
+WHEN RETAIL_WEEK BETWEEN 14 AND 26 THEN 'Q2'
+WHEN RETAIL_WEEK BETWEEN 27 AND 39 THEN 'Q3'
+WHEN RETAIL_WEEK BETWEEN 40 AND 53 THEN 'Q4'
+ELSE 'OTHER ' END AS QUARTER,
+
+CASE WHEN RETAIL_WEEK BETWEEN 1 AND 34 THEN 'YTD' ELSE 'OTHER' END AS YTD,
+
+CASE WHEN CK.SELLER_ID=T.SELLER_ID THEN 'TOP 200 SELLER' ELSE 'OTHER' END AS TOP_200_SELLER,
+CASE WHEN ck.seller_id=f.seller_id then 'FOCUS SELLER' ELSE 'OTHER' END AS FOCUS_SELLER,
+CASE WHEN  CK.SELLER_ID=T.SELLER_ID  OR  ck.seller_id=f.seller_id  THEN  ck.SELLER_ID ELSE 'OTHER' END AS SELLER_ID,
+CASE WHEN  CK.SELLER_ID=T.SELLER_ID  OR  ck.seller_id=f.seller_id  THEN  USER_SLCTD_ID ELSE 'OTHER' end  AS SELLER_NAME,
+--USER_SLCTD_ID,
+case when HIST.USEGM_ID = 206 then 'B2C' when  HIST.USEGM_ID = 207  then  'C2C'  else 'Other' end as B2C_C2C_flag  ,
+case when ck.slr_cntry_id = 3 and ck.BYR_CNTRY_ID=3 then 'UK Domestic' else 'Other' end as UK_Dom,
+CATEG_LVL2_NAME,
+CATEG_LVL3_NAME,
+
+
+CASE 
+WHEN CAT.bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl2_id in (107059)) then 'Car Tuning and Styling Focus'
+---when bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl3_id in (179448,179421)) then 'Car Care and Paint Focus'
+when CAT.bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33743)) then 'Tyres & Wheels Focus'
+when CAT.bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (180035)) then 'Tyres & Wheels Focus'
+when CAT.bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33637)) then 'Car Parts Exterior Focus'
+when CAT.bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33694,33612,33707,33579,33726,33549,33559,33572,9886,33605,262215,33599,180143,33542,33687,262440,262064)) then 'Car Parts Focus'
+when CAT.bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=3 and cat.categ_lvl2_id in (6030)) then 'Green Parts Focus'
+when CAT.bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl2_id in (10063,25622,96382,122304, 184632)) then 'Motorcycle Parts Focus'
+when CAT.bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl3_id in (183504,261272,177075)) then 'Motorcycle Parts Focus'
+when CAT.bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl2_id in (179487)) then 'Engine Oil & Lubricant Focus'
+when CAT.bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl3_id in (183745,179474)) then 'Garage Equipment & Tool Focus' ELSE  'OTHER'
+END AS INVENTORY_PROP,
+
+-- Inventory segment
+--Salvage =  categ_lvl2_id in (6030) and  CNDTN_ROLLUP_ID = 3 / OEM =  brand_type ='GENUINE OEM' and categ_lvl2_id in (6030) and  CNDTN_ROLLUP_ID = 1  / After Market = Brands found in 'select * from  ctlg_prod_Fact where ctlg_id = 2550 and LIVE_IND  = 1 ' / The rest is Private Label/White label
+CASE
+when cndtn_rollup_id=3 and cat.categ_lvl2_id in (6030) then 'Salvage'
+when ( ck.ITEM_ID = b.ITEM_ID	and  categ_lvl2_id in (6030) and   CNDTN_ROLLUP_ID = 1 ) and USER_SLCTD_ID not in ( 'mechanics-choice' , 'online-automotive-01604666170','partbusters') then 'OEM'
+WHEN CK.ITEM_ID=H.ITEM_ID THEN 'AFTERMARKET'
+ELSE 'PRIVATE LABEL/ WHITE LABLE'  END AS INVENTORY_SEGMENT,
+
+--Focus Vertical Category
+FC_BYR.FOCUSED_VERT_CAT  as SUB_CATEGORY,
+
+case when cndtn_rollup_id=1  then 'New'
+	when cndtn_rollup_id=3 then 'Used'
+	else 'Other' end as Item_condition,
+case when CK.SITE_ID=F.SITE_ID AND CK.LEAF_CATEG_ID=F.LEAF_CATEG_ID  then 'Fitment Category' else 'Non Fitment' end as Fitment,
+
+SUM(CK.QUANTITY) AS BI,
+SUM(ck.GMV_PLAN_USD) AS GMV 
+FROM  DW_CHECKOUT_TRANS ck 
+LEFT JOIN  ( select distinct seller_id from P_INVENTORYPLANNING_T.b2c_pa_a_top_seller_200 ) T ON CK.SELLER_ID=T.SELLER_ID
+left join ( select distinct seller_id from  P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_focus) f on ck.seller_id=f.seller_id
+LEFT JOIN ( SELECT DISTINCT ITEM_ID FROM  P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_aftermarket  ) H ON CK.ITEM_ID=H.ITEM_ID
+LEFT JOIN  P_ichan_T.pa_strat_inv_ll_oem_id   B ON CK.ITEM_ID = B.ITEM_ID	
+INNER JOIN ( select meta_categ_id, meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_id,categ_lvl4_name,
+LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+      --  AND USEGM_ID = 206 
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5)AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+INNER JOIN access_views.ssa_curncy_plan_rate_dim AS lpr
+		ON lpr.curncy_id=ck.lstg_curncy_id		
+-- FC_BYR
+LEFT JOIN P_CSI_TBS_T.FV_CAT_HIERARCHY_EXCL_DEEPSKU FC_BYR -- SELECT DISTINCT  FOCUSED_VERT_CAT FROM  P_CSI_TBS_T.FV_CAT_HIERARCHY_EXCL_DEEPSKU WHERE fv_cntry = 'UK' 
+		ON FC_BYR.LEAF_CATEG_ID = ck.LEAF_CATEG_ID    
+		AND FC_BYR.site_id = ck.site_id 
+		AND FC_BYR.fv_cntry = CASE WHEN ck.byr_cntry_id IN(0, -1,1, -999,225,679,1000) THEN 'US' WHEN  ck.byr_cntry_id = 3 THEN 'UK' WHEN  ck.byr_cntry_id = 77 THEN 'DE' ELSE 'OTHERS' END
+		AND (CK.ITEM_PRICE*LPR.CURNCY_PLAN_RATE) >=FC_BYR.MIN_PRICE--changed to plan rate		
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+       AND RETAIL_YEAR >=2022
+		and age_for_rtl_week_id <= -1 
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+left outer JOIN DW_USERs U ON U.USER_ID= CK.SELLER_ID 
+left JOIN ( SELECT DISTINCT SITE_ID, LEAF_CATEG_ID , fmt_enabled FROM   P_CSI_TBS_T.SH_UKDE_FITMENT_CATEG_NEW WHERE SITE_ID =3  and  fmt_enabled = 'Y'  ) F   ON CK.SITE_ID=F.SITE_ID AND CK.LEAF_CATEG_ID=F.LEAF_CATEG_ID 
+
+INNER join P_SOJ_CL_V.CHECKOUT_METRIC_ITEM_EXT CMIE on CK.item_id = CMIE.item_id
+and CK.TRANSACTION_ID = CMIE.TRANSACTION_ID
+	
+JOIN PRS_SECURE_V.USER_DNA_DIM Y ON CK.buyer_id = Y.USER_ID
+
+LEFT JOIN ACCESS_VIEWS.DW_GEM2_CMN_CK_I GEM2
+ON GEM2.LSTG_ID=ck.ITEM_ID
+AND GEM2.CK_TRANS_ID=CK.TRANSACTION_ID
+AND GEM2.LSTG_END_DT>=TO_DATE('2019-12-20')
+/*
+-- Seller Segment cuts
+LEFT JOIN prs_restricted_v.dna_cust_seller_sgmntn_hist AS hist
+ON cal_dt BETWEEN  hist.cust_slr_sgmntn_beg_dt AND hist.cust_slr_sgmntn_end_dt 
+AND hist.slr_id = ck.seller_id
+AND hist.cust_sgmntn_grp_cd BETWEEN  36 AND 41
+LEFT JOIN prs_restricted_v.cust_sgmntn AS lkp ON hist.cust_sgmntn_cd=lkp.cust_sgmntn_cd
+*/
+WHERE 1=1
+and  ck.SLR_CNTRY_ID = 3 --UK sellers
+--and  BYR_CNTRY_ID = 3 --UK buyers
+--and ck.site_id = 3 
+AND ck.RPRTD_WACKO_YN = 'N'
+        AND ck.AUCT_END_DT >= '2017-12-20'
+        AND ck.CREATED_DT >= '2017-12-20'    
+and CAT.bsns_vrtcl_name in ('Parts & Accessories')
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16) ;	
+
+
+--- Summary 
+DROP TABLE IF EXISTS   P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_gmv_grouping  ; 
+CREATE TABLE P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_gmv_grouping as 
+Select 
+CASE 
+WHEN TOP_200_SELLER ='TOP 200 SELLER' AND FOCUS_SELLER ='FOCUS SELLER' THEN 'FOCUS SELLER AND TOP 200'
+WHEN TOP_200_SELLER ='TOP 200 SELLER'  THEN 'TOP 200 SELLER'
+WHEN FOCUS_SELLER ='FOCUS SELLER' THEN 'FOCUS SELLER'
+ELSE 'OTHER' END AS SELLER_GROUP,
+* from 
+P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_gmv;
+
+/*
+sELECT * FROM P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_gmv_grouping WHERE RETAIL_YEAR =2023 AND QUARTER='Q3' ORDER BY 11,12,13 LIMIT 1000;
+SELECT FOCUSED_VERT_CAT , SUM(GMV)   FROM P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_gmv_grouping WHERE RETAIL_YEAR =2023  and quarter ='Q3' GROUP BY 1 ORDER BY 1 ; 
+
+select * from P_INVENTORYPLANNING_T.b2c_pa_a_uk_seller_mapping_gmv where retail_week =34 */
+
+-- Sub Category 
+/*CASE 
+when CAT.bsns_vrtcl_name = 'Parts & Accessories' and (/*cndtn_rollup_id=1 and*/ cat.categ_lvl3_id in (33743))   then 'Tyres & Wheels'
+when CAT.bsns_vrtcl_name = 'Parts & Accessories' and (/*cndtn_rollup_id=1 and */cat.categ_lvl3_id in (180035))  then 'Tyres & Wheels'
+when CAT.bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl2_id in (10063,25622,96382,122304, 184632)) then 'MOTO'
+when CAT.Bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl3_id in (183504,261272,177075)) then 'MOTO'
+ELSE 'C&T' END AS SUB_CATEGORY,*/
+--categ_lvl2_name,
+--categ_lvl3_name,
