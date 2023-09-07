@@ -1,0 +1,75 @@
+-- UKPLAN-523
+-- Requested by Manish
+-- Author- Irene Chan
+-- task : LY and TY GMV for top 50-100 sellers for each category.
+-- objective: To support Ads team on PLS analysis for adopted and non-adopted sellers.
+
+-- top sellers ( requested for PLS analysis) 
+drop table if exists   P_ukplan_report_T.business_performance_pa_category_seller_50 ;-- select * FROM  P_ukplan_report_T.business_performance_pa_category where retail_week >=18 and INVENTORY_PROP ='Motorcycle Parts Focus'  ;
+create table P_ukplan_report_T.business_performance_pa_category_seller_50 as 
+(
+SELECT 
+RETAIL_YEAR,
+--RETAIL_WEEK,
+seller_id,
+USER_SLCTD_ID,
+CASE 
+WHEN bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl2_id in (107059)) then 'Car Tuning and Styling Focus'
+---when bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl3_id in (179448,179421)) then 'Car Care and Paint Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33743)) then 'Tyres & Wheels Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (180035)) then 'Tyres & Wheels Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33637)) then 'Car Parts Exterior Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=1 and cat.categ_lvl3_id in (33694,33612,33707,33579,33726,33549,33559,33572,9886,33605,262215,33599,180143,33542,33687,262440,262064)) then 'Car Parts Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cndtn_rollup_id=3 and cat.categ_lvl2_id in (6030)) then 'Green Parts Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl2_id in (10063,25622,96382,122304, 184632)) then 'Motorcycle Parts Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl3_id in (183504,261272,177075)) then 'Motorcycle Parts Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl2_id in (179487)) then 'Engine Oil & Lubricant Focus'
+when bsns_vrtcl_name = 'Parts & Accessories' and (cat.categ_lvl3_id in (183745,179474)) then 'Garage Equipment & Tool Focus' ELSE  'OTHER'
+END AS INVENTORY_PROP,
+SUM(CK.QUANTITY) AS BI,
+SUM(GMV_PLAN_USD) AS GMV 
+FROM  DW_CHECKOUT_TRANS ck 
+INNER JOIN ( select CURNCY_ID, CURNCY_PLAN_RATE from  ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM group by 1,2)AS SSA 
+        ON SSA.CURNCY_ID = CK.LSTG_CURNCY_ID     
+INNER JOIN ( select meta_categ_id, meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_id,
+LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+        AND USEGM_ID = 206 
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5)AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+		
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+       AND RETAIL_YEAR >=2022
+		and age_for_rtl_week_id <= -1 
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+left outer JOIN DW_USERs U ON U.USER_ID= ck.SELLER_ID 
+WHERE 1=1
+and  SLR_CNTRY_ID = 3 --UK sellers
+and  BYR_CNTRY_ID = 3 --UK buyers
+and ck.site_id = 3 
+and retail_week between 1 and 33
+AND RPRTD_WACKO_YN = 'N'
+        AND AUCT_END_DT >= '2017-12-20'
+        AND CREATED_DT >= '2017-12-20'    
+and bsns_vrtcl_name in ('Parts & Accessories')
+    GROUP BY 1,2,3,4) ;	
+
+select * from  P_ukplan_report_T.business_performance_pa_category_seller_50 ;
+
+
+drop table if exists  P_ukplan_report_T.business_performance_pa_category_seller_top  ;
+create table P_ukplan_report_T.business_performance_pa_category_seller_top as 
+select * from (select 
+row_number() over ( partition by inventory_prop order by GMV desc ) as seller_rank , * from  P_ukplan_report_T.business_performance_pa_category_seller_50 where retail_year =2022
+and  GMV >=40 ) where seller_rank <=50
+union all 
+select * from (select 
+row_number() over ( partition by inventory_prop order by GMV desc ) as seller_rank , * from  P_ukplan_report_T.business_performance_pa_category_seller_50 where retail_year =2023
+and  GMV >=40 ) where seller_rank <=50
+;
