@@ -72,7 +72,11 @@ with protrader_cohorts_for_new_quarter as
 )
 	
  
-select 
+select * 
+from 
+
+(
+	select 
 	act.*
 	,fc.forecast_gmv
 	
@@ -83,5 +87,14 @@ select
 		and act.retail_year = fc.forecast_retail_year
 		and act.retail_quarter_id = fc.forecast_retail_quarter_id
 		and act.retail_week = fc.forecast_retail_week
+)
+
+union all 
+
+-- 2023 Q1 and Q2 Pro Trader weekly forecast and actual GMV values
+(
+	select * 
+	from  P_ukplan_report_T.protrader_historical_forecast_performance
+)
 ;
 
