@@ -1,0 +1,632 @@
+-- UKPLAN-527
+-- Requested by Manish
+-- Authour : Irene Chan
+
+-- Could you please add primary L3 category and primary L4 category for the attached sellers based YTD GMV?
+-- to understand the seller category manager before removing from upcoming Coupon activity
+
+
+-------------------------------------------------------------------------------------------------------------------------------------
+-- Seller List
+---------------------------------------------------------------------------------------- ------------------------------------------------------------
+Drop table if exists P_INVENTORYPLANNING_T.b2c_pa_a_coupon_decision_seller ;
+Create table P_INVENTORYPLANNING_T.b2c_pa_a_coupon_decision_seller as
+select distinct user_id as seller_id , USER_SLCTD_ID  from DW_USERS_INFO where user_id in (
+2326709991,
+1596246097,
+2061958072,
+67518121,
+212410662,
+536141442,
+1011610994,
+180676269,
+1820037894,
+1125362252,
+1736252740,
+1297736058,
+2430985175,
+1391114876,
+647163421,
+994784586,
+219098917,
+177459192,
+272086796,
+770340595,
+1081840028,
+283609349,
+1455894821,
+57550512,
+2356928490,
+1801849950,
+2284646282,
+2049396253,
+2053636368,
+2085846677,
+2230291369,
+138316371,
+1273468091,
+1483530037,
+113943740,
+2053643116,
+1470017796,
+2169465124,
+998115907,
+2416714819,
+1097921099,
+1659754731,
+726920225,
+44110333,
+1665912299,
+1193904684,
+2162762883,
+2029732159,
+1099603869,
+224974159,
+12805468,
+1446133948,
+1157318489,
+823180573,
+1051451141,
+777018430,
+1629389649,
+772850821,
+2256139282,
+66999981,
+2420505324,
+1339990732,
+821983952,
+46227740,
+209767842,
+141649313,
+2258133873,
+1495481498,
+2256206859,
+709437589,
+1229119061,
+465044679,
+1784282599,
+2450504457,
+1245379014,
+2102891337,
+45757605,
+2215206606,
+312205855,
+48095708,
+126356127,
+2264788577,
+2355652995,
+171295281,
+185181936,
+345292103,
+1299719668,
+846301588,
+1747689264,
+1071316341,
+341473215,
+284599868,
+2156927796,
+1287674477,
+1231395231,
+882424190,
+198928564,
+2412702990,
+138143854,
+1507816707,
+1000311769,
+1240176024,
+566624609,
+442380309,
+1281410819,
+168585913,
+1057753825,
+69270580,
+1346452769,
+740488142,
+142064407,
+537710801,
+831614959,
+188788828,
+1160301550,
+217418896,
+192453410,
+25460824,
+1107601360,
+1454125357,
+2336814060,
+66030361,
+86860770,
+1440981116,
+861809427,
+1002957836,
+1232051144,
+1239293120,
+1585531020,
+139861545,
+1317707524,
+1193121968,
+192000478,
+1055779363,
+517220618,
+1279580952,
+1492882399,
+1472835391,
+37174790,
+70766848,
+2398839996,
+1403685457,
+1009326400,
+1672588639,
+136728546,
+805669578,
+121427919,
+1702879370,
+1273327220,
+1028788763,
+10253961,
+515349536,
+214682018,
+1621657527,
+1040771999,
+4883644,
+44532131,
+1774186833,
+1243445243,
+43190753,
+1896959800,
+1149643477,
+186142522,
+1006794290,
+1593266158,
+1008591237,
+300023934,
+1065390620,
+1117273999,
+2230734566,
+1076857575,
+1677166208,
+1051615044,
+144806038,
+349401582,
+1241828008,
+1000213487,
+1446213498,
+668700293,
+273315416,
+1065858044,
+112587992,
+857627667,
+63963386,
+1009799830,
+2161115468,
+133182229,
+135974229,
+1151251985,
+92291407,
+122440964,
+1171894920,
+2428589015,
+413964646,
+95332770,
+114075251,
+1259737637,
+1349330493,
+96939681,
+142494918,
+281624307,
+1025251307,
+940950851,
+1224633383,
+1421904316,
+1570463974,
+129431206,
+934927120,
+2057641740,
+671190554,
+1058157705,
+321148389,
+270271228,
+1138218395,
+310986658,
+2039488684,
+1110545364,
+2200209396,
+75919992,
+145000800,
+1057660111,
+1934900066,
+148325921,
+741309577,
+851430547,
+881021179,
+1064893230,
+1439521143,
+81160853,
+874497563,
+1045665137,
+1409790737,
+1177869119,
+1354918433,
+1960733408,
+293683171,
+2135840344,
+894230854,
+1105260861,
+1682960233,
+1185973528,
+20652183,
+964714243,
+112582908,
+727626995,
+1116396069,
+133469055,
+1067725444,
+1079503187,
+2283448443,
+137339294,
+1027154987,
+211724925,
+1069736894,
+1057631111,
+1290447442,
+198209767,
+1170042307,
+58672757,
+1123531798,
+514577553,
+642230451,
+116805095,
+225429615,
+2139870273,
+107103902,
+866558675,
+1845489584,
+826159497,
+1040417575,
+347548400,
+2385776619,
+128870806,
+1990319774,
+871229460,
+270831610,
+978445047,
+929014714,
+2407567122,
+12433064,
+1232141703,
+869341213,
+1201788105,
+462173689,
+1931664216,
+1234542367,
+1123935710,
+940912732,
+1237427359,
+1114977507,
+1435111273,
+148553700,
+1054310477,
+2031084093,
+742341678,
+115183826,
+146447904,
+230589684,
+1109579143,
+1450225456,
+2090773514,
+188406990,
+184668681,
+2405489338,
+283929477,
+876191153,
+1499256971,
+913468969,
+464320224,
+1448296225,
+853227791,
+2096542848,
+127269035,
+128767279,
+2102887958,
+1166259965,
+1395812477,
+1126586364,
+1049765304,
+1539060492,
+1864340958,
+1471869322,
+474986649,
+1298902059,
+695661365,
+1271512188,
+1985664274,
+2477649993,
+1486299165,
+296354333,
+1101058061,
+820511526,
+264762507,
+1480065754,
+1080242260,
+1001890725,
+764960011,
+1841302606,
+136576213,
+1344523670,
+136269715,
+1167152070,
+1277535388,
+1040046190,
+1761897262,
+1752754117,
+2182050927,
+924715174,
+1297836224,
+2102618279,
+1260049943,
+1053270764,
+1870644898,
+1018584626,
+2053089755,
+1207863868,
+1751468729,
+167433599,
+7222109,
+184052770,
+1011330571,
+1047578435,
+2372070434,
+2159371564,
+1067106894,
+218448570,
+123017643,
+774286542,
+1543684491,
+1018283539,
+145045148,
+2381938372,
+72231695,
+284593815,
+1063066760,
+171312685,
+2191104427,
+1787049637,
+1847725335,
+669119257,
+1686193709,
+1107904583,
+148559042,
+634119906,
+219724422,
+385251301,
+2343223771,
+2286175514,
+1113238385,
+1485911215,
+243244605,
+1084735019,
+125945415,
+1091629681,
+832336102,
+902234074,
+664684062,
+537029600,
+861108857,
+287623185,
+122783942
+
+);
+ ----------------------------------------------------------------------------------------------------------------------------------------------------
+
+ ----------------------------------------------------------------------------------------------------------------------------------------------------
+ -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+ -- -- identify primary l3 L4
+ -- TOP SELLERS
+
+Drop table if exists   P_INVENTORYPLANNING_T.b2c_pa_a_coupond_decision_seller_gmv ;-- select * FROM P_ICHAN_T.PA_BUSINESS_PERFORMANCE ;
+Create table  P_INVENTORYPLANNING_T.b2c_pa_a_coupond_decision_seller_gmv as 
+(
+SELECT 
+RETAIL_YEAR,
+ck.SELLER_ID,
+USER_SLCTD_ID,
+categ_lvl2_ID,
+categ_lvl2_name,
+categ_lvl3_ID,
+categ_lvl3_name,
+categ_lvl4_name,
+categ_lvl4_ID,
+SUM(CK.QUANTITY) AS BI,
+SUM(GMV_PLAN_USD) AS GMV 
+FROM  DW_CHECKOUT_TRANS ck 
+inner join ( select distinct  seller_id from P_INVENTORYPLANNING_T.b2c_pa_a_coupon_decision_seller)  c on ck.seller_id=c.seller_id
+INNER JOIN ( select meta_categ_id, meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_id,categ_lvl4_name,
+LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+        AND USEGM_ID = 206 
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5)AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+		
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+       AND RETAIL_YEAR >=2023
+		and age_for_rtl_week_id <= -1 
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+left outer JOIN DW_USERs U ON U.USER_ID= CK.SELLER_ID 
+WHERE 1=1
+and  SLR_CNTRY_ID = 3 --UK sellers
+and  BYR_CNTRY_ID = 3 --UK buyers
+and ck.site_id = 3 
+AND RPRTD_WACKO_YN = 'N'
+        AND AUCT_END_DT >= '2017-12-20'
+        AND CREATED_DT >= '2017-12-20'    
+and bsns_vrtcl_name in ('Parts & Accessories')
+GROUP BY 1,2,3,4,5,6,7,8,9) ;	
+
+
+-- 2 
+-- identify primary l3 L4
+
+drop table if exists    P_INVENTORYPLANNING_T.b2c_pa_a_coupond_decision_seller_gmv_top_cat ;--
+create table  P_INVENTORYPLANNING_T.b2c_pa_a_coupond_decision_seller_gmv_top_cat as
+SELECT A.*, 
+B.Top_L3_category_flag,
+C.Top_L2_category_flag
+FROM (
+SELECT 
+    Seller_id,
+    USER_SLCTD_ID,
+	categ_lvl2_ID,
+        categ_lvl2_name,
+    categ_lvl3_name,
+	categ_lvl3_ID,
+    categ_lvl4_name,
+	categ_lvl4_ID,
+    GMV,
+	BI,
+    CASE WHEN row_num_l4 = 1 THEN 'Top L4 Category' ELSE 'Non-Top Category' END AS Top_L4_category_flag
+FROM (
+    SELECT 
+        Seller_id,
+        USER_SLCTD_ID,
+		categ_lvl2_ID,
+        categ_lvl2_name,
+		categ_lvl3_name,
+		categ_lvl3_ID,
+        categ_lvl4_name,
+		categ_lvl4_ID,
+        GMV,
+		BI,
+        ROW_NUMBER() OVER (PARTITION BY Seller_id  ORDER BY GMV DESC) AS row_num_l4
+    FROM (Select 
+		Seller_id,
+        USER_SLCTD_ID,
+		categ_lvl2_ID,
+        categ_lvl2_name,
+		categ_lvl3_ID,
+        categ_lvl3_name,
+		categ_lvl4_name,
+		categ_lvl4_ID,
+        sum(GMV) GMV ,SUM(BI) BI from  P_INVENTORYPLANNING_T.b2c_pa_a_coupond_decision_seller_gmv  group by 1,2,3,4,5,6,7,8)
+	) ) A
+
+LEFT JOIN 
+--L3
+(
+SELECT 
+    Seller_id,
+    USER_SLCTD_ID,
+	categ_lvl3_ID,
+    categ_lvl3_name,
+    GMV,
+	BI,
+   CASE WHEN row_num_l3 = 1 THEN 'Top L3 Category' ELSE 'Non-Top Category' END AS Top_L3_category_flag
+	
+FROM (
+    SELECT 
+        Seller_id,
+        USER_SLCTD_ID,
+		categ_lvl3_ID,
+        categ_lvl3_name,
+        GMV,
+		BI,
+		ROW_NUMBER() OVER (PARTITION BY Seller_id  ORDER BY GMV DESC) AS row_num_l3
+     FROM (Select 
+		Seller_id,
+        USER_SLCTD_ID,
+		categ_lvl3_ID,
+        categ_lvl3_name,
+		sum(GMV) GMV ,SUM(BI) BI from  P_INVENTORYPLANNING_T.b2c_pa_a_coupond_decision_seller_gmv group by 1,2,3,4)
+	) ) B
+	ON A.SELLER_ID=B.SELLER_ID AND A.categ_lvl3_ID=B.categ_lvl3_ID
+	
+	
+LEFT JOIN 
+--L2
+(
+SELECT 
+    Seller_id,
+    USER_SLCTD_ID,
+	categ_lvl2_ID,
+    categ_lvl2_name,
+    GMV,
+	BI,
+   CASE WHEN row_num_l2 = 1 THEN 'Top L2 Category' ELSE 'Non-Top Category' END AS Top_L2_category_flag
+	
+FROM (
+    SELECT 
+        Seller_id,
+        USER_SLCTD_ID,
+		categ_lvl2_ID,
+        categ_lvl2_name,
+        GMV,
+		BI,
+		ROW_NUMBER() OVER (PARTITION BY Seller_id  ORDER BY GMV DESC) AS row_num_l2
+     FROM (Select 
+		Seller_id,
+        USER_SLCTD_ID,
+		categ_lvl2_ID,
+        categ_lvl2_name,
+		sum(GMV) GMV ,SUM(BI) BI from  P_INVENTORYPLANNING_T.b2c_pa_a_coupond_decision_seller_gmv group by 1,2,3,4)
+	) ) C
+	ON A.SELLER_ID=c.SELLER_ID AND A.categ_lvl2_ID=c.categ_lvl2_ID	
+	;
+
+
+Drop table if exists P_INVENTORYPLANNING_T.b2c_pa_a_coupond_decision_seller_gmv_top_pivot; 
+create table  P_INVENTORYPLANNING_T.b2c_pa_a_coupond_decision_seller_gmv_top_pivot as
+Select a.*, 
+b.Top_L3_Category_name ,
+b.Top_L3_Category_id   , 
+b.Top_L3_Category_GMV  ,
+c.Top_L4_Category_name ,
+c.Top_L4_Category_id   ,
+c.Top_L4_Category_GMV
+from (
+
+--L2
+select * from (
+select 
+Seller_id,
+USER_SLCTD_ID,
+case when Top_L2_category_flag ='Top L2 Category' then categ_lvl2_name else Top_L2_category_flag end as Top_L2_Category_name,
+case when Top_L2_category_flag ='Top L2 Category' then categ_lvl2_id   else Top_L2_category_flag end as Top_L2_Category_id,
+sum(case when Top_L2_category_flag ='Top L2 Category' then GMV else 0 end)  as Top_L2_Category_GMV
+from   P_INVENTORYPLANNING_T.b2c_pa_a_coupond_decision_seller_gmv_top_cat
+group by 1,2,3,4 
+) where 1=1 
+and Top_L2_Category_GMV >0 ) a
+left join (
+
+--L3
+select * from (
+select 
+Seller_id,
+USER_SLCTD_ID,
+case when Top_L3_category_flag ='Top L3 Category' then categ_lvl3_name else Top_L3_category_flag end as Top_L3_Category_name,
+case when Top_L3_category_flag ='Top L3 Category' then categ_lvl3_id   else Top_L3_category_flag end as Top_L3_Category_id,
+sum(case when Top_L3_category_flag ='Top L3 Category' then GMV else 0 end)  as Top_L3_Category_GMV 
+from   P_INVENTORYPLANNING_T.b2c_pa_a_coupond_decision_seller_gmv_top_cat
+group by 1,2,3,4 
+) where 1=1 
+and Top_L3_Category_GMV >0) b on a.seller_id=b.seller_id
+
+left join (
+
+--L4
+select * from (
+select 
+Seller_id,
+USER_SLCTD_ID,
+case when Top_L4_category_flag ='Top L4 Category' then categ_lvl4_name else Top_L4_category_flag end as Top_L4_Category_name,
+case when Top_L4_category_flag ='Top L4 Category' then categ_lvl4_id   else Top_L4_category_flag end as Top_L4_Category_id,
+sum(case when Top_L4_category_flag ='Top L4 Category' then GMV else 0 end)  as Top_L4_Category_GMV  
+from   P_INVENTORYPLANNING_T.b2c_pa_a_coupond_decision_seller_gmv_top_cat
+group by 1,2,3,4 
+) where 1=1 
+and Top_L4_Category_GMV >0 ) c on a.seller_id=c.seller_id 
+;
