@@ -1,0 +1,186 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-482
+
+Objective: Find handmade and artisan sellers on ebay
+
+Description: I'll be looking at: potential artisan sellers as part of a HG etsy win back strat
+
+Date: 10/08/2023
+
+Author: Oliver Wand
+
+*/
+
+
+select *
+from ACCESS_VIEWS.ITEM360_ASPCT_CLSSFCTN class
+where item_id = 204146034088
+limit 10
+
+
+/* looking at hand made style words to join to listing and gmv table */
+
+drop table if exists potential_items;
+create TEMPORARY table potential_items as
+
+select lstg.item_id
+,ASPCT_VLU_NM_2
+,case when aspect.ASPCT_VLU_NM_2 like '%ETSY CO%' then 1 else 0 end as ETSY
+,case when aspect.ASPCT_VLU_NM_2 like '%HAND MADE%' then 1 
+ 	  when aspect.ASPCT_VLU_NM_2 like '%HANDMADE%' then 1 else 0 end as HANDMADE
+,case when aspect.ASPCT_VLU_NM_2 like '%HAND CRAFT%' then 1
+	  when aspect.ASPCT_VLU_NM_2 like '%HANDCRAFT%' then 1 else 0 end as HANDCRAFTED
+,case when aspect.ASPCT_VLU_NM_2 like '%ARTISAN%' then 1 else 0 end as ARTISAN	  
+from PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and lstg.LSTG_SITE_ID = cat.SITE_ID
+inner join (select 
+ITEM_ID
+,ASPCT_VLU_NM
+,REGEXP_REPLACE(upper(trim(ASPCT_VLU_NM)),'[^0-9A-Za-z]',' ') as ASPCT_VLU_NM_2
+
+from ACCESS_VIEWS.ITEM360_ASPCT_CLSSFCTN
+where 1=1
+and auct_end_dt >= '2022-01-01'
+and prdct_aspct_nm = 'DescSummary2' ) aspect on lstg.ITEM_ID = aspect.ITEM_ID
+
+
+where 1=1
+and (aspect.ASPCT_VLU_NM_2 like '%ETSY.CO%' 
+or aspect.ASPCT_VLU_NM_2 like '%HAND MADE%'
+or aspect.ASPCT_VLU_NM_2 like '%HANDMADE%'
+or aspect.ASPCT_VLU_NM_2 like '%ARTISAN%'
+or aspect.ASPCT_VLU_NM_2 like '%HAND CRAFT%'
+or aspect.ASPCT_VLU_NM_2 like '%HANDCRAFT%'
+)
+and lstg.LSTG_SITE_ID = 3
+and lstg.SLR_CNTRY_ID = 3
+and lstg.ITEM_CNDTN_ID = 1000
+and lstg.AUCT_END_DT >= '2022-01-01'
+and cat.NEW_VERTICAL = 'Home & Garden'
+;
+
+/*okay lets find some sellers */
+drop table if exists potential_sellers;
+create TEMPORARY table potential_sellers as
+select cal.RETAIL_YEAR
+,cal.RTL_MONTH_OF_RTL_YEAR_ID as RETAIL_MONTH
+,tran.B2C_C2C
+,tran.SELLER_ID
+,users.USER_SLCTD_ID as SELLER_NAME
+,max(hm.ETSY) as ETSY
+,max(hm.HANDMADE) as HANDMADE
+,max(hm.HANDCRAFTED) as HANDCRAFTED
+,max(hm.ARTISAN) as ARTISAN
+,sum(GMV_PLAN) as GMV
+,sum(tran.QUANTITY) as SI
+,count(distinct tran.ITEM_ID) as LISTINGS
+
+
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+inner join potential_items hm on tran.ITEM_ID = hm.item_id
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and tran.SITE_ID = cat.SITE_ID
+inner join ACCESS_VIEWS.DW_CAL_DT cal on tran.GMV_DT = cal.CAL_DT
+inner join ACCESS_VIEWS.DW_USERS users on tran.SELLER_ID = users.USER_ID
+
+where 1=1
+and tran.CK_WACKO_YN = 'N'
+and tran.LSTG_SITE_ID = 3
+and tran.SLR_CNTRY_ID = 3
+and cal.AGE_FOR_RTL_YEAR_ID >= -1
+and cal.AGE_FOR_RTL_MONTH_ID <= -1
+
+group by 1,2,3,4,5
+
+;
+drop table if exists seller_sumup;
+create TEMPORARY table seller_sumup as
+
+select 
+B2C_C2C
+,SELLER_ID
+,SELLER_NAME
+,max(case when ETSY > 0 then 1 end) as ETSY
+,max(case when HANDMADE > 0 then 1 end) as HANDMADE
+,max(case when HANDCRAFTED > 0 then 1 end) as HANDCRAFTED
+,max(case when ARTISAN > 0 then 1 end) as ARTISAN
+,sum(GMV) as GMV
+,sum(SI) as SI
+,sum(LISTINGS) as LISTINGS
+from potential_sellers
+where 1=1
+and retail_year = 2023
+group by 1,2,3
+having sum(SI) > 1
+
+;
+
+drop table if exists P_OLWAND_T.UKPLAN482_top_sellers;
+create table P_OLWAND_T.UKPLAN482_top_sellers as
+select B2C_C2C
+,SELLER_ID
+,SELLER_NAME
+,ETSY
+,HANDMADE
+,HANDCRAFTED
+,ARTISAN
+,GMV
+SI
+,LISTINGS
+from (
+select slr.*
+,row_number() over (partition by b2c_c2c,etsy,handmade,handcrafted,artisan order by gmv desc) as top_sellers
+
+from seller_sumup slr
+)
+where top_sellers <= 100
+;
+
+
+drop table if exists P_OLWAND_T.UKPLAN482_listings;
+create table P_OLWAND_T.UKPLAN482_listings as
+select a.*
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+from (
+select *
+,row_number() over (PARTITION by seller_name order by gmv desc) as item_rank
+from (
+select tran.B2C_C2C
+,tran.SELLER_ID
+,slr.SELLER_NAME
+,tran.item_id
+,lstg.AUCT_TITLE
+,lstg.AUCT_START_DT
+,lstg.AUCT_END_DT
+,count(distinct case when hm.ETSY = 1 then lstg.item_id end) as ETSY
+,count(distinct case when hm.HANDMADE = 1 then lstg.item_id end) as HANDMADE
+,count(distinct case when hm.HANDCRAFTED = 1 then lstg.item_id end) as HANDCRAFTED
+,count(distinct case when hm.ARTISAN = 1 then lstg.item_id end) as ARTISAN
+,sum(GMV_PLAN) as GMV
+,sum(tran.QUANTITY) as SI
+
+
+from PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran
+inner join potential_items hm on tran.ITEM_ID = hm.item_id
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and tran.SITE_ID = cat.SITE_ID
+inner join ACCESS_VIEWS.DW_CAL_DT cal on tran.GMV_DT = cal.CAL_DT
+inner join P_OLWAND_T.UKPLAN482_top_sellers slr on tran.SELLER_ID = slr.seller_id
+inner join PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg on tran.ITEM_ID = lstg.ITEM_ID
+
+where 1=1
+and tran.CK_WACKO_YN = 'N'
+and tran.LSTG_SITE_ID = 3
+and tran.SLR_CNTRY_ID = 3
+and cal.AGE_FOR_RTL_YEAR_ID >= 0
+and cal.AGE_FOR_RTL_MONTH_ID <= -1
+group by 1,2,3,4,5,6,7
+)) a 
+inner join PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg on a.item_id = lstg.ITEM_ID
+inner join P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and lstg.ITEM_SITE_ID = cat.SITE_ID
+where item_rank <= 20
+;
+
+select *
+from potential_listings
+limit 10
