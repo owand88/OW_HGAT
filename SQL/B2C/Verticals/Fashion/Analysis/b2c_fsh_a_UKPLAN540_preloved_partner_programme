@@ -33,15 +33,16 @@ Table 2: (Overall B2C Level – please use “Used Apparel B2C definition)
 
 Author: Oliver Wand
 
-Date (Latest) : 13/09/2023
+Date: 14/09/2023 (adjusted to view)
+13/9/23 (copied code from history)
 
 
 */
 
 
 -- SELLER VIEW
-DROP TABLE if exists P_ukplan_report_T.PRELOVE_PROGRAMME_SELLERS;
-Create table P_ukplan_report_T.PRELOVE_PROGRAMME_SELLERS as
+DROP VIEW if exists P_ukplan_report_T.PRELOVE_PROGRAMME_SELLERS;
+CREATE VIEW P_ukplan_report_T.PRELOVE_PROGRAMME_SELLERS as
 
 -- GMV
 SELECT
@@ -230,8 +231,8 @@ GROUP BY 1,2,3,4,5,6,7,8,9,10,11
 ;
 
 -- OVERALL
-DROP TABLE if exists P_ukplan_report_T.PRELOVE_PROGRAMME_TOTAL;
-CREATE table P_ukplan_report_T.PRELOVE_PROGRAMME_TOTAL as
+DROP VIEW if exists P_ukplan_report_T.PRELOVE_PROGRAMME_TOTAL;
+CREATE VIEW P_ukplan_report_T.PRELOVE_PROGRAMME_TOTAL as
 
 -- GMV
 SELECT
