@@ -92,6 +92,7 @@ AND ck.SITE_ID = 3
 AND CK.CK_WACKO_YN = 'N'
 AND CK.AUCT_END_DT >= '2018-12-25'
 AND ck.SALE_TYPE not in (10,12,15)
+AND raw.partner_programme_member_flag = 1  -- This rule has been added later on, so we can only report the results for the preloved partner programme sellers in the dashboard. This was as per Lucy Peacock's request
 
 AND focus.FOCUSED_VERTICAL_LVL1 = 'Used Apparel'
 GROUP BY 1,2,3,4,5,6,7,8,9,10,11
@@ -136,6 +137,7 @@ AND lstg.LSTG_SITE_ID = 3
 AND lstg.AUCT_END_DT >= '2018-12-25'
 and lstg.eu_b2c_c2c_flag = 'B2C'
 and lstg.FCSD_VRTCL_NAME = 'Used Apparel'
+AND raw.partner_programme_member_flag = 1
 GROUP BY 1,2,3,4,5,6,7,8,9,10,11
 	
 
@@ -179,6 +181,7 @@ WHERE 1=1
 and trfc.SITE_ID = 3
 and lstg.eu_b2c_c2c_flag = 'B2C'
 and lstg.FCSD_VRTCL_NAME = 'Used Apparel'
+AND raw.partner_programme_member_flag = 1
 GROUP BY 1,2,3,4,5,6,7,8,9,10,11
 
 UNION ALL
@@ -226,6 +229,7 @@ WHERE 1=1
 	AND t.USER_SRVY_CMPLTD_DT >= '2021-01-01'
 	and t.USER_CNTRY_ID=3
 	and t.tchpnt_desc = 'Used Apparel'
+	AND raw.partner_programme_member_flag = 1
 
 GROUP BY 1,2,3,4,5,6,7,8,9,10,11
 ;
