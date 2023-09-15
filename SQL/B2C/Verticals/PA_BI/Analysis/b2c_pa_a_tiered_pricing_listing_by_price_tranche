@@ -1,0 +1,224 @@
+--UK Inventory Planning
+--UKPLAN-522
+--Tiered Pricing - ASP and LLs under and over £500
+-- Requested by Manish
+-- Author : Irene Chan
+
+--Task:Are you able to send me the ASP and number of LLs under and over £500 for these sellers please?
+--Objective: We are going to run tiered pricing trial and we are selecting sellers for this trial. The trial is scheduled go live on 29th Aug. 
+-- Buyers will be charged 2% for sales over £500 for the sellers. We would like to propose sellers selling high ASP products and in the high ASP categories.
+
+-------------------------------------------------------------------------------------------------------------------------------------
+-- Seller List
+---------------------------------------------------------------------------------------- ------------------------------------------------------------
+Drop table if exists P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_listing_by_price_tranche_seller ;
+Create table P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_listing_by_price_tranche_seller as
+select distinct user_id as seller_id , USER_SLCTD_ID  from DW_USERS_INFO where user_id in (
+1040771999,
+283609349,
+206636239,
+1629389649,
+664684062,
+537029600,
+341473215,
+902234074,
+1071316341,
+165802584,
+312205855,
+155259340,
+1211861547,
+169644112,
+1010442666,
+861696370,
+1235174518,
+1069206168,
+121427919,
+1013122163,
+1867388646,
+194277221,
+1214106427,
+1239535406,
+1956492052,
+1273327220,
+186168221,
+1193174283,
+90271927,
+514577553,
+347548400,
+853227791,
+2203105650,
+826159497,
+1049198908,
+187902483,
+86772766,
+76850379,
+415613804,
+72225117,
+188406990,
+1402375030,
+1224030799,
+1014041303,
+298149890,
+1007947816,
+99210984,
+211724925,
+706025236,
+82094130,
+132845926
+);
+ ----------------------------------------------------------------------------------------------------------------------------------------------------
+
+ ----------------------------------------------------------------------------------------------------------------------------------------------------
+Drop table if exists P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_listing_by_price_tranche  ; 
+Create table         P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_listing_by_price_tranche as (
+Select slr_id,
+USER_SLCTD_ID,
+Price_tranche,
+sum(start_price_lstg_curncy) /count(item_id) as ASP,
+count(distinct item_id) ll from (
+	select 
+	lst.Slr_ID,
+	U.USER_SLCTD_ID,
+	lst.item_id,
+	start_price_lstg_curncy,
+	case when start_price_lstg_curncy between 0 and 500 then 'a.0-500'
+		--when start_price_lstg_curncy between 50 and 100 then 'b.50-100' 
+	--	when START_PRICE_LSTG_CURNCY between 100 and 500 then 'c.100-500'
+		when START_PRICE_LSTG_CURNCY >=500 then 'b.500+' else START_PRICE_LSTG_CURNCY end as Price_tranche
+	from  DW_LSTG_ITEM lst --
+	inner join ( select distinct  seller_id from P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_listing_by_price_tranche_seller)  c on lst.slr_id=c.seller_id
+	INNER JOIN DW_USEGM_HIST AS HIST          ON HIST.USER_ID = lst.SLR_ID         AND HIST.USEGM_GRP_ID = 48    --      AND HIST.USEGM_ID = 206 --B2C only sellers
+	INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and cat.site_id =3 -- select distinct site_id from 
+	INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID ----- AND  COND.CNDTN_ROLLUP_ID =  1  /*THEN 'Used' */  
+	INNER JOIN (select CAL_DT,RETAIL_YEAR, QTR_OF_YEAR_ID,Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4,5 ) CAL  ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT 
+	AND RETAIL_YEAR in (  2022,2023)
+	left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+	where 1=1
+	and lst.WACKO_YN = 'N'   
+	and CAT.bsns_vrtcl_name in ('Parts & Accessories') 
+	AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+	and lst.ITEM_CNTRY_ID=3
+	and lst.SLR_site_ID = 3 -- change country site id if needed 
+	 and lst.AUCT_end_dt >= CURRENT_DATE
+	)
+	 Group by 1,2,3)
+	
+;
+-- 95
+select * from  P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_listing_by_price_tranche ;
+-- select * from DW_LSTG_ITEM lst where ITEM_CNTRY_ID=3 and  AUCT_TYPE_CODE not in (10,15) and  AUCT_end_dt >= CURRENT_DATE and SLR_site_ID = 3  and lst.WACKO_YN = 'N'  limit 100;
+ -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+ -- -- identify primary l3 L4
+ -- TOP SELLERS
+
+drop table if exists   P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_gmv ;-- select * FROM P_ICHAN_T.PA_BUSINESS_PERFORMANCE ;
+create table  P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_gmv as 
+(
+SELECT 
+RETAIL_YEAR,
+ck.SELLER_ID,
+USER_SLCTD_ID,
+	categ_lvl3_ID,
+        categ_lvl3_name,
+		categ_lvl4_name,
+		categ_lvl4_ID,
+SUM(CK.QUANTITY) AS BI,
+SUM(GMV_PLAN_USD) AS GMV 
+FROM  DW_CHECKOUT_TRANS ck 
+inner join ( select distinct  seller_id from P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_listing_by_price_tranche_seller)  c on ck.seller_id=c.seller_id
+INNER JOIN ( select meta_categ_id, meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_id,categ_lvl4_name,
+LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+        AND USEGM_ID = 206 
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5)AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+		
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+       AND RETAIL_YEAR >=2023
+		and age_for_rtl_week_id <= -1 
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+left outer JOIN DW_USERs U ON U.USER_ID= CK.SELLER_ID 
+WHERE 1=1
+and  SLR_CNTRY_ID = 3 --UK sellers
+and  BYR_CNTRY_ID = 3 --UK buyers
+and ck.site_id = 3 
+AND RPRTD_WACKO_YN = 'N'
+        AND AUCT_END_DT >= '2017-12-20'
+        AND CREATED_DT >= '2017-12-20'    
+and bsns_vrtcl_name in ('Parts & Accessories')
+GROUP BY 1,2,3,4,5,6,7) ;	
+
+
+-- 2 
+-- identify primary l3 L4
+
+drop table if exists    P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_gmv_top_cat ;--
+create table  P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_gmv_top_cat as
+SELECT A.*, B.Top_L3_category_flag
+FROM (
+SELECT 
+    Seller_id,
+    USER_SLCTD_ID,
+    categ_lvl3_name,
+	categ_lvl3_ID,
+    categ_lvl4_name,
+	categ_lvl4_ID,
+    GMV,
+	BI,
+    CASE WHEN row_num_l4 = 1 THEN 'Top L4 Category' ELSE 'Non-Top Category' END AS Top_L4_category_flag
+FROM (
+    SELECT 
+        Seller_id,
+        USER_SLCTD_ID,
+		categ_lvl3_name,
+		categ_lvl3_ID,
+        categ_lvl4_name,
+		categ_lvl4_ID,
+        GMV,
+		BI,
+        ROW_NUMBER() OVER (PARTITION BY Seller_id  ORDER BY GMV DESC) AS row_num_l4
+    FROM (Select 
+		Seller_id,
+        USER_SLCTD_ID,
+		categ_lvl3_ID,
+        categ_lvl3_name,
+		categ_lvl4_name,
+		categ_lvl4_ID,
+        sum(GMV) GMV ,SUM(BI) BI from  P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_gmv  group by 1,2,3,4,5,6)
+	) ) A
+
+LEFT JOIN 
+--L3
+(
+SELECT 
+    Seller_id,
+    USER_SLCTD_ID,
+	categ_lvl3_ID,
+    categ_lvl3_name,
+    GMV,
+	BI,
+   CASE WHEN row_num_l3 = 1 THEN 'Top L3 Category' ELSE 'Non-Top Category' END AS Top_L3_category_flag
+	
+FROM (
+    SELECT 
+        Seller_id,
+        USER_SLCTD_ID,
+		categ_lvl3_ID,
+        categ_lvl3_name,
+        GMV,
+		BI,
+		ROW_NUMBER() OVER (PARTITION BY Seller_id  ORDER BY GMV DESC) AS row_num_l3
+     FROM (Select 
+		Seller_id,
+        USER_SLCTD_ID,
+		categ_lvl3_ID,
+        categ_lvl3_name,
+		sum(GMV) GMV ,SUM(BI) BI from  P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_gmv group by 1,2,3,4)
+	) ) B
+	ON A.SELLER_ID=B.SELLER_ID AND A.categ_lvl3_ID=B.categ_lvl3_ID

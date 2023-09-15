@@ -1,0 +1,50 @@
+
+--UK Inventory Planning
+--UKPLAN-528
+--Car Parts Category Performance and Top Brands
+
+-- 1.	Are you able to get me total GMV, BI, LLs and ASP by L3 and L4 for car parts and accessories?
+-- 2.	Could you also get me top 5 brands total GMV, BI, LLs and ASP for each of L3 and L4?
+-- 3.	Could you also get me top 5 brands total GMV, BI, LLs and ASP for each of L3 and L4 by ‘Genuine OE/OEM’ flag?
+
+-- To analyse the GMV concentration within specific inventory categories. 
+--This examination aims to highlight the price competitiveness of certain brands on eBay.co.uk when compared to the official brand websites.
+
+-- 1. https://tableau.corp.ebay.com/#/views/CategoryPerformance/HistoricalPerformance?:iid=1
+-- 2.   p_csi_tbs_t.pa_brand_gmv_1 
+-- 3.  P_ukplan_report_T.pa_strat_inv_ll_oem_id 
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--2. Top 5 brands 
+drop table  P_INVENTORYPLANNING_T.pa_brand_gmv_car_parts_oem 
+  ; 
+CREATE TABLE  P_INVENTORYPLANNING_T.pa_brand_gmv_car_parts_oem as 
+SELECT * FROM (
+select 
+row_number () over ( partition by  categ_lvl4_name order by  GMV desc ) brand_rank
+,*
+		from (Select Retail_year,
+
+		categ_lvl2_name,
+		categ_lvl2_id,
+		categ_lvl3_name,
+		categ_lvl3_id,
+		categ_lvl4_name,
+		categ_lvl4_id,
+		Brand,
+		CASE WHEN A.ITEM_ID=B.ITEM_ID  THEN 'OEM' ELSE 'NON OEM' END AS OEM_FLAG,
+		sum(gmb_plan) GMV,
+		sum(bi) as BI
+		from  p_csi_tbs_t.pa_brand_gmv_1   A
+		LEFT JOIN  P_ukplan_report_T.pa_strat_inv_ll_oem_id  B ON A.ITEM_ID=B.ITEM_ID 
+		where categ_lvl2_name ='Car Parts & Accessories'
+		and retail_year =2023 
+		and slr_segment='B2C'
+		and byr_segment = 'DOMESTIC'
+		group by 1,2,3,4,5,6,7,8,9  ) 
+) where brand_rank <=20 ---and brand
+;
+select * from   P_INVENTORYPLANNING_T.pa_brand_gmv_car_parts_oem ; 

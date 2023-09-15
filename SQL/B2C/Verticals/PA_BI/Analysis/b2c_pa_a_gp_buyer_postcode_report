@@ -1,0 +1,479 @@
+	 
+--UKPLAN-503 
+-- Requested by Laura Richards
+--Authoer: Irene Chan
+
+
+-- To get a more representative view I’m going to need to model spend on eBay.co.uk vs portal for all portal registered buyers.
+-- I am happy to do a manual review if you can provide the same report back to include all buyer postcodes that have purchased on the b2b portal and compare those to the buyer postcodes that have bought on eBay.co.uk (I’ll probably need to model on the large multi site set ups as those are easier to distinguish buy the buyer name).
+-- Can you get a 2020 view for eBay.co.uk spend (pre portal launch) – this will also cover the previous request I just put through? 
+
+-------------------------------------------------------------------------------------------------------------------
+-- •	B2B portal registered buyers – name and postcodes
+-- •	Registered buyer spend on portal for 2023 YTD
+-- •	Registered buyer spend on ebay.co.uk for 2020 full year and ytd and 2023 ytd
+---------------------------------------------------------------------------------------------------------------
+
+ 
+----------- --------------------------------------------------------
+-- postcode report
+----------------------------------------------------------------
+-- First get all Transaction ID for  Green Parts
+
+ drop table if exists P_ICHAN_T.gp_gmv_all  ;
+ create table P_ICHAN_T.gp_gmv_all as(
+
+	SELECT	Retail_year
+			,Retail_week	
+			,ck.seller_id
+			,USER_SLCTD_ID
+			,TRANSACTION_ID
+			,BUYER_ID
+		    ,SUM(gmv_plan_usd) AS GMV_usd
+			, sum(QUANTITY) as BI
+			FROM   DW_CHECKOUT_TRANS ck 
+			INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.gmv_DT   and retail_year >=2023 and age_for_rtl_week_id <= -1  --change here for time period if needed
+			INNER JOIN ( select meta_categ_id, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_name, categ_lvl4_id, LEAF_CATEG_ID,SITE_ID,
+			 BSNS_VRTCL_NAME  ,SAP_CATEGORY_ID,
+					
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+else bsns_vrtcl_name end as new_vertical
+		from DW_CATEGORY_GROUPINGS where SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)  group by 1,2,3,4,5,6,7,8 ,9,10,11,12)  AS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) 
+		AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			inner JOIN lstg_item_cndtn cond ON ck.item_id = cond.item_id  AND ck.auct_end_dt = cond.AUCT_END_DT
+			left outer JOIN DW_USERs U ON U.USER_ID= ck.seller_id 
+			INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+						WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				--and ck.site_id = 3
+				and slr_cntry_id = 3
+				and BYR_CNTRY_ID=3
+				and CREATED_DT >='2018-01-01'
+				and  categ_lvl2_id in (6030)
+			    and new_vertical in('Parts & Accessories')
+				and u.USER_DSGNTN_ID =2 
+				and  CNDTN_ROLLUP_ID = 3
+				and HIST.USEGM_ID = 206	
+				GROUP BY 1,2,3,4,5,6);
+
+-- THen get delivery postcode by mapping transaction ID-
+Drop table  if exists  p_inventoryplanning_t.gmv_buyer_postcode; -- select * from    p_inventoryplanning_t.gmv_buyer_postcode
+create table p_inventoryplanning_t.gmv_buyer_postcode as(
+   SELECT SSA.CK_TRANS_ID
+	, ADR.cntct_name
+	, ADR.ZIP
+	, ADR.ADDR1_TXT
+	, ADR.ADDR2_TXT
+	, ADR.CITY_TXT
+	, ADR.CNTRY_ID
+	, ADR.CNTRY_TXT
+	, LBL_AD.CNTCT_NAME AS LBL_CONTACT_NAME
+	, LBL_AD.ADDR1_TXT AS LBL_ADDR1
+	, LBL_AD.ADDR2_TXT AS LBL_ADDR2
+	, LBL_AD.CITY_TXT AS LBL_CITY
+	, LBL_AD.CNTRY_TXT AS LBL_COUNTRY
+	, LBL_AD.STATE_PRVNC_TXT AS LBL_STATE
+	, LBL_AD.PSTL_CODE_TXT AS LBL_ZIP
+FROM SSA_SHPMT_TRANS_FACT SSA
+LEFT JOIN  PRS_SECURE_V.DW_USER_ADDRESSES ADR
+	ON SSA.CK_TO_ADDR_ID = ADR.ADDRESS_ID
+LEFT JOIN DW_SHIPMENT SHP
+	on SSA.SHIPMENT_ID = SHP.SHIPMENT_ID
+LEFT JOIN PRS_SECURE_V.DW_SHPMT_LABEL_ADDR LBL_AD
+	ON SHP.TO_ADDRESS_ID = LBL_AD.SHPMT_LABEL_ADDR_ID
+-- If SHPMNT_CLNT_CD = 0 then COALESCE(DW_USER_ADRESSES.ADDRESS_ID, DW_SHPMT_SOLD_SHPNG_ADDR.SHPNG_ADDR_ID)
+-- if SHPMNT_CLNT_CD = 1 then COALESCE(DW_SHPMT_LABEL_ADDR.SHPMT_LABEL_ADDR_ID, DW_USER_ADRESSES.ADDRESS_ID)
+WHERE 1=1
+-- AND SSA.CK_DT > '2021-01-01'
+AND SSA.BUYER_CNTRY_ID = 3
+AND SSA.CK_TRANS_ID IN (select distinct TRANSACTION_ID from     P_ICHAN_T.gp_gmv_all where retail_year >=2023   and  TRANSACTION_ID <>0  ));
+   
+
+-- De-dupe postcode and address
+Drop table  if exists  p_inventoryplanning_t.gmv_buyer_postcode_lbl; 
+create table p_inventoryplanning_t.gmv_buyer_postcode_lbl as(   
+select 
+ck_trans_id,
+max(ZIP) Postcode,
+max(ADDR1_TXT) ADDR1_TXT,
+max(ADDR2_TXT )ADDR2_TXT,
+max(CITY_TXT ) CITY_TXT,
+max(LBL_CONTACT_NAME ) LBL_CONTACT_NAME,
+max(LBL_ADDR1 )  LBL_ADDR1,
+max(LBL_ADDR2 ) LBL_ADDR2,
+max(LBL_CITY) LBL_CITY,
+max(LBL_COUNTRY) LBL_COUNTRY,
+max(LBL_STATE) LBL_STATE,
+max(LBL_ZIP) LBL_ZIP
+ from p_inventoryplanning_t.gmv_buyer_postcode 
+group by 1  )   ;
+
+-- Assign Postcode to buyer transaction table
+Drop table  if exists  p_inventoryplanning_t.gmv_buyer_postcode_comb; --select platform,sum(gmv_usd) gmv_usd from p_inventoryplanning_t.gmv_buyer_postcode_comb group by 1
+create table p_inventoryplanning_t.gmv_buyer_postcode_comb as(  
+select
+a.*,
+b.*,
+u.USER_SLCTD_ID as buyer_name,
+case when  a.TRANSACTION_ID=c.TRANSACTIONid then 'portal' else 'ebay site' end as platform,
+case when postcode in ('RH1 2NL',
+'RH19 1XZ',
+'TN23 4GZ',
+'PO6 1SX',
+'B97 6AR',
+'OX16 1RH',
+'MK8 0AB',
+'LU2 9NL',
+'RH1 2NB',
+'CR0 3BT',
+'SO50 4RZ',
+'BN17 7GA',
+'SS14 3GL',
+'RG2 0HG',
+'TN14 5EL'
+) then 'Y' else 'N' end as Report
+from  P_ICHAN_T.gp_gmv_all  a 
+left join  p_inventoryplanning_t.gmv_buyer_postcode_lbl b on a.TRANSACTION_ID =b.CK_TRANS_ID
+left join  P_ICHAN_T.gp_orders                          c on a.TRANSACTION_ID=c.TRANSACTIONid
+left outer JOIN DW_USERs U ON U.USER_ID=a.buyer_id 
+where a.retail_year >=2023   and  TRANSACTION_ID <>0 
+--and a.TRANSACTION_ID=c.TRANSACTIONid
+);
+
+select distinct postcode from   p_inventoryplanning_t.gmv_buyer_postcode_comb where platform = 'portal'  limit 100; 
+select distinct buyer_name , platform from  p_inventoryplanning_t.gmv_buyer_postcode_comb  where platform = 'portal'
+select * from  P_ICHAN_T.gp_orders  
+
+select * from  p_inventoryplanning_t.gmv_buyer_postcode_comb_2020 where postcode --='PR2 2YL'  ;
+in ( 'WF7 6TA',
+'IP33 1XP',
+'UB2 5LE',
+'WA1 2HZ',
+'M27 9HH',
+'SS6 7UT',
+'SK11 0TA',
+'TW7 4EJ')
+select * from DW_USERS_INFO where user_id =1032798754
+select distinct user_id , zIP from PRS_SECURE_V.DW_USER_ADDRESSES where upper(zip) in ( 'WF7 6TA',
+'IP33 1XP',
+'UB2 5LE',
+'WA1 2HZ',
+'M27 9HH',
+'SS6 7UT',
+'SK11 0TA',
+'TW7 4EJ') limit 100 where 
+---------------------------------------------------------------
+-- RUN THE GMV IN 2020 FOR THE REGISTERED BUYERS
+--------------------------------------------------------------------
+-- FIRST GET ALL GREEN PARTS TRANSACTION ID AND GMV IN 2020
+Drop table if exists P_ICHAN_T.gp_gmv_2020  ;
+Create table P_ICHAN_T.gp_gmv_2020 as(
+SELECT	Retail_year
+			,retail_week	
+			,ck.seller_id
+			,U.USER_SLCTD_ID as seller_name
+			,UB.USER_SLCTD_ID as BUYER_name			
+			,TRANSACTION_ID
+			,BUYER_ID
+	        ,SUM(gmv_plan_usd) AS GMV_usd
+			,sum(QUANTITY) as BI
+FROM   DW_CHECKOUT_TRANS ck 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.gmv_DT   and retail_year =2020
+INNER JOIN ( select meta_categ_id, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_name, categ_lvl4_id, LEAF_CATEG_ID,SITE_ID,
+			 BSNS_VRTCL_NAME  ,SAP_CATEGORY_ID,		
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+else bsns_vrtcl_name end as new_vertical
+		from DW_CATEGORY_GROUPINGS where SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)  group by 1,2,3,4,5,6,7,8 ,9,10,11,12)  AS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) 
+		AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			inner JOIN lstg_item_cndtn cond ON ck.item_id = cond.item_id  AND ck.auct_end_dt = cond.AUCT_END_DT
+			left outer JOIN DW_USERs U ON U.USER_ID= ck.seller_id 
+			left outer JOIN DW_USERs Ub ON Ub.USER_ID= ck.BUYER_ID 
+			INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+						WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				--and ck.site_id = 3
+				and slr_cntry_id = 3
+				and BYR_CNTRY_ID=3
+				 and retail_year =2020
+				and CREATED_DT >='2020-01-01'
+				and  categ_lvl2_id in (6030)
+				and new_vertical in('Parts & Accessories')
+				and u.USER_DSGNTN_ID =2 
+				and  CNDTN_ROLLUP_ID = 3
+				and HIST.USEGM_ID = 206		
+				GROUP BY 1,2,3,4,5,6,7);
+				-- 2684381  
+				
+-- DELIVERY POSTCODE 
+Drop table  if exists  p_inventoryplanning_t.gmv_buyer_postcode_lbl_2020; -- select * from    p_inventoryplanning_t.gmv_buyer_postcode
+create table p_inventoryplanning_t.gmv_buyer_postcode_lbl_2020 as(   
+   select 
+   ck_trans_id,
+   max(ZIP) Postcode,
+   max(ADDR1_TXT) ADDR1_TXT,
+max(ADDR2_TXT )ADDR2_TXT,
+max(CITY_TXT ) CITY_TXT,
+max(LBL_CONTACT_NAME ) LBL_CONTACT_NAME,
+max(LBL_ADDR1 )  LBL_ADDR1,
+max(LBL_ADDR2 ) LBL_ADDR2,
+max(LBL_CITY) LBL_CITY,
+max(LBL_COUNTRY) LBL_COUNTRY,
+max(LBL_STATE) LBL_STATE,
+max(LBL_ZIP) LBL_ZIP
+ from 
+
+(
+   SELECT SSA.CK_TRANS_ID
+	, ADR.cntct_name
+	, ADR.ZIP
+	, ADR.ADDR1_TXT
+	, ADR.ADDR2_TXT
+	, ADR.CITY_TXT
+	, ADR.CNTRY_ID
+	, ADR.CNTRY_TXT
+	, LBL_AD.CNTCT_NAME AS LBL_CONTACT_NAME
+	, LBL_AD.ADDR1_TXT AS LBL_ADDR1
+	, LBL_AD.ADDR2_TXT AS LBL_ADDR2
+	, LBL_AD.CITY_TXT AS LBL_CITY
+	, LBL_AD.CNTRY_TXT AS LBL_COUNTRY
+	, LBL_AD.STATE_PRVNC_TXT AS LBL_STATE
+	, LBL_AD.PSTL_CODE_TXT AS LBL_ZIP
+FROM SSA_SHPMT_TRANS_FACT SSA
+LEFT JOIN  PRS_SECURE_V.DW_USER_ADDRESSES ADR
+	ON SSA.CK_TO_ADDR_ID = ADR.ADDRESS_ID
+LEFT JOIN DW_SHIPMENT SHP
+	on SSA.SHIPMENT_ID = SHP.SHIPMENT_ID
+LEFT JOIN PRS_SECURE_V.DW_SHPMT_LABEL_ADDR LBL_AD
+	ON SHP.TO_ADDRESS_ID = LBL_AD.SHPMT_LABEL_ADDR_ID
+-- If SHPMNT_CLNT_CD = 0 then COALESCE(DW_USER_ADRESSES.ADDRESS_ID, DW_SHPMT_SOLD_SHPNG_ADDR.SHPNG_ADDR_ID)
+-- if SHPMNT_CLNT_CD = 1 then COALESCE(DW_SHPMT_LABEL_ADDR.SHPMT_LABEL_ADDR_ID, DW_USER_ADRESSES.ADDRESS_ID)
+WHERE 1=1
+-- AND SSA.CK_DT > '2021-01-01'
+AND SSA.BUYER_CNTRY_ID = 3
+AND SSA.CK_TRANS_ID IN (select distinct TRANSACTION_ID from   P_ICHAN_T.gp_gmv_2020  where  TRANSACTION_ID <>0  ))
+GROUP BY 1);
+   -- 2662632  
+   		
+		
+
+-- Assign Postcode to buyer transaction table FOR 2020 GMV
+Drop table  if exists  p_inventoryplanning_t.gmv_buyer_postcode_comb_2020; -- select * from    p_inventoryplanning_t.gmv_buyer_postcode
+create table p_inventoryplanning_t.gmv_buyer_postcode_comb_2020 as(  
+select
+a.*,
+b.*
+from  P_ICHAN_T.gp_gmv_2020  a 
+left join p_inventoryplanning_t.gmv_buyer_postcode_lbl_2020 b
+on a.TRANSACTION_ID =b.CK_TRANS_ID
+WHERE LOWER(POSTCODE) IN (SELECT DISTINCT LOWER(POSTCODE) FROM  p_inventoryplanning_t.gmv_buyer_postcode_comb ) 
+);
+-- 1692645 
+SELECT SUM(GMV_USD)  FROM  p_inventoryplanning_t.gmv_buyer_postcode_comb_2020 WHERE RETAIL_WEEK BETWEEN 1 AND 30  ;
+-- 69519454.713257
+---------------------------------------------------------------------------
+
+--- LOOK FOR REGISTERED BUYER IN CURRENT YEAR 2023, BOUGHT FROM CERTIFIED SELLERS AND TRANSACTION_ID  MATCH THOSE ON THE PORTAL DATA 
+drop table if exists  p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_2023 ;
+CREATE TABLE  p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_2023 as
+sELECT RETAIL_YEAR,
+RETAIL_WEEK, 
+A.SELLER_ID, 
+USER_SLCTD_ID,
+BUYER_NAME,
+BUYER_ID, 
+platform,
+CASE WHEN  A.SELLER_ID=B.SELLER_ID  THEN 'CERTIFIED SELLER' ELSE '' END CERTIFIED_SELLER,
+ CASE WHEN A.POSTCODE=C.POSTCODE THEN 'REGISTERED_BUYER' ELSE 'N' END AS REGISTERED_BUYER ,
+A.POSTCODE,
+ADDR1_TXT,
+ADDR2_TXT,
+CITY_TXT,
+SUM(GMV_USD) GMV, 
+SUM(BI) BI
+FROM  p_inventoryplanning_t.gmv_buyer_postcode_comb A
+LEFT JOIN ( SELECT DISTINCT SELLER_ID FROM P_InventoryPlanning_T.certified_recyclers_update ) B ON A.SELLER_ID=B.SELLER_ID 
+LEFT JOIN ( SELECT DISTINCT POSTCODE FROM   p_inventoryplanning_t.gmv_buyer_postcode_comb WHERE  BUYER_NAME ='agentbuyergpprod') C ON A.POSTCODE=C.POSTCODE
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11 ,12,13 
+;-- 1895311  
+SELECT PLATFORM, REGISTERED_BUYER , SUM(GMV ) GMV FROM   p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_2023 WHERE RETAIL_WEEK BETWEEN 1 AND 30  GROUP BY 1,2 ;
+
+--SELECT * FROM   p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_2023 WHERE  REGISTERED_BUYER= 'REGISTERED_BUYER' ;
+-- agentbuyergpprod
+
+-- SINCE THE BUYER NAME FROMTHE PORTAL ARE ALL GROUPED TO 'agentbuyergpprod' in ebay data ,  WE USE DELIVERY POSTCODE TO DISTINGUISH EACH SELLERS AND CREATE A LOOKUP
+DROP TABLE IF EXISTS   p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_lookup ;
+Create table p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_lookup as SELECT * FROM (
+SELECT ROW_NUMBER() OVER (PARTITION BY POSTCODE ORDER BY GMV DESC 	) RANK, *  
+FROM (
+select  buyer_id, buyer_name, upper(postcode) postcode, ADDR1_TXT ,  sum(gmv)gmv  from   p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_2023 
+where 1=1 
+and buyer_name <>'agentbuyergpprod'
+group by 1,2,3,4  ) WHERE POSTCODE IS NOT NULL ) WHERE RANK =1 ;
+---709605 
+
+select distinct a.user_id, b.USER_SLCTD_ID , zIP from ( 
+select distinct user_id , zIP from PRS_SECURE_V.DW_USER_ADDRESSES where upper(zip) in ( 'WF7 6TA',
+'IP33 1XP',
+'UB2 5LE',
+'WA1 2HZ',
+'M27 9HH',
+'SS6 7UT',
+'SK11 0TA',
+'TW7 4EJ')) A
+ left join DW_USERS_INFO b on a.user_id=b.user_id
+
+select * from  P_ICHAN_T.gp_gmv_2020
+where buyer_id in ( 
+
+306177040,
+1162635965,
+84058023,
+1911580299,
+2300870451,
+712017003,
+2058698860,
+226120977,
+712126624)
+
+
+-- buyer lookup : Select * from  p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_lookup ;
+-- 2023 : select * from p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_2023 limit 100 ;
+-- 2020 : SELECT * FROM  p_inventoryplanning_t.gmv_buyer_postcode_comb_2020  ;
+
+
+-- FINAL RESULTS
+DROP TABLE IF EXISTS   p_inventoryplanning_t.gmv_buyer_postcode_output  ;
+CREATE TABLE   p_inventoryplanning_t.gmv_buyer_postcode_output as 
+
+SELECT RETAIL_YEAR,
+CASE WHEN RETAIL_WEEK BETWEEN 1 AND 30 THEN 'YTD' ELSE 'N' END AS YTD,
+SELLER_ID, 
+USER_SLCTD_ID as SELLER_NAME,
+CASE WHEN registered_buyer ='REGISTERED_BUYER' THEN B.BUYER_ID    ELSE A.BUYER_ID END AS  BUYER_ID,
+CASE WHEN registered_buyer ='REGISTERED_BUYER' THEN B.BUYER_NAME  ELSE A.BUYER_NAME END AS  BUYER_NAME,
+platform,
+CASE WHEN  A.POSTCODE=C.POSTCODE THEN 'REGISTERED_BUYER' ELSE A.REGISTERED_BUYER END AS  REGISTERED_BUYER,
+A.POSTCODE,
+ADDR1_TXT,
+ADDR2_TXT,
+CITY_TXT,
+SUM(GMV) GMV,
+SUM(BI) BI 
+from p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_2023 A 
+LEFT JOIN ( SELECT DISTINCT POSTCODE, BUYER_NAME, BUYER_ID FROM p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_lookup  WHERE BUYER_NAME <>'agentbuyergpprod') B
+ON A.POSTCODE=B.POSTCODE
+INNER JOIN  ( SELECT DISTINCT POSTCODE FROM p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_2023 WHERE REGISTERED_BUYER='REGISTERED_BUYER')   C ON A.POSTCODE=C.POSTCODE
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12  
+
+UNION ALL 
+
+SELECT RETAIL_YEAR,
+CASE WHEN RETAIL_WEEK BETWEEN 1 AND 30 THEN 'YTD' ELSE 'N' END AS YTD,
+SELLER_ID, 
+SELLER_NAME,
+BUYER_ID,
+BUYER_NAME,
+'ebay site' AS platform,
+CASE WHEN A.POSTCODE=C.POSTCODE THEN 'REGISTERED_BUYER'   ELSE 'N' END AS REGISTERED_BUYER,
+A.POSTCODE,
+ADDR1_TXT,
+ADDR2_TXT,
+CITY_TXT,
+SUM(GMV_USD) GMV,
+SUM(BI) BI 
+FROM  p_inventoryplanning_t.gmv_buyer_postcode_comb_2020 A 
+INNER  JOIN  ( SELECT DISTINCT POSTCODE FROM p_inventoryplanning_t.b2c_pa_a_gp_registered_buyer_2023 WHERE REGISTERED_BUYER='REGISTERED_BUYER')   C ON A.POSTCODE=C.POSTCODE
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12 ;
+-- 3670  
+
+SELECT RETAIL_YEAR, PLATFORM, REGISTERED_BUYER , SUM(GMV) GMV  FROM   p_inventoryplanning_t.gmv_buyer_postcode_output where YTD ='YTD' gROUP BY 1,2,3 
+limit 100;
+
+---------------
+-- 2022
+Drop table if exists P_ICHAN_T.gp_gmv_2022  ;
+Create table P_ICHAN_T.gp_gmv_2022 as(
+SELECT	Retail_year
+			,retail_week	
+			,ck.seller_id
+			,U.USER_SLCTD_ID as seller_name
+			,UB.USER_SLCTD_ID as BUYER_name			
+			--,TRANSACTION_ID
+			,BUYER_ID
+	        ,SUM(gmv_plan_usd) AS GMV_usd
+			,sum(QUANTITY) as BI
+FROM   DW_CHECKOUT_TRANS ck 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL ON CAL.CAL_DT = CK.gmv_DT   and retail_year >=2022
+INNER JOIN ( select meta_categ_id, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_name, categ_lvl4_id, LEAF_CATEG_ID,SITE_ID,
+			 BSNS_VRTCL_NAME  ,SAP_CATEGORY_ID,		
+case when categ_lvl2_id in (20710, 69197, 185066) then 'Electronics' 
+when meta_categ_id in (26395) then 'Lifestyle'
+when categ_lvl2_id in (386, 238, 1202, 49019, 183446, 80546, 222, 11731, 1082, 767, 233, 2613, 1188, 1039, 11743, 19169, 2562, 2616, 436, 14737, 2631, 2624, 717, 16486, 61573,64808,92074, 246) then 'Home & Garden'
+when categ_lvl3_id in (35000, 98989) then 'Home & Garden'
+when categ_lvl3_id in (3244) then 'Parts & Accessories'
+when categ_lvl3_id in (124982, 259225,180969, 260509) then 'Business & Industrial'
+when categ_lvl2_id in (46576) then 'Parts & Accessories'
+else bsns_vrtcl_name end as new_vertical
+		from DW_CATEGORY_GROUPINGS where SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)  group by 1,2,3,4,5,6,7,8 ,9,10,11,12)  AS CAT ON CAT.LEAF_CATEG_ID = ck.LEAF_CATEG_ID AND CAT.SITE_ID in(3) 
+		AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)
+			inner JOIN lstg_item_cndtn cond ON ck.item_id = cond.item_id  AND ck.auct_end_dt = cond.AUCT_END_DT
+			left outer JOIN DW_USERs U ON U.USER_ID= ck.seller_id 
+			left outer JOIN DW_USERs Ub ON Ub.USER_ID= ck.BUYER_ID 
+			INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=ck.Seller_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 and
+				CASE WHEN ck.CREATED_DT < '2009-10-11' THEN CAST('2009-10-11' AS DATE) ELSE ck.CREATED_DT END BETWEEN HIST.BEG_DATE AND HIST.END_DATE  
+						WHERE 1=1
+				and CK.SALE_TYPE NOT IN (10,15)
+				--and ck.site_id = 3
+				and slr_cntry_id = 3
+				and BYR_CNTRY_ID=3
+				 and retail_year >=2022
+				and CREATED_DT >='2020-01-01'
+				and  categ_lvl2_id in (6030)
+				and new_vertical in('Parts & Accessories')
+				and u.USER_DSGNTN_ID =2 
+				and  CNDTN_ROLLUP_ID = 3
+				and HIST.USEGM_ID = 206	
+				and buyer_id in (61621585,
+									646269812,
+									1474821899,
+									1654331826,
+									1774398540,
+									1454547815,
+									1474822850)
+				GROUP BY 1,2,3,4,5,6);
+				-- 2684381  
+61621585
+646269812
+1474821899
+1654331826
+1774398540
+1454547815
+1474822850
+
+

@@ -1,0 +1,97 @@
+-- UKPLAN-508
+-- Requested: Yann Gemmet
+-- Author: Irene Chan
+-- I am working on some data that will need to be presented to Jesse surrounding the motorcycle category, and I was hoping you could help.
+-- Would you by any chance be able to pull the top 3 declining sellers in these 5 categories:
+
+-- 1.	Other Motorcycle & Scooter Parts & Accessories (179753)
+-- 2.	Exhaust & Emission Systems (180027)
+-- 3.	Electrical & Ignition Components (179853)
+-- 4.	Motorcycle & Motorsports Gear (261272)
+-- 5.	Helmets & Accessories (177075)
+(179753,180027,179853,261272,177075)
+--------------------------------------------------------------
+
+
+drop table if exists    P_INVENTORYPLANNING_T.b2c_pa_a_motorcycle_sellers ;-- select * FROM  P_INVENTORYPLANNING_T.b2c_pa_a_motorcycle_sellers ;
+create table  P_INVENTORYPLANNING_T.b2c_pa_a_motorcycle_sellers as
+
+SELECT 
+RETAIL_YEAR,
+SELLER_ID,
+USER_SLCTD_ID,
+categ_lvl2_ID,
+categ_lvl2_name,
+categ_lvl3_ID,
+categ_lvl3_name,
+--cat.categ_lvl4_id, 
+--cat.categ_lvl4_name,
+CASE 
+WHEN retail_week between 1 and 13 then 'Q1'
+WHEN retail_week between 14 and 26 then 'Q2'
+WHEN retail_week between 27 and 39 then 'Q3'
+WHEN retail_week between 40 and 53 then 'Q4'
+ELSE 'OTHER' END AS Quarter,
+
+SUM(CK.QUANTITY) AS BI,
+SUM(GMV_PLAN_USD) AS GMV 
+FROM  DW_CHECKOUT_TRANS ck 
+INNER JOIN ( select meta_categ_id, meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_id, categ_lvl4_name,
+LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 
+        USEGM_GRP_ID = 48 
+        AND USEGM_ID = 206 
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5)AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+       AND RETAIL_YEAR >=2022
+		and age_for_rtl_week_id <= -1 
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+left outer JOIN DW_USERs U ON U.USER_ID= CK.SELLER_ID 
+WHERE 1=1
+and  SLR_CNTRY_ID = 3 --UK sellers
+and  BYR_CNTRY_ID = 3 --UK buyers
+and ck.site_id = 3 
+AND RPRTD_WACKO_YN = 'N'
+        AND AUCT_END_DT >= '2017-12-20'
+        AND CREATED_DT >= '2017-12-20'    
+		and retail_week between 1 and 32
+and bsns_vrtcl_name in ('Parts & Accessories') 
+and categ_lvl3_ID in  (179753,180027,179853,261272,177075)
+GROUP BY 1,2,3,4,5,6,7,8
+;	
+-- 46183
+select * FROM  P_INVENTORYPLANNING_T.b2c_pa_a_motorcycle_sellers ;
+
+Drop table if exists    P_INVENTORYPLANNING_T.b2c_pa_a_motorcycle_yoy  ;
+create table   P_INVENTORYPLANNING_T.b2c_pa_a_motorcycle_yoy as 
+Select
+SELLER_ID,
+USER_SLCTD_ID,
+categ_lvl2_ID,
+categ_lvl2_name,
+categ_lvl3_ID,
+categ_lvl3_name,
+Quarter,
+sum(case when retail_year =2022 then GMV else 0 end ) GMV_ly,
+sum(case when retail_year =2023 then GMV else 0 end ) GMV_ty,
+sum(case when retail_year =2022 then BI else 0 end ) BI_ly,
+sum(case when retail_year =2023 then BI else 0 end ) BI_ty,
+sum(GMV) GMV,
+sum(BI) BI
+from  P_INVENTORYPLANNING_T.b2c_pa_a_motorcycle_sellers
+GROUP BY 1,2,3,4,5,6,7;
+
+Drop table   P_INVENTORYPLANNING_T.b2c_pa_a_motorcycle_decline ;
+create table   P_INVENTORYPLANNING_T.b2c_pa_a_motorcycle_decline as 
+select *, GMV_yoy -1 as GMV_yoy_pc,
+bi_yoy - 1 as BI_Yoy_Pc 
+from ( select * , GMV_ty/GMV_ty  as GMV_yoy,BI_ty/BI_ly  as bi_yoy from   P_INVENTORYPLANNING_T.b2c_pa_a_motorcycle_yoy ) 
+where GMV_ly >=5000
+--and  categ_lvl3_name ='Electrical & Ignition Components'
+order by  categ_lvl3_name, GMV_yoy_pc 

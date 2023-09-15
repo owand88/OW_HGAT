@@ -24,6 +24,7 @@ with pro_trader_sellers as
 		,lttm.MNGT_SGMNT as managed_segment
 		,lttm.CALL_OUTCOME as call_outcome
 		,lttm.CALL_ATTMEMPT as call_attempt
+		,lttm.NXT_CALL_SCHDL_DT as next_call_schedule_date
 		,lttm.CHRT_CNTRY_ID as cohort_country_id
 		,lttm.CHRT_VRTCL as cohort_vertical
 		,lttm.CHRT_REG_STS as cohort_registration_status
