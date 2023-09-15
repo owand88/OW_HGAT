@@ -1,0 +1,86 @@
+-- UKPLAN-551
+-- Author: Irene Chan
+-- Requested by Ian Faulkner
+-- to understand what inventory gaps we now have when a seller drops off the site?
+-- getoffroad4x4 / 1235174518
+--We can first identify the main categories that the seller listed in and then compare the weekly listings by brand within those categories to the listings from all the other sellers as a group.  This will help us determine if any brand’s listings have been decreased following the seller’s removal. 
+
+------------------------------
+Select * from   p_csi_tbs_t.pa_brand_gmv_1  A
+where retail_year =2023
+and seller_id  =1235174518
+
+-- First identify week when seller dropped off
+Select retail_week
+,sum(GMB_PLAN) GMB
+,SUM(BI) BI
+FROM p_csi_tbs_t.pa_brand_gmv_1  A
+where retail_year =2023
+and seller_id  =1235174518
+group by 1
+order by 1 ;
+
+/*
+retail_week	GMB		BI
+27	945.414540		20
+26	10344.039432	153
+25	9984.814147		143
+24	17201.869944	218
+23	22021.987278	287*/
+
+-- Seller dropped off at week 27
+-- compare 10 week before and after.
+-- RW 17 to 26 vs RW 27 to 36
+					
+--  identify top category 
+Select categ_lvl2_name
+,sum(GMB_PLAN) GMB
+,SUM(BI) BI
+FROM p_csi_tbs_t.pa_brand_gmv_1  A
+where retail_year =2023
+and seller_id  =1235174518
+group by 1
+order by 1 ;
+
+-- categ_lvl2_name	GMB	BI
+--Car Parts & Accessories	301948.167621	3203
+--Garage Equipment & Tools	69085.139886	1523
+
+
+
+drop table   P_INVENTORYPLANNING_T.b2c_pa_a_getoffroad_inventory_gap ; 
+CREATE TABLE P_INVENTORYPLANNING_T.b2c_pa_a_getoffroad_inventory_gap as 
+SELECT 
+Retail_year,
+Retail_week,
+case when Retail_week between 17 and 26 then  'pre'
+   when Retail_week between 27 and 36 then  'post' else 'other' end as Period,
+case when  seller_id  =1235174518 then user_slctd_id else 'Other Sellers' end as Seller,
+meta_categ_name,
+meta_categ_id,
+categ_lvl2_name,
+categ_lvl2_id,
+   categ_lvl3_name,
+   categ_lvl3_id,
+   categ_lvl4_name,
+   categ_lvl4_id,
+   A.Brand,
+   sum(GMB_PLAN) GMB,
+   sUM(BI) BI
+FROM p_csi_tbs_t.pa_brand_gmv_1  A
+INNER JOIN ( SELECT DISTINCT BRAND FROM   p_csi_tbs_t.pa_brand_gmv_1  
+					where retail_year =2023
+					and seller_id  =1235174518 )  B ON A.BRAND=B.BRAND
+
+where 1=1
+AND retail_year =2023
+
+and categ_lvl2_name in ( 'Car Parts & Accessories','Garage Equipment & Tools')
+and slr_segment ='B2C'
+and Byr_segment ='DOMESTIC'
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13;
+
+select * from  P_INVENTORYPLANNING_T.b2c_pa_a_getoffroad_inventory_gap ; 
+-- 56973 
+
+------ 
