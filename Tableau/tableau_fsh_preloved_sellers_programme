@@ -1,0 +1,408 @@
+/*
+Jira: https://jirap.corp.ebay.com/browse/UKPLAN-540
+
+Description: Table 1: (Seller Level – comes from Zeta sheet)
+Retail Week
+Retail Quarter ID
+Retail Year
+Seller Name
+GMV
+Sold Items
+Listings
+Views
+Conversion (this will be a calculated field in Tableau)
+ASP (this will be a calculated field in Tableau)
+CSAT
+
++ other data columns in the current "Fashion Sellers" dashboard (i.e. Free Shipping, 30 day return, INR etc.)
+
+
+
+
+Table 2: (Overall B2C Level – please use “Used Apparel B2C definition)
+•	Retail Week
+•	Retail Quarter ID
+•	Retail Year
+•	GMV
+•	Sold Items
+•	Listings
+•	Views
+•	CSAT
+
++ other data columns in the current "Fashion Sellers" dashboard (i.e. Free Shipping, 30 day return, INR etc.)
+
+Author: Oliver Wand
+
+Date: 14/09/2023 (adjusted to view)
+13/9/23 (copied code from history)
+
+
+*/
+
+
+-- SELLER VIEW
+DROP VIEW if exists P_ukplan_report_T.vw_PRELOVE_PROGRAMME_SELLERS;
+CREATE VIEW P_ukplan_report_T.vw_PRELOVE_PROGRAMME_SELLERS as
+
+-- GMV
+SELECT
+RETAIL_YEAR
+,CAL.RTL_QTR_OF_RTL_YEAR_ID as RETAIL_QUARTER
+,retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+,raw.seller_name
+
+,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,raw.CAMPAIGN_CODE
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,sum(ck.GMV_PLAN_USD) as GMV
+,sum(ck.QUANTITY) as SI
+,0 as LL
+,0 as VI
+,0 as CSAT_Excellent
+,0 as CSAT_Total
+FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS ck 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON ck.gmv_dt = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID between -2 and 0 
+			and cal.AGE_FOR_RTL_WEEK_ID <= -1
+
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+    INNER JOIN ACCESS_VIEWS.DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2018-12-25'
+INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN LSTG on ck.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3		
+INNER JOIN  P_ukplan_report_T.pre_loved_focus_sellers raw on ck.SELLER_ID = raw.seller_id
+INNER JOIN ACCESS_VIEWS.FOCUSED_VERT_TXN focus on ck.ITEM_ID = focus.lstg_id and ck.TRANSACTION_ID = focus.CK_TRANS_ID
+
+
+WHERE 1=1
+AND ck.SLR_CNTRY_ID = 3
+and ck.BYR_CNTRY_ID = 3
+AND ck.SITE_ID = 3
+AND CK.CK_WACKO_YN = 'N'
+AND CK.AUCT_END_DT >= '2018-12-25'
+AND ck.SALE_TYPE not in (10,12,15)
+
+AND focus.FOCUSED_VERTICAL_LVL1 = 'Used Apparel'
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+		
+
+UNION ALL
+
+-- Listings
+SELECT
+RETAIL_YEAR
+,CAL.RTL_QTR_OF_RTL_YEAR_ID as RETAIL_QUARTER
+,retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+,raw.seller_name
+
+,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,raw.CAMPAIGN_CODE
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,0 as GMV
+,0 as SI
+,count(distinct lstg.ITEM_ID) as LL
+,0 as VI
+,0 as CSAT_Excellent
+,0 as CSAT_Total
+FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON lstg.AUCT_START_DT <= cal.cal_dt and lstg.AUCT_END_DT >= cal.CAL_DT
+						and cal.AGE_FOR_RTL_YEAR_ID between -2 and 0
+						and cal.AGE_FOR_RTL_WEEK_ID <= -1
+INNER JOIN  P_ukplan_report_T.pre_loved_focus_sellers raw on lstg.slr_id = raw.seller_id
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+WHERE 1=1
+AND lstg.SLR_CNTRY_ID = 3
+AND lstg.LSTG_SITE_ID = 3
+AND lstg.AUCT_END_DT >= '2018-12-25'
+and lstg.eu_b2c_c2c_flag = 'B2C'
+and lstg.FCSD_VRTCL_NAME = 'Used Apparel'
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+	
+
+
+UNION ALL
+
+-- Views
+SELECT
+RETAIL_YEAR
+,CAL.RTL_QTR_OF_RTL_YEAR_ID as RETAIL_QUARTER
+,retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+,raw.seller_name
+
+,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,raw.CAMPAIGN_CODE
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,0 as GMV
+,0 as SI
+,0 as LL
+,sum(trfc.TTL_VI_CNT) as VI
+,0 as CSAT_Excellent
+,0 as CSAT_Total
+
+FROM PRS_RESTRICTED_V.SLNG_TRFC_SUPER_FACT trfc 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON trfc.CAL_DT = cal.cal_dt
+						and cal.AGE_FOR_RTL_YEAR_ID between -2 and 0
+						and cal.AGE_FOR_RTL_WEEK_ID <= -1
+INNER JOIN  P_ukplan_report_T.pre_loved_focus_sellers raw on trfc.SELLER_ID = raw.seller_id
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on trfc.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+INNER JOIN PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT LSTG on trfc.ITEM_ID = lstg.ITEM_ID and trfc.SITE_ID = lstg.ITEM_SITE_ID
+WHERE 1=1
+and trfc.SITE_ID = 3
+and lstg.eu_b2c_c2c_flag = 'B2C'
+and lstg.FCSD_VRTCL_NAME = 'Used Apparel'
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+
+UNION ALL
+
+-- CSAT
+SELECT
+cal.RETAIL_YEAR
+,CAL.RTL_QTR_OF_RTL_YEAR_ID as RETAIL_QUARTER
+,cal.retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+,raw.seller_name
+
+,case when tran.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when tran.cndtn_rollup_id = 1 then 'New'
+when tran.cndtn_rollup_id = 2 then 'Refurbished'
+when tran.cndtn_rollup_id = 3 then 'Used'
+when tran.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,raw.CAMPAIGN_CODE
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,0 as GMV
+,0 as SI
+,0 as LL
+,0 as VI
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 5 then 1 else 0 end) as CSAT_Excellent
+,sum(case when q.QSTN_RSPNS_VALUE_NUM between 1 and 5 then 1 else 0 end) as CSAT_Total
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t 
+INNER JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID 
+INNER JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp ON rsp.QSTN_ID = q.QSTN_ID 
+												AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+INNER JOIN ACCESS_VIEWS.dw_cal_dt cal on cast(t.USER_SRVY_CMPLTD_DT as date) = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -2  and AGE_FOR_RTL_WEEK_ID <= -1
+INNER JOIN PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran on t.ck_trans_id =tran.TRANSACTION_ID and t.lstg_id = tran.ITEM_ID and tran.TRANSACTION_ID > 0
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+INNER JOIN  P_ukplan_report_T.pre_loved_focus_sellers raw on tran.SELLER_ID = raw.seller_id
+
+
+WHERE 1=1 
+	AND USER_SRVY_CMPLTD_DT IS NOT NULL
+	AND t.LSTG_ID > 0
+	AND t.TCHPNT_ID = 92 
+	AND q.QSTN_ID in (36001,37000) 
+	AND t.USER_SRVY_CMPLTD_DT >= '2021-01-01'
+	and t.USER_CNTRY_ID=3
+	and t.tchpnt_desc = 'Used Apparel'
+
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+;
+
+-- OVERALL
+DROP VIEW if exists P_ukplan_report_T.vw_PRELOVE_PROGRAMME_TOTAL;
+CREATE VIEW P_ukplan_report_T.vw_PRELOVE_PROGRAMME_TOTAL as
+
+-- GMV
+SELECT
+RETAIL_YEAR
+,CAL.RTL_QTR_OF_RTL_YEAR_ID as RETAIL_QUARTER
+,retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+
+,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,sum(ck.GMV_PLAN_USD) as GMV
+,sum(ck.QUANTITY) as SI
+,0 as LL
+,0 as VI
+,0 as CSAT_Excellent
+,0 as CSAT_Total
+FROM ACCESS_VIEWS.DW_CHECKOUT_TRANS ck 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON ck.gmv_dt = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID between -2 and 0 
+			and cal.AGE_FOR_RTL_WEEK_ID <= -1
+
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on ck.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+    INNER JOIN ACCESS_VIEWS.DW_USEGM_HIST AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND HIST.USEGM_GRP_ID = 48 
+        AND HIST.USEGM_ID = 206 
+        AND CK.GMV_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+        AND HIST.END_DATE >= '2018-12-25'
+INNER JOIN ACCESS_VIEWS.LSTG_ITEM_CNDTN LSTG on ck.ITEM_ID = lstg.ITEM_ID and lstg.ITEM_SITE_ID = 3
+INNER JOIN ACCESS_VIEWS.FOCUSED_VERT_TXN focus on ck.ITEM_ID = focus.lstg_id and ck.TRANSACTION_ID = focus.CK_TRANS_ID
+
+
+WHERE 1=1
+AND ck.SLR_CNTRY_ID = 3
+and ck.BYR_CNTRY_ID = 3
+AND ck.SITE_ID = 3
+AND CK.CK_WACKO_YN = 'N'
+AND CK.AUCT_END_DT >= '2018-12-25'
+AND ck.SALE_TYPE not in (10,12,15)
+
+AND focus.FOCUSED_VERTICAL_LVL1 = 'Used Apparel'
+GROUP BY 1,2,3,4,5,6,7,8,9
+		
+
+UNION ALL
+
+-- Listings
+SELECT
+RETAIL_YEAR
+,CAL.RTL_QTR_OF_RTL_YEAR_ID as RETAIL_QUARTER
+,retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+
+,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,0 as GMV
+,0 as SI
+,count(distinct lstg.ITEM_ID) as LL
+,0 as VI
+,0 as CSAT_Excellent
+,0 as CSAT_Total
+FROM PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT lstg 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON lstg.AUCT_START_DT <= cal.cal_dt and lstg.AUCT_END_DT >= cal.CAL_DT
+						and cal.AGE_FOR_RTL_YEAR_ID between -2 and 0
+						and cal.AGE_FOR_RTL_WEEK_ID <= -1
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on lstg.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+WHERE 1=1
+AND lstg.SLR_CNTRY_ID = 3
+AND lstg.LSTG_SITE_ID = 3
+AND lstg.AUCT_END_DT >= '2018-12-25'
+and lstg.eu_b2c_c2c_flag = 'B2C'
+and lstg.FCSD_VRTCL_NAME = 'Used Apparel'
+GROUP BY 1,2,3,4,5,6,7,8,9
+	
+
+
+UNION ALL
+
+-- Views
+SELECT
+RETAIL_YEAR
+,CAL.RTL_QTR_OF_RTL_YEAR_ID as RETAIL_QUARTER
+,retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+
+,case when lstg.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when lstg.cndtn_rollup_id = 1 then 'New'
+when lstg.cndtn_rollup_id = 2 then 'Refurbished'
+when lstg.cndtn_rollup_id = 3 then 'Used'
+when lstg.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,0 as GMV
+,0 as SI
+,0 as LL
+,sum(trfc.TTL_VI_CNT) as VI
+,0 as CSAT_Excellent
+,0 as CSAT_Total
+
+FROM PRS_RESTRICTED_V.SLNG_TRFC_SUPER_FACT trfc 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL
+			ON trfc.CAL_DT = cal.cal_dt
+						and cal.AGE_FOR_RTL_YEAR_ID between -2 and 0
+						and cal.AGE_FOR_RTL_WEEK_ID <= -1
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on trfc.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+INNER JOIN PRS_RESTRICTED_V.SLNG_LSTG_SUPER_FACT LSTG on trfc.ITEM_ID = lstg.ITEM_ID and trfc.SITE_ID = lstg.ITEM_SITE_ID
+WHERE 1=1
+and trfc.SITE_ID = 3
+and lstg.eu_b2c_c2c_flag = 'B2C'
+and lstg.FCSD_VRTCL_NAME = 'Used Apparel'
+GROUP BY 1,2,3,4,5,6,7,8,9
+
+UNION ALL
+
+-- CSAT
+SELECT
+cal.RETAIL_YEAR
+,CAL.RTL_QTR_OF_RTL_YEAR_ID as RETAIL_QUARTER
+,cal.retail_week
+,cal.AGE_FOR_RTL_WEEK_ID
+
+,case when tran.ITEM_CNDTN_ID = 1750 then 'New with defects'
+when tran.cndtn_rollup_id = 1 then 'New'
+when tran.cndtn_rollup_id = 2 then 'Refurbished'
+when tran.cndtn_rollup_id = 3 then 'Used'
+when tran.cndtn_rollup_id = 4 then 'Unknown' else 'NA' end as cndtn_descr
+,cat.NEW_VERTICAL
+,cat.META_CATEG_NAME
+,cat.CATEG_LVL2_NAME
+,cat.CATEG_LVL3_NAME
+,0 as GMV
+,0 as SI
+,0 as LL
+,0 as VI
+,sum(case when q.QSTN_RSPNS_VALUE_NUM = 5 then 1 else 0 end) as CSAT_Excellent
+,sum(case when q.QSTN_RSPNS_VALUE_NUM between 1 and 5 then 1 else 0 end) as CSAT_Total
+FROM idm_nps_v.NPS_TCHPNT_SRVY_OVERSAMPLE t 
+INNER JOIN idm_nps_v.NPS_TCHPNT_SRVY_RSPNS q ON q.USER_SRVY_RSPNS_ID = t.USER_SRVY_RSPNS_ID 
+INNER JOIN IDM_NPS_V.NPS_TCHPNT_SRVY_QSTN_RSPNS rsp ON rsp.QSTN_ID = q.QSTN_ID 
+												AND q.QSTN_RSPNS_VALUE_NUM = rsp.QSTN_RSPNS_VALUE_NUM
+
+INNER JOIN ACCESS_VIEWS.dw_cal_dt cal on cast(t.USER_SRVY_CMPLTD_DT as date) = cal.CAL_DT and cal.AGE_FOR_RTL_YEAR_ID >= -2  and AGE_FOR_RTL_WEEK_ID <= -1
+INNER JOIN PRS_RESTRICTED_V.SLNG_TRANS_SUPER_FACT tran on t.ck_trans_id =tran.TRANSACTION_ID and t.lstg_id = tran.ITEM_ID and tran.TRANSACTION_ID > 0
+INNER JOIN P_INVENTORYPLANNING_T.DW_CATEGORY_GROUPINGS_ADJ cat on tran.LEAF_CATEG_ID = cat.LEAF_CATEG_ID and cat.site_id = 3
+
+
+WHERE 1=1 
+	AND USER_SRVY_CMPLTD_DT IS NOT NULL
+	AND t.LSTG_ID > 0
+	AND t.TCHPNT_ID = 92 
+	AND q.QSTN_ID in (36001,37000) 
+	AND t.USER_SRVY_CMPLTD_DT >= '2021-01-01'
+	and t.USER_CNTRY_ID=3
+	and t.tchpnt_desc = 'Used Apparel'
+
+GROUP BY 1,2,3,4,5,6,7,8,9;

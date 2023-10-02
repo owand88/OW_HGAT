@@ -96,7 +96,7 @@ with protrader_cohorts_for_new_quarter as
 
 	from ACCESS_VIEWS.SDM_MDP_BOB_SELLER 
 
-	where BOB_SELLER_SGMNT_CD in ('Managed', 'Pro Trader Scaling')
+	where BOB_SELLER_SGMNT_CD in ('Managed', 'Pro Trader Scaling', 'Focus')
 	and cohort = year(current_date)
 )
 
