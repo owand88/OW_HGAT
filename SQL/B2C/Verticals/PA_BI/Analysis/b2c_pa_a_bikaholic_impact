@@ -1,0 +1,83 @@
+-- UKPLAN-567
+-- Author: Irene Chan
+-- Requested by Yann Gemmett
+-- impact report for my seller who has left/is leaving the platform, indicating any gaps that might be created by their inventory being removed, as well as GMV impact?
+--The seller in question is bikeaholics_uk (846301588).
+
+
+
+create TEMP table seller_id
+select distinct user_id from DW_USERS_INFO where user_id =846301588 ; 
+------------------------------
+/*Select * from   p_csi_tbs_t.pa_brand_gmv_1  A
+where retail_year =2023
+and seller_id  =846301588*/
+
+-- First identify week when seller dropped off
+drop  table  sales_data ;
+create temp  table sales_data
+Select seller_id, retail_week
+,sum(GMB_PLAN) gmv
+,SUM(BI) BI
+FROM p_csi_tbs_t.pa_brand_gmv_1  A
+where retail_year =2023
+and seller_id  =( select distinct user_id  from seller_id) 
+group by 1,2
+;
+-- week 38
+
+
+
+
+-- Seller dropped off at week 38
+-- compare 10 week before and after.
+-- RW 28 to 37 vs RW 38 to 39
+					
+--  identify top category 
+Select categ_lvl2_name
+,sum(GMB_PLAN) GMB
+,SUM(BI) BI
+FROM p_csi_tbs_t.pa_brand_gmv_1  A
+where retail_year =2023
+and seller_id  =( select distinct user_id  from seller_id) 
+group by 1
+order by 1 ;
+--Motorcycle & Scooter Parts & Accessories
+--categ_lvl2_name	GMB	BI
+--Motorcycle & Scooter Parts & Accessories	228977.697512	7061
+
+drop table   P_INVENTORYPLANNING_T.b2c_pa_a_seller_inventory_gap ; 
+CREATE TABLE P_INVENTORYPLANNING_T.b2c_pa_a_seller_inventory_gap as 
+SELECT 
+Retail_year,
+Retail_week,
+case when Retail_week between 36 and 37 then  'pre'
+   when Retail_week between 38 and 39 then  'post' else 'other' end as Period,
+case when  seller_id   =( select distinct user_id  from seller_id)   then user_slctd_id else 'Other Sellers' end as Seller,
+meta_categ_name,
+meta_categ_id,
+categ_lvl2_name,
+categ_lvl2_id,
+   categ_lvl3_name,
+   categ_lvl3_id,
+   categ_lvl4_name,
+   categ_lvl4_id,
+   A.Brand,
+   sum(GMB_PLAN) GMB,
+   sUM(BI) BI
+FROM p_csi_tbs_t.pa_brand_gmv_1  A
+INNER JOIN ( SELECT DISTINCT BRAND FROM   p_csi_tbs_t.pa_brand_gmv_1  
+					where retail_year =2023
+					and seller_id  =( select distinct user_id  from seller_id)  )  B ON A.BRAND=B.BRAND
+
+where 1=1
+AND retail_year =2023
+and categ_lvl2_name in ( 'Motorcycle & Scooter Parts & Accessories')
+and slr_segment ='B2C'
+and Byr_segment ='DOMESTIC'
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13;
+
+select * from  P_INVENTORYPLANNING_T.b2c_pa_a_seller_inventory_gap ; 
+-- 12442  
+
+------ 
