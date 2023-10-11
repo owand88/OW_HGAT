@@ -1,0 +1,441 @@
+--UKPLAN-567
+-- Author: Irene Chan
+-- Requested by Yann Gemmet
+
+-- Motorcycle Top Brand Gap Analysis
+--The idea would be to see if we carry the entire line of products/all variants produced by these brands for these particular categories as relates to motorcycle. 
+
+
+--CTLG vs Attribute
+-- TD/MAM vs Attribute
+
+
+-- -------------------------------------------------------------------------------
+-- 1. EBAY LIVE LISTINGS 
+-- -------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS  P_InventoryPlanning_t.car_parts_listings;
+CREATE   TABLE  P_InventoryPlanning_t.car_parts_listings as 
+(
+
+SELECT
+distinct 
+lst.item_id,
+lstc.auct_titl,
+lst.auct_end_dt,
+bsns_vrtcl_name,
+meta_categ_name,
+categ_lvl2_name,
+categ_lvl3_name,
+ssa.prod_ref_id,
+lst.SLR_ID  ,
+case when lst.slr_cntry_id = 3 then 'UK' else 'other' end as  slr_cntry,
+case when  cond.CNDTN_ROLLUP_ID =1 then 'New'
+		when  cond.CNDTN_ROLLUP_ID =2 then 'Refurb'
+		when  cond.CNDTN_ROLLUP_ID =3 then 'Used' else  cond.CNDTN_ROLLUP_ID end as condition
+FROM DW_LSTG_ITEM lst  
+INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID
+INNER  JOIN 
+				DW_USEGM_HIST HIST ON 
+				HIST.USER_ID=lst.Slr_ID AND 
+				HIST.USEGM_GRP_ID  = 48 AND
+				HIST.USEGM_ID = 206 			
+left outer join ssa_product_fact AS ssa   on lst.item_id = ssa.lstg_id and lst.auct_end_dt = ssa.lstg_end_dt
+left outer join ctlg_prod_Fact AS  ctlg      on ssa.prod_ref_id = ctlg.prod_ref_id
+INNER JOIN DW_COUNTRIES CN ON CN.CNTRY_ID = lst.SLR_CNTRY_ID
+INNER JOIN ACCESS_VIEWS.GLBL_RPRT_GEO_DIM GEO ON CN.REV_ROLLUP_ID = GEO.REV_ROLLUP_ID 
+INNER JOIN dw_lstg_item lstc ON lst.item_id = lstc.item_id AND lst.AUCT_END_DT = lstc.AUCT_END_DT
+ inner JOIN lstg_item_cndtn cond ON lst.item_id = cond.item_id and cond.CNDTN_ROLLUP_ID=1
+WHERE 1=1
+and lst.AUCT_end_dt>= '2023-10-01' --current_date
+and lst.WACKO_YN = 'N'                      
+AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+and lst.SLR_site_ID = 3 -- change country site id if needed 
+and bsns_vrtcl_name ='Parts & Accessories'
+and  lst.slr_cntry_id = 3
+--and categ_lvl2_id in (6030)
+and categ_lvl2_id in (6030, 10063,25622,96382,122304, 184632)
+----MOTORCYCLE (6747,10063,25622,96382,122304,184632)
+);
+-- 16 584 021 
+
+
+--select * from P_InventoryPlanning_t.car_parts_listings_moto limit 1000; 
+
+
+/*
+select 
+distinct categ_lvl2_id, categ_lvl2_name, categ_lvl3_name
+from   DW_CATEGORY_GROUPINGS
+where   categ_lvl2_name like '%car%parts%'
+and site_ID = 3*/
+
+
+--select * from  ctlg_prod_Fact where ctlg_id = 2550 and LIVE_IND  = 1  limit 100
+-- select * from ssa_product_fact  limit 100 
+ 
+ 
+--select count(prod_Ref_id)  from CTLG_PROD_FACT t where ctlg_id = 2550 and LIVE_IND  = 1 
+-- 1 353 448
+
+-- -------------------------------------------------------------------------------
+-- 2.ADD Brand and MPN (Attribute table) TO LIVE LISTINGS
+-- -------------------------------------------------------------------------------
+--select count(*) from P_awang_ops_t.car_parts_brand -- 
+--select * from P_awang_ops_t.car_parts_brand limit 100
+-- 1 542 484 735
+--
+Drop table IF EXISTS  P_InventoryPlanning_t.pa_ll_aspects ; 
+CREATE   TABLE P_InventoryPlanning_t.pa_ll_aspects as 
+(
+
+select 
+lst.Item_id, 
+slr_cntry,
+condition,
+Brand,
+MPN,
+ManufacturerPartNumber,
+oem_part_number_for_reference,
+reference_oe_oem_number,
+ean
+
+from (select * from  P_InventoryPlanning_t.car_parts_listings where condition='New' and slr_cntry='UK' )  lst
+left join (select  item_id , max(Brand) Brand from (select 
+						upper(ASPCT_VLU_NM) as Brand,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('brand' ) --and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2023-01-01' group by 1,2,3,4) where Brand is not null group by 1) a
+				ON lst.ITEM_ID = a.ITEM_ID
+left join (select  item_id , max(MPN) MPN from (select 
+						upper(ASPCT_VLU_NM) as MPN,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('mpn' ) --and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2023-01-01' group by 1,2,3,4) where MPN is not null group by 1) bbase
+				ON lst.ITEM_ID = bbase.ITEM_ID
+		
+				
+				left join (select  item_id , max(ManufacturerPartNumber) ManufacturerPartNumber from (select 
+						upper(ASPCT_VLU_NM) as ManufacturerPartNumber,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('manufacturer part number' ) --and NS_TYPE_CD='df' -- Manufacturer Part Number
+						 and  aspct.auct_end_dt  >=  date '2023-01-01' group by 1,2,3,4) where ManufacturerPartNumber is not null group by 1) cbase
+				ON lst.ITEM_ID = cbase.ITEM_ID
+	left join (select  item_id , max(oem_part_number_for_reference) oem_part_number_for_reference from (select 
+						upper(ASPCT_VLU_NM) as oem_part_number_for_reference,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('oem part number for reference' )--and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2023-01-01' group by 1,2,3,4 ) where oem_part_number_for_reference is not null group by 1) qbase
+				ON lst.ITEM_ID = qbase.ITEM_ID
+-- 				AND ck.AUCT_END_dt = bbase.AUCT_END_DT
+	left join (select  item_id , max(reference_oe_oem_number) reference_oe_oem_number from (select 
+						upper(ASPCT_VLU_NM) as reference_oe_oem_number,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('reference oe/oem number' )--and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2023-01-01' group by 1,2,3,4  ) where reference_oe_oem_number is not null group by 1) tbase
+				ON lst.ITEM_ID = tbase.ITEM_ID 
+	left join (select  item_id , max(ean) ean from (select 
+						upper(ASPCT_VLU_NM) as ean,
+						aspct.item_id,
+						aspct.auct_end_dt,
+						lower(PRDCT_ASPCT_NM) as lcase_aspect_name
+						from
+						ITEM_ASPCT_CLSSFCTN ASPCT
+						where
+						lower(PRDCT_ASPCT_NM) in ('ean' )--and NS_TYPE_CD='df'
+						 and  aspct.auct_end_dt  >=  date '2023-01-01' group by 1,2,3,4 ) where ean is not null group by 1 ) ebase
+				ON lst.ITEM_ID = ebase.ITEM_ID		
+				);
+-- 16471343  
+---- catalog
+--select * from  ctlg_prod_Fact where ctlg_id = 2550 and LIVE_IND  = 1  limit 100
+-- select * from ssa_product_fact  limit 100 
+ 
+ --drop table P_ICHAN_T.PA_ctlg
+ --select * from  P_WAJ_T.MAM_CAT_DATA;
+ ------------------------------------------------------------------ ------------------------------------------------------------------
+ --3. EXTRACT LATEST MAM CATALOG FROM DATA BASE (ctlg_prod_Fact)
+  ------------------------------------------------------------------ ------------------------------------------------------------------
+
+--ctlg_name	    ctlg_id
+--UK Motorcycles	-- 2531
+--UK Parts	    -- 2550
+
+/*
+DROP TABLE IF EXISTS  P_InventoryPlanning_T.PA_ctlg ; 
+Create table P_InventoryPlanning_T.PA_ctlg as 
+select * from  ctlg_prod_Fact where ctlg_id = 2550  -- UK Parts
+and LIVE_IND  = 1 
+and leaf_categ_id in ( select distinct leaf_categ_id from  DW_CATEGORY_GROUPINGS CAT where SITE_ID =  3 and CATEG_LVL2_ID in (10063,25622,96382,122304, 184632) )
+ -- 1533627  rows affected.
+ */
+/*
+ select distinct  ctlg_id, site_name   from  ctlg_prod_Fact where --ctlg_id = 2550 and
+LIVE_IND  = 1 
+and leaf_categ_id in ( select distinct leaf_categ_id from  DW_CATEGORY_GROUPINGS CAT where SITE_ID =  3 and CATEG_LVL2_ID in (10063,25622,96382,122304, 184632) )
+ -- 1533627  rows affected.
+ SELECT * FROM P_InventoryPlanning_T.PA_ctlg LIMIT 1000
+ */
+ DROP TABLE IF EXISTS  P_InventoryPlanning_T.PA_ctlg ; 
+Create table P_InventoryPlanning_T.PA_ctlg as 
+select * from  ctlg_prod_Fact 
+where LIVE_IND  = 1 
+and leaf_categ_id in ( select distinct leaf_categ_id from  DW_CATEGORY_GROUPINGS CAT where SITE_ID =  3 and CATEG_LVL2_ID in (6030,10063,25622,96382,122304, 184632) )
+and site_name  ='UK'
+AND ctlg_id IN ( 2531 , 2550) 
+ -- 1 531 229    rows affected.
+
+-- motorcyle tyres? select * from  ctlg_prod_Fact where ctlg_id = 1075 and LIVE_IND  = 1  LIMIT 100; 
+LEAF_CATEG_ID
+Lookup table: DW_CTLG_LKP.
+For PE Products, CTLG_ID is always 1075.
+
+select * from DW_CTLG_LKP   where ctlg_id IN ( 2550  , 2531 ) limit 1000; 
+select * from  ctlg_prod_Fact where ctlg_id = 2550 and LIVE_IND  = 1 limit 1000; 
+--------------------------------------------------------- 
+ -- 4. catalog coverage by prod_ref_id
+ --------------------------------------------------------
+DROP TABLE  IF EXISTS P_InventoryPlanning_t.PA_ctlg_prod_all  ; 
+Create table P_InventoryPlanning_t.PA_ctlg_prod_all as (
+select 
+a.PROD_REF_ID,
+a.PROD_TITLE,
+A.BRAND_TXT,
+A.MPN_TXT,
+CASE WHEN   a.PROD_REF_ID=b.PROD_REF_ID  THEN 1 ELSE 0 END AS MATCH,
+CASE WHEN   a.PROD_REF_ID=b.PROD_REF_ID  THEN LL ELSE 0 END AS LISTING_COUNT
+FROM  P_InventoryPlanning_T.PA_ctlg a
+left join (select prod_ref_id , count(distinct item_id) ll from  P_InventoryPlanning_t.car_parts_listings group by 1)  b 
+on a.PROD_REF_ID=b.PROD_REF_ID 
+WHERE 1=1  
+);
+ -- 131 
+ Select * from  P_InventoryPlanning_t.PA_ctlg_prod_all limit 1000 ;
+ 
+ 
+DROP TABLE  IF EXISTS P_InventoryPlanning_t.PA_ctlg_prod_all_jira  ;  -- 163424 
+Create table P_InventoryPlanning_t.PA_ctlg_prod_all_jira as 
+ select * from  P_InventoryPlanning_t.PA_ctlg_prod_all 
+WHERE 
+    UPPER(brand_txt) LIKE '%3RG%'
+    OR UPPER(brand_txt) LIKE '%AFAM%'
+    OR UPPER(brand_txt) LIKE '%AKRAPOVIC%'
+    OR UPPER(brand_txt) LIKE '%ALCO FILTER2%'
+    OR UPPER(brand_txt) LIKE '%ARMSTRONG%'
+    OR UPPER(brand_txt) LIKE '%ASHIKA%'
+    OR UPPER(brand_txt) LIKE '%ATE%'
+    OR UPPER(brand_txt) LIKE '%ATHENA%'
+    OR UPPER(brand_txt) LIKE '%AUGAR%'
+    OR UPPER(brand_txt) LIKE '%BLUE PRINT%'
+    OR UPPER(brand_txt) LIKE '%BLUEPRINT%'
+    OR UPPER(brand_txt) LIKE '%BOSCH%'
+    OR UPPER(brand_txt) LIKE '%BREMBO%'
+    OR UPPER(brand_txt) LIKE '%BRIDGESTONE%'
+    OR UPPER(brand_txt) LIKE '%BS%'
+    OR UPPER(brand_txt) LIKE '%CENTRA%'
+    OR UPPER(brand_txt) LIKE '%CHAMPION%'
+    OR UPPER(brand_txt) LIKE '%CONTINENTAL%'
+    OR UPPER(brand_txt) LIKE '%DELKEVIC%'
+    OR UPPER(brand_txt) LIKE '%DID%'
+    OR UPPER(brand_txt) LIKE '%DOMINATOR%'
+    OR UPPER(brand_txt) LIKE '%DUNLOP%'
+    OR UPPER(brand_txt) LIKE '%EBC%'
+    OR UPPER(brand_txt) LIKE '%ENERGIZER%'
+    OR UPPER(brand_txt) LIKE '%ESJOT%'
+    OR UPPER(brand_txt) LIKE '%GOLDFREN%'
+    OR UPPER(brand_txt) LIKE '%GPR%'
+    OR UPPER(brand_txt) LIKE '%HAGON%'
+    OR UPPER(brand_txt) LIKE '%HIFLO%'
+    OR UPPER(brand_txt) LIKE '%HYPER PRO%'
+    OR UPPER(brand_txt) LIKE '%JT%'
+    OR UPPER(brand_txt) LIKE '%KYOTO%'
+    OR UPPER(brand_txt) LIKE '%MICHELIN%'
+    OR UPPER(brand_txt) LIKE '%NEVERLANDS%'
+    OR UPPER(brand_txt) LIKE '%NGK%'
+    OR UPPER(brand_txt) LIKE '%OHLINS%'
+    OR UPPER(brand_txt) LIKE '%PIRELLI%'
+    OR UPPER(brand_txt) LIKE '%POWERLINE%'
+    OR UPPER(brand_txt) LIKE '%SCORPION%'
+    OR UPPER(brand_txt) LIKE '%VM%'
+    OR UPPER(brand_txt) LIKE '%YUASA%';
+
+ 
+ --select * from  P_InventoryPlanning_t.PA_ctlg_prod   limit 1000; 
+ 
+ 
+ -- 62399
+ /*
+DROP TABLE  IF EXISTS P_InventoryPlanning_t.PA_ctlg_coverage_by_prod  ; 
+Create table P_InventoryPlanning_t.PA_ctlg_coverage_by_prod as
+SELECT BRAND_TXT , SUM(MATCH) MATCH , COUNT(*) TOTAL_CATALOG, SUM(LISTING_COUNT) LISTING 
+FROM P_InventoryPlanning_t.PA_ctlg_prod_all
+WHERE 1=1 
+GROUP BY 1 
+; 
+select *, match/total_catalog as coverage  from P_InventoryPlanning_t.PA_ctlg_coverage_by_prod  order by coverage desc  ;  
+
+select CASE
+		WHEN coverage = 0 THEN '0%'
+        WHEN coverage = 1 THEN '100%'
+        WHEN coverage >= 0.9 THEN '90%'
+        WHEN coverage >= 0.8 THEN '80%'
+        WHEN coverage >= 0.7 THEN '70%'
+        WHEN coverage >= 0.6 THEN '60%'
+        WHEN coverage >= 0.5 THEN '50%'
+        WHEN coverage >= 0.4 THEN '40%'
+        WHEN coverage >= 0.3 THEN '30%'
+        WHEN coverage >= 0.2 THEN '20%'
+        WHEN coverage >= 0.1 THEN '10%'
+        ELSE '0%'
+    END AS product_coverag, count(*) Brand_count
+From (select *, match/total_catalog as coverage  from P_InventoryPlanning_t.PA_ctlg_coverage_by_prod ) 
+group by 1 
+order by 1 
+
+SELECT
+    CASE
+        WHEN coverage = 1 THEN '100%'
+        WHEN coverage >= 0.9 THEN '90%'
+        WHEN coverage >= 0.8 THEN '80%'
+        WHEN coverage >= 0.7 THEN '70%'
+        WHEN coverage >= 0.6 THEN '60%'
+        WHEN coverage >= 0.5 THEN '50%'
+        WHEN coverage >= 0.4 THEN '40%'
+        WHEN coverage >= 0.3 THEN '30%'
+        WHEN coverage >= 0.2 THEN '20%'
+        WHEN coverage >= 0.1 THEN '10%'
+        ELSE '0%'
+    END AS coverage_category
+FROM your_table_name;
+
+
+SELECT  SUM(MATCH) MATCH , COUNT(*) TOTAL_CATALOG, SUM(LISTING_COUNT) LISTING 
+FROM P_InventoryPlanning_t.PA_ctlg_prod 
+WHERE 1=1 
+;
+*/
+
+-----------------------------------------------------------------------------------------------
+---- BRAND COVERAGE ( in general for car parts) 
+----------------------------------------------------------------------------------------------
+DROP TABLE  IF EXISTS P_InventoryPlanning_t.PA_ctlg_prod_brand_all  ; 
+Create table P_InventoryPlanning_t.PA_ctlg_prod_brand_all as (
+select 
+A.BRAND_TXT,
+
+CASE WHEN   upper(a.BRAND_TXT)=upper(b.brand )  THEN 1 ELSE 0 END AS MATCH,
+CASE WHEN  upper(a.BRAND_TXT)=upper(b.brand )  THEN LL ELSE 0 END AS LISTING_COUNT
+FROM  ( select distinct brand_txt from P_InventoryPlanning_T.PA_ctlg ) a
+left join (select brand , count(distinct item_id) ll from P_InventoryPlanning_t.pa_ll_aspects  group by 1)  b 
+on upper(a.BRAND_TXT)=upper(b.brand )
+WHERE 1=1  
+);
+ -- 316
+Select * from P_InventoryPlanning_t.PA_ctlg_prod_brand_all  order by 2 desc,  3 desc ;  
+ 
+SELECT SUM(MATCH) MATCH , COUNT(*) TOTAL_CATALOG, SUM(LISTING_COUNT) LISTING 
+FROM P_InventoryPlanning_t.PA_ctlg_prod_brand_all 
+WHERE 1=1 
+; 
+ 
+SELECT  SUM(MATCH) MATCH , COUNT(*) TOTAL_CATALOG, SUM(LISTING_COUNT) LISTING 
+--MATCH	TOTAL_CATALOG	LISTING
+--289		316			17216747
+--91% match 
+------------------------------------------------------------------------------------------------------------------
+-- specific categories for this jira requests:
+---------------------------------------------------------------------------------------------------------------------------------
+
+brand_txt
+ABS (All Brake Systems)
+ABS - All Brake Systems
+ABS by Allen Schwartz (All Brake Systems)
+ASHIKA
+Blue Print
+Bosch
+Brembo
+Champion
+EBC
+FBS Automotive
+G&S Yuasa
+Gates
+GS Yuasa
+Juratek
+Mecatech
+Michelin
+Miratec
+NGK
+Ultratec
+Yuasa
+
+select distinct brand_txt  from P_InventoryPlanning_t.PA_ctlg_prod_all_jira  ;
+
+
+
+P_InventoryPlanning_t.PA_ctlg_prod_all_jira  
+DROP TABLE IF EXISTS   P_InventoryPlanning_t.b2c_pa_a_motorcycle_prod_coverage_OUTPUT  ;
+CREATE TABLE P_InventoryPlanning_t.b2c_pa_a_motorcycle_prod_coverage_OUTPUT AS 
+select * , 'BATTERIES' AS CATEGORY   from  P_InventoryPlanning_t.PA_ctlg_prod_all_jira  WHERE UPPER(brand_txt)  IN ('BOSCH','G&S YUASA','GS YUASA','YUASA') AND UPPER(PROD_TITLE)  LIKE '%BATTER%' UNION ALL 
+select * , 'BRAKE PADS' AS CATEGORY  from  P_InventoryPlanning_t.PA_ctlg_prod_all_jira  WHERE UPPER(brand_txt)  IN ('BOSCH','BREMBO','EBC') AND UPPER(PROD_TITLE)  LIKE '%BRAKE PAD%'UNION ALL 
+select * , 'SPARK PLUGS' AS CATEGORY from  P_InventoryPlanning_t.PA_ctlg_prod_all_jira  WHERE UPPER(brand_txt)  IN ('BOSCH','NGK') AND UPPER(PROD_TITLE)  LIKE '%SPARK PLUG%' UNION ALL 
+select * , 'OIL FILTER' AS CATEGORY  from  P_InventoryPlanning_t.PA_ctlg_prod_all_jira  WHERE UPPER(brand_txt)  IN ('BOSCH','ASHIKA','BLUE PRINT') AND UPPER(PROD_TITLE)  LIKE '%OIL FILTER%' UNION ALL 
+select * , 'BRAKE DISCS' AS CATEGORY from  P_InventoryPlanning_t.PA_ctlg_prod_all_jira  WHERE UPPER(brand_txt)  IN ( 'BLUE PRINT','BREMBO', 'CHAMPION' )AND UPPER(PROD_TITLE)  LIKE '%BRAKE DIS%' 
+
+--select * , 'EXHAUSTS' AS CATEGORY from  P_InventoryPlanning_t.PA_ctlg_prod_all  WHERE UPPER(PROD_TITLE)  LIKE '%EXHAUSTS%'
+select * , 'TYRES' AS CATEGORY from  P_InventoryPlanning_t.PA_ctlg_prod_all  WHERE UPPER(brand_txt)  IN ( 'CONTINENTAL' )AND UPPER(PROD_TITLE)  LIKE '%TYRE%'
+
+
+/*
+select META_CATEG_NAME,CATEG_LVL2_NAME, count(*), count(distinct product_id)product_id_count   from  CRAWLER_DATAASSET_V.Crawler_Amazon_UK_Product
+where upper(META_CATEG_NAME) like '%MOTORCY%'
+OR upper(CATEG_LVL2_NAME) like '%MOTORCY%'
+group by 1,2 order by 1,2 
+-- Motorcycles
+limit 1000;
+
+SELECT *  from  CRAWLER_DATAASSET_V.Crawler_Amazon_UK_Product  WHERE  META_CATEG_NAME ='Motorbike Accessories & Parts'
+AND  CATEG_LVL2_NAME IN (
+'Batteries',
+'Brakes',
+'Filters',
+'Wheels & Rims',
+'Exhaust & Exhaust Systems' ) 
+ORDER BY CATEG_LVL2_NAME
+LIMIT 1000; 
+
+select META_CATEG_NAME,CATEG_LVL2_NAME, count(*), count(distinct product_id)product_id_count   from  CRAWLER_DATAASSET_V.Crawler_Amazon_UK_Product
+where upper(META_CATEG_NAME) like '%BRAKE%'
+OR upper(CATEG_LVL2_NAME) like '%BRAKE%'
+group by 1,2 order by 1,2 
+
+META_CATEG_NAME	CATEG_LVL2_NAME	count(1)	product_id_count
+Car Parts	Batteries & Accessories	1262	1118
+Motorbike Accessories & Parts	Batteries	935	873
+Motorbike Accessories & Parts	Battery Chargers	39	38
+Motorbike Accessories & Parts	Electrical & Batteries	650	640
+*/
