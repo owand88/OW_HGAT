@@ -1,0 +1,93 @@
+--UKPLAN-571 
+--Shop The Sound conversion analysis
+
+ 
+-- I wanted to do a conversion analysis of the listings of the seller who is in the Shop The Sound featured promotion. I have attached a copy of the listings that they have sound feature on.
+-- The seller is grmoto_exhausts (869341213)
+
+
+-- Comparatively and as discussed, here is an equivalent seller representing similar inventory type criteria and seller size in the particular category;
+-- Blackwidowexhausts (264507931). 
+
+
+-- Also, just for a recap, the event launched in week 35 (29th of August) and the category in question is the L4 Silencers, Mufflers & Baffles [178000]
+--select * from  P_ICHAN_T.shop_the_sound_id  ; 
+
+--week 20 to 34
+--week 35 to 40 
+
+---listing 
+
+
+
+CREATE Table P_INVENTORYPLANNING_T.b2c_pa_a_shop_the_sound_ck as 
+Select
+seller_id,
+cal.retail_year,
+cal.retail_week,
+CASE 
+	WHEN SELLER_ID =869341213 THEN 'grmoto_exhausts'
+	WHEN SELLER_ID =264507931 THEN 'Blackwidowexhausts' ELSE 'OTHER' END AS SELLER ,
+case when retail_week <35 then 'pre' else 'post' end as Period ,
+CASE WHEN CK.ITEM_ID=b.ID THEN 'Y' ELSE 'N' END AS SHOP_THE_SOUND,
+meta_categ_name,
+categ_lvl2_name,
+categ_lvl2_id,
+categ_lvl3_name,
+categ_lvl4_name,
+	SUM( CK.GMV_PLAN_USD) AS GMV, 
+	SUM(QUANTITY) AS BI,
+	count(distinct BUYER_ID) as byr_cnt,
+	count(distinct(ck.item_id)) as converted_lll,
+	GMV/BI as ASP
+
+FROM DW_CHECKOUT_TRANS AS CK
+
+ LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, ITEM_CNDTN_ID from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+LEFT JOIN ( SELECT DISTINCT ID FROM   P_ICHAN_T.shop_the_sound_id ) B ON CK.ITEM_ID=b.ID
+inner  JOIN ACCESS_VIEWS.SSA_CURNCY_PLAN_RATE_DIM LPR 
+	ON CK.LSTG_CURNCY_ID = LPR.CURNCY_ID 
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT CAL 
+	ON CAL.CAL_DT = CK.CREATED_DT 
+	and AGE_FOR_RTL_WEEK_ID <= -1 and AGE_FOR_RTL_WEEK_ID >= -24
+	
+left outer join dw_users u
+	on ck.seller_id = u.user_id
+
+INNER JOIN DW_CATEGORY_GROUPINGS CAT 
+	ON CAT.LEAF_CATEG_ID = CK.LEAF_CATEG_ID 
+	AND CAT.SITE_ID = 3
+	AND CAT.SAP_CATEGORY_ID NOT IN (5,7,41,23,-999)   
+
+INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where
+        USEGM_GRP_ID = 48
+        AND USEGM_ID = 206
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5 ) AS HIST
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.CREATED_Dt BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+
+WHERE 1=1
+	AND CK.CK_WACKO_YN  =  'N'
+	AND CK.SALE_TYPE NOT IN (10,15)
+	and ck.slr_cntry_id = 3
+--and ck.byr_cntry_id = 3
+--and ck.slr_cntry_id = ck.byr_cntry_id
+	AND HIST.USEGM_ID = 206
+	and cat.CATEG_LVL4_ID= 178000
+	GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+;
+
+
+select * from P_INVENTORYPLANNING_T.b2c_pa_a_shop_the_sound_ck 
+
+
+
+select 
+seller,
+period,
+avg(converted_lll)  Converted_listing
+from P_INVENTORYPLANNING_T.b2c_pa_a_shop_the_sound_ck 
+group by 1,2
+
+--2.
