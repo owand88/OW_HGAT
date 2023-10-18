@@ -1,0 +1,112 @@
+-- UKPLAN-574
+-- tiered pricing seller gmv and ll by price tranche
+--Requested by Manish
+-- Author : Irene Chan
+
+
+
+--•	Vertical : All verticals including P&A
+--•	Seller Country: UK or Other
+--•	B2C_C2C flag: B2C or C2C sellers
+--•	Domestic or CBT flag
+----------
+----------
+-- Are you able to add LLs (in addition to GMV, BI and ASP) please?
+----------------------------------------------------------------------------------------------------------------------
+
+-- 1. SI by item above £500
+
+Drop table if exists   P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_si ;-- 132861 
+Create table  P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_si as 
+(
+SELECT 
+RETAIL_YEAR,
+ck.SELLER_ID,
+USER_SLCTD_ID,
+USEGM_GRP_ID,
+-- categ_lvl3_ID,
+-- categ_lvl3_name,
+-- categ_lvl4_name,
+--categ_lvl4_ID,
+bsns_vrtcl_name,
+case when SLR_CNTRY_ID = 3 then 'UK' else 'Other' end as Seller_country,
+case when USEGM_ID = 206  then 'B2C' when USEGM_ID = 207 then 'C2C' else 'other' end as B2C_C2C,
+case when  BYR_CNTRY_ID = 3  and slr_cntry_id=3 then 'UK Dom' else 'CBT' end as Domestic_CBT,
+
+case when item_price between 0 and 500 then 'a.0-500'
+ 		when item_price = 500 then  'b.500'
+		when item_price >500 then 'c.500+' else item_price end as Price_tranche,
+SUM(CK.QUANTITY) AS BI,
+SUM(GMV_PLAN_USD) AS GMV 
+FROM  DW_CHECKOUT_TRANS ck  --  Select * from DW_CHECKOUT_TRANS   where seller_id =1167763358
+inner join ( select distinct  seller_id from P_INVENTORYPLANNING_T.pa_tier_pricing_seller_upload)  c on ck.seller_id=c.seller_id
+INNER JOIN ( select meta_categ_id, meta_categ_name, CATEG_LVL2_ID, categ_lvl2_name, categ_lvl3_name, categ_lvl3_id,categ_lvl4_id,categ_lvl4_name,
+LEAF_CATEG_ID,SITE_ID,BSNS_VRTCL_NAME   from ACCESS_VIEWS.DW_CATEGORY_GROUPINGS)  AS CAT
+        ON CK.LEAF_CATEG_ID = CAT.LEAF_CATEG_ID
+        AND CK.SITE_ID = CAT.SITE_ID
+INNER JOIN ( select USEGM_GRP_ID,USEGM_ID,END_DATE,USER_ID,BEG_DATE from DW_USEGM_HIST where 1=1 
+		--and USEGM_GRP_ID = 48 
+        --aND USEGM_ID = 206 
+        AND END_DATE >= '2015-12-30' group by 1,2,3,4,5
+		)AS HIST 
+        ON HIST.USER_ID = CK.SELLER_ID
+        AND CK.CREATED_DT BETWEEN HIST.BEG_DATE AND HIST.END_DATE
+		
+INNER JOIN ACCESS_VIEWS.DW_CAL_DT AS CAL
+        ON CAL.CAL_DT = CK.GMV_DT
+       AND RETAIL_YEAR >=2023
+		and age_for_rtl_week_id <= -1 
+LEFT JOIN ( select ITEM_ID,CNDTN_ROLLUP_ID, item_cndtn_id  from ACCESS_VIEWS.LSTG_ITEM_CNDTN group by 1,2,3 ) AS CNDTN
+        ON CK.ITEM_ID = CNDTN.ITEM_ID
+left outer JOIN DW_USERs U ON U.USER_ID= CK.SELLER_ID 
+WHERE 1=1
+--and  SLR_CNTRY_ID = 3 --UK sellers
+--and  BYR_CNTRY_ID = 3 --UK buyers
+and ck.site_id = 3 
+and retail_week between 1 and 40
+AND RPRTD_WACKO_YN = 'N'
+        AND AUCT_END_DT >= '2017-12-20'
+        AND CREATED_DT >= '2017-12-20'    
+---and bsns_vrtcl_name in ('Parts & Accessories')
+GROUP BY 1,2,3,4,5,6,7,8,9) ;	
+
+
+----------------------------------------------------------------------------------------------------------------------------------
+-- 2. lising for items above £500
+
+Drop table if exists P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_listing_by_price_tranche  ; 
+Create table         P_INVENTORYPLANNING_T.b2c_pa_a_tiered_price_listing_by_price_tranche as (
+Select slr_id,
+USER_SLCTD_ID,
+Price_tranche,
+sum(start_price_lstg_curncy) /count(item_id) as ASP,
+count(distinct item_id) ll from (
+	select 
+	lst.Slr_ID,
+	U.USER_SLCTD_ID,
+	lst.item_id,
+	start_price_lstg_curncy,
+	case when start_price_lstg_curncy between 0 and 500 then 'a.0-500'
+		--when start_price_lstg_curncy between 50 and 100 then 'b.50-100' 
+	--	when START_PRICE_LSTG_CURNCY between 100 and 500 then 'c.100-500'
+		when START_PRICE_LSTG_CURNCY >=500 then 'b.500+' else START_PRICE_LSTG_CURNCY end as Price_tranche
+	from  DW_LSTG_ITEM lst --
+	inner join ( select distinct  seller_id from  P_INVENTORYPLANNING_T.pa_tier_pricing_seller_upload)  c on lst.slr_id=c.seller_id
+	INNER JOIN DW_USEGM_HIST AS HIST          ON HIST.USER_ID = lst.SLR_ID         AND HIST.USEGM_GRP_ID = 48    --      AND HIST.USEGM_ID = 206 --B2C only sellers
+	INNER JOIN DW_CATEGORY_GROUPINGS CAT ON CAT.LEAF_CATEG_ID = lst.LEAF_CATEG_ID AND CAT.SITE_ID = lst.ITEM_SITE_ID and cat.site_id =3 -- select distinct site_id from 
+	INNER JOIN  LSTG_ITEM_CNDTN COND ON COND.AUCT_END_DT = lst.AUCT_END_DT AND COND.ITEM_ID = lst.ITEM_ID ----- AND  COND.CNDTN_ROLLUP_ID =  1  /*THEN 'Used' */  
+	INNER JOIN (select CAL_DT,RETAIL_YEAR, QTR_OF_YEAR_ID,Retail_week, AGE_FOR_RTL_WEEK_ID from DW_CAL_DT group by 1,2, 3, 4,5 ) CAL  ON Lst.AUCT_START_DT < CAL.CAL_DT AND Lst.AUCT_END_DT >= CAL.CAL_DT 
+	AND RETAIL_YEAR in ( 2021, 2022,2023,2024)
+	left outer JOIN DW_USERs U ON U.USER_ID= lst.Slr_ID 
+	where 1=1
+	and lst.WACKO_YN = 'N'   
+	and CAT.bsns_vrtcl_name in ('Parts & Accessories') 
+	AND lst.AUCT_TYPE_CODE NOT IN (10,15)
+	and lst.ITEM_CNTRY_ID=3
+	--and lst.SLR_site_ID = 3 -- change country site id if needed 
+	 and lst.AUCT_end_dt >= CURRENT_DATE
+	)
+	 Group by 1,2,3)
+	
+;
+-- 95
